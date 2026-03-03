@@ -1,4 +1,4 @@
-# Organic Neural Network
+# oNeuro
 
 **Biologically-inspired neural networks with neurogenesis, quantum effects, and reward-modulated learning.**
 
@@ -13,10 +13,10 @@ This is the **first implementation** combining all four paradigms into a unified
 ## Installation
 
 ```bash
-pip install organic-neural
+pip install oNeuro
 
 # With visualization support
-pip install organic-neural[viz]
+pip install oNeuro[viz]
 ```
 
 ## Quick Start

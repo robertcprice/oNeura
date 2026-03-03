@@ -3,20 +3,20 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "organic-neural"
+name = "oNeuro"
 version = "0.1.0"
 description = "Biologically-inspired neural networks with neurogenesis, quantum effects, and reward-modulated learning"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "CC-BY-NC-4.0"}
 requires-python = ">=3.11"
 authors = [
     {name = "Entropy Research", email = "research@entropy.ai"}
 ]
-keywords = ["neural-networks", "neurogenesis", "quantum", "biologically-inspired", "neuromorphic"]
+keywords = ["neural-networks", "neurogenesis", "quantum", "biologically-inspired", "neuromorphic", "brain"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
@@ -30,8 +30,8 @@ dev = ["pytest>=7.0", "black>=23.0", "mypy>=1.0"]
 viz = ["matplotlib>=3.7.0"]
 
 [project.urls]
-Homepage = "https://github.com/entropy-research/organic-neural"
-Repository = "https://github.com/entropy-research/organic-neural"
+Homepage = "https://github.com/robertcprice/oNeuro"
+Repository = "https://github.com/robertcprice/oNeuro"
 
 [tool.setuptools.packages.find]
 where = ["src"]
