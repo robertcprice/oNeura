@@ -764,6 +764,7 @@ class RegionalBrain:
         # Thalamus relay → Cortex L4 (feedforward sensory drive)
         thal_relay = self.thalamus.get_ids("relay")
         cortex_l4 = self.cortex.get_ids("L4")
+        cortex_l5 = self.cortex.get_ids("L5")
         _connect_layers(net, thal_relay, cortex_l4, p=0.3, nt="glutamate")
 
         # Thalamus relay → Cortex L5 (fast sensorimotor shortcut for motor output)
@@ -776,7 +777,6 @@ class RegionalBrain:
         _connect_layers(net, cortex_l6, thal_relay, p=0.2, nt="glutamate")
 
         # Cortex L5 → Basal Ganglia D1 (action commands)
-        cortex_l5 = self.cortex.get_ids("L5")
         bg_d1 = self.basal_ganglia.get_ids("D1")
         _connect_layers(net, cortex_l5, bg_d1, p=0.25, nt="glutamate")
 

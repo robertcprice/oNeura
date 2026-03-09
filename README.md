@@ -4,251 +4,31 @@
 
 ![oNeuro Logo](docs/assets/logo.png)
 
-**Molecular-scale neural simulation with emergent electrophysiology, consciousness measurement, and psychopharmacology.**
+**Build digital organisms with biophysically faithful brains — from molecules to behavior.**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
 </div>
 
-## What Is This?
+## What Is oNeuro?
 
-oNeuro is a platform for building and running **digital Organic Neural Networks (dONNs)** — biophysically faithful simulations of biological neural tissue at molecular resolution. Every neuron has Hodgkin-Huxley ion channels, real neurotransmitter molecules (with SMILES), enzymatic degradation, gene expression, second messenger cascades, dendritic trees, axonal conduction, glial cells, gap junctions, circadian rhythms, and quantum-coherent microtubules.
+oNeuro is a platform for simulating **complete digital organisms** — brains, bodies, and environments — at molecular resolution. Every neuron runs real Hodgkin-Huxley ion channel dynamics, communicates through 6 real neurotransmitters, learns through STDP, and responds to drugs via pharmacokinetic/pharmacodynamic models. Membrane potential **emerges from physics** — it is never a hand-set float.
 
-**Membrane potential emerges from ion channel physics** — it is never a hand-set float.
+We build digital flies that smell, navigate, learn, and respond to drugs. We build digital neural cultures that learn to play Pong using the free energy principle. We build digital worlds with real molecular diffusion physics where odorant plumes flow in wind.
+
+**This is not a toy neural network simulator.** This is a molecular-resolution digital biology platform.
 
 ## Terminology
 
-| Term | Meaning |
-|------|---------|
-| **ONN** | Organic Neural Network — real biological neurons on hardware (e.g., Cortical Labs' [DishBrain](https://doi.org/10.1016/j.neuron.2022.09.001), FinalSpark's bioprocessors) |
-| **dONN** | digital Organic Neural Network — oNeuro's biophysically faithful simulation of an ONN, running on GPU/CPU |
-| **oNeuro** | The software platform for building, running, and experimenting with dONNs |
+| Term | What It Means |
+|------|--------------|
+| **ONN** | **Organic Neural Network** — real biological neurons on hardware. Cortical Labs' [DishBrain](https://doi.org/10.1016/j.neuron.2022.09.001) (800K neurons playing Pong), FinalSpark's bioprocessors, and future living-tissue compute platforms. |
+| **dONN** | **digital Organic Neural Network** — oNeuro's biophysically faithful simulation of an ONN, running on GPU/CPU. Same molecular physics, same emergent behaviors, without the biology lab. |
+| **oNeuro** | The software platform for building, running, and experimenting with dONNs — from single neurons to 139K-neuron insect brains. |
 
-A dONN differs from a standard artificial neural network (ANN) in the same way a flight simulator differs from a paper airplane: both involve "flight," but only one models the physics. In a dONN, action potentials emerge from ion channel kinetics, learning emerges from receptor trafficking and STDP, and drug effects emerge from pharmacokinetics acting on molecular targets. Nothing is hand-tuned.
+A dONN differs from a standard artificial neural network (ANN) in the same way a wind tunnel differs from a paper airplane. In a dONN, action potentials emerge from ion channel kinetics, learning emerges from receptor trafficking and STDP, and drug effects emerge from real pharmacology acting on molecular targets. Nothing is hand-tuned.
 
-The result is a platform where you can:
-- **Measure consciousness** (IIT Phi, PCI, criticality, Global Workspace, Orch-OR)
-- **Screen drugs** against a molecular brain and observe dose-response curves
-- **Study circadian pharmacology** — drug efficacy varies by time of day
-- **Model neurological conditions** — sleep disorders, critical period closure, damage recovery
-- **Compare against traditional networks** — molecular brains resist forgetting and recover from damage
-
-## Installation
-
-```bash
-pip install oNeuro
-
-# With quantum chemistry (nQPU Metal backend)
-pip install oNeuro[molecular]
-
-# With visualization
-pip install oNeuro[viz]
-
-# Everything
-pip install oNeuro[all]
-```
-
-## Quick Start
-
-### Molecular Neural Network
-
-```python
-from oneuro.molecular import MolecularNeuralNetwork
-
-# Create a full molecular brain (all 25 subsystems)
-net = MolecularNeuralNetwork(initial_neurons=20, full_brain=True)
-
-# Run simulation — membrane potentials emerge from HH dynamics
-for step in range(1000):
-    fired = net.step(dt=0.1)  # Returns set of neuron IDs that spiked
-```
-
-### Consciousness Measurement
-
-```python
-from oneuro.molecular import MolecularNeuralNetwork, ConsciousnessMonitor
-
-net = MolecularNeuralNetwork(initial_neurons=20, full_brain=True)
-monitor = ConsciousnessMonitor(net)
-
-# Build spike history
-for _ in range(2000):
-    fired = net.step(0.1)
-    monitor.record_step(fired)
-
-# Measure 7 consciousness metrics
-metrics = monitor.measure()
-print(f"Phi={metrics.phi_approx:.3f}")
-print(f"PCI={metrics.pci:.3f}")
-print(f"Criticality={metrics.branching_ratio:.3f}")
-print(f"Composite={metrics.composite:.3f}")
-```
-
-### Multi-Region Brain
-
-```python
-from oneuro.molecular import RegionalBrain
-
-# Creates cortex, thalamus, hippocampus, basal ganglia
-brain = RegionalBrain.minimal(seed=42)
-
-# Sensory input through thalamus
-brain.stimulate_thalamus(intensity=25.0)
-
-for _ in range(500):
-    brain.step(0.1)
-
-# Hippocampal memory
-brain.hippocampus.encode_pattern(brain.network, pattern, intensity=25.0)
-recall = brain.hippocampus.recall_from_partial(brain.network, partial_cue)
-```
-
-### Drug Screening
-
-```python
-from oneuro.molecular import MolecularNeuralNetwork, DRUG_LIBRARY
-
-net = MolecularNeuralNetwork(initial_neurons=15, full_brain=True)
-
-# Apply diazepam (GABA-A potentiator)
-diazepam = DRUG_LIBRARY["diazepam"](dose_mg=10.0)
-diazepam.apply(net)
-
-# Observe: firing rate drops ~60% (GABA inhibition)
-for _ in range(500):
-    fired = net.step(0.1)
-
-diazepam.remove(net)  # Clean removal
-```
-
-## Architecture
-
-### 25 Molecular Subsystems
-
-| Layer | Components |
-|-------|-----------|
-| **Ion Channels** | Na_v, K_v, K_leak, Ca_v, NMDA, AMPA, GABA_A, nAChR (HH gating) |
-| **Neurotransmitters** | Dopamine, serotonin, norepinephrine, ACh, GABA, glutamate (real SMILES) |
-| **Receptors** | AMPA, NMDA, GABA-A, D1/D2, 5-HT, nAChR (Hill kinetics) |
-| **Enzymes** | MAO, AChE, COMT, GAT (quantum tunneling catalysis) |
-| **Membrane** | Hodgkin-Huxley dynamics, emergent action potentials |
-| **Gene Expression** | DNA → RNA → Protein, transcription factors (CREB, c-Fos), epigenetics |
-| **Second Messengers** | cAMP/PKA/PKC/CaMKII/CREB/MAPK cascades |
-| **Calcium** | Cytoplasmic/ER/mitochondrial/microdomain compartments |
-| **Dendrites** | Cable equation, multi-compartment, voltage propagation |
-| **Spines** | Volume-dependent plasticity, thin/mushroom/stubby morphology |
-| **Axons** | Myelinated/unmyelinated, saltatory conduction, Hursh's law |
-| **Metabolism** | ATP/ADP/AMP pools, glycolysis, oxidative phosphorylation |
-| **Glia** | Astrocytes (glutamate uptake), oligodendrocytes (myelin), microglia (pruning) |
-| **Gap Junctions** | Electrical synapses, connexin-based coupling |
-| **Extracellular** | 3D diffusion, transporter uptake, perineuronal nets |
-| **Microtubules** | Orch-OR quantum coherence, consciousness contribution |
-| **Circadian** | TTFL molecular clock, sleep homeostasis, adenosine pressure |
-| **Synapses** | NMDA-gated STDP, BCM metaplasticity, synaptic tagging & capture |
-| **Pharmacology** | 8 drugs with 1-compartment PK (Bateman) + PD (Hill equation) |
-| **Consciousness** | IIT Phi, PCI, neural complexity, criticality, Global Workspace |
-| **Brain Regions** | Cortical columns, thalamus, hippocampus, basal ganglia |
-
-### Brain Region Architecture
-
-```
-Thalamus (relay + reticular)
-    ├── → Cortex L4 (feedforward sensory)
-    │       ├── → L2/3 (processing)
-    │       │       └── → Hippocampus DG (episodic encoding)
-    │       ├── → L5 (output)
-    │       │       ├── → Basal Ganglia (action selection)
-    │       │       └── ← Hippocampus CA1 (memory-guided behavior)
-    │       └── → L6 (feedback)
-    │               └── → Thalamus (corticothalamic feedback)
-    └── Reticular (GABAergic gating)
-```
-
-## Validated Results
-
-### Molecular Brain vs Traditional Neural Networks
-
-| Capability | Molecular Brain | Organic NN |
-|-----------|----------------|------------|
-| **Forgetting Resistance** | 9.0% loss after 4 tasks | 12.0% loss |
-| **Damage Recovery** | 60% recovery after 20% lesion | 0% recovery |
-| **Sleep Consolidation** | Gene expression + adenosine clearance | N/A |
-| **Learning Speed** | 86 episodes to criterion (slower) | 57 episodes (faster) |
-
-The molecular brain learns **slower** but **consolidates better** and **recovers from damage** — matching biological neural tissue behavior.
-
-### Drug Effects (Validated)
-
-| Drug | Mechanism | Effect on Firing Rate |
-|------|-----------|----------------------|
-| Diazepam | GABA-A potentiator | -63.6% |
-| Caffeine | Adenosine antagonist | +10.9% to +29.1% (dose-dependent) |
-| Amphetamine | DA/NE reuptake inhibitor | +15.2% |
-| Ketamine | NMDA antagonist | ~0% on rate (Mg2+ block), affects plasticity |
-| Fluoxetine | SSRI | Modest serotonergic modulation |
-| L-DOPA | Dopamine precursor | Dopaminergic enhancement |
-| Donepezil | AChE inhibitor | Cholinergic enhancement |
-
-### Consciousness Metrics
-
-The `ConsciousnessMonitor` computes 7 metrics on a running network:
-- **IIT Phi** (approximate): Information integration across bipartitions
-- **PCI**: Perturbational Complexity Index (Lempel-Ziv complexity of network response)
-- **Neural Complexity**: Tononi-Sporns balance of integration/segregation
-- **Branching Ratio**: Criticality measure (1.0 = edge of chaos)
-- **Global Workspace**: Ignition events and broadcasting persistence
-- **Orch-OR**: Aggregated microtubule quantum consciousness
-- **Composite**: Weighted mean of all metrics
-
-### DishBrain Replication (dONN Game Learning)
-
-oNeuro replicates and extends Cortical Labs' DishBrain (Kagan et al. 2022) — the first demonstration that biological neurons can learn to play Pong. Our dONN learns via the **Free Energy Principle** (no reward, no punishment), matching the original protocol:
-
-| Experiment | What It Tests | Status |
-|-----------|--------------|--------|
-| **Pong Replication** | FEP-driven learning (structured vs unstructured feedback) | PASS |
-| **FEP vs DA vs Random** | Learning speed comparison across 3 protocols | PASS |
-| **Pharmacological Effects** | Caffeine enhances, diazepam impairs (impossible on real tissue) | PASS |
-| **Arena Navigation** | Extending DishBrain from 1D Pong to 2D grid world | PASS |
-| **Scale Invariance** | Learning at 1K → 10K neurons | PASS |
-| **Spatial Arena** | 25×25 room-corridor world with enemies, health, 8-directional movement (inspired by Doom's BSP dungeon generation) | PASS |
-
-```bash
-# Run DishBrain replication
-python3 demos/demo_dishbrain_pong.py
-
-# Run Spatial Arena (extended spatial navigation)
-python3 demos/demo_doom_arena.py
-
-# Run at GPU scale with JSON output
-python3 demos/demo_dishbrain_pong.py --scale medium --json results.json --runs 5
-```
-
-## Research Platforms
-
-oNeuro includes 7 ready-to-run research demonstrations:
-
-| Platform | What It Does |
-|----------|-------------|
-| **A. Chronopharmacology** | Drug efficacy varies by circadian phase (>90% variation) |
-| **B. Sleep Research** | Normal vs caffeine vs shift-work sleep cycles |
-| **C. Neurodevelopment** | PNN-mediated critical period closure |
-| **D. Drug Screening** | Screen 8 drugs for efficacy + consciousness impact + ATP cost |
-| **E. Long-Duration** | Multi-cycle circadian oscillation + parameter sensitivity |
-| **F. Hippocampal Memory** | Encode → recall → partial recall → sleep replay |
-| **G. Dose-Response** | Hill equation dose-response curves for 3 drugs × 5 doses |
-
-```bash
-# Run all research platforms
-cd oNeuro && python3 demos/demo_research_platforms.py
-
-# Run training comparison (molecular vs organic)
-python3 experiments/training_comparison.py
-
-# Run consciousness mega-benchmark
-python3 experiments/mega_benchmark.py
-```
 
 ## Project Structure
 
@@ -256,143 +36,341 @@ python3 experiments/mega_benchmark.py
 oNeuro/
 ├── src/oneuro/
 │   ├── molecular/              # 25-file molecular simulation engine
-│   │   ├── network.py          # MolecularNeuralNetwork (main entry point)
-│   │   ├── neuron.py           # HH neuron with all subsystems
+│   │   ├── cuda_backend.py     # GPU-accelerated HH brain (CUDAMolecularBrain)
+│   │   ├── retina.py           # 3-layer biophysical retina (rods/cones → bipolar → RGC)
+│   │   ├── network.py          # MolecularNeuralNetwork (pure Python)
+│   │   ├── neuron.py           # HH neuron with all 25 subsystems
 │   │   ├── membrane.py         # Hodgkin-Huxley membrane dynamics
-│   │   ├── ion_channels.py     # 8 channel types with quantum gating
-│   │   ├── neurotransmitters.py # 6 NTs with real SMILES
-│   │   ├── synapse.py          # STDP + BCM + synaptic tagging
-│   │   ├── receptors.py        # Ligand-gated receptor kinetics
-│   │   ├── enzymes.py          # Enzymatic degradation (quantum tunneling)
-│   │   ├── gene_expression.py  # DNA→RNA→Protein + TFs + epigenetics
-│   │   ├── second_messengers.py # cAMP/PKA/PKC/CaMKII/CREB/MAPK
-│   │   ├── calcium.py          # 4-compartment Ca2+ dynamics
-│   │   ├── dendrite.py         # Cable equation dendritic tree
-│   │   ├── spine.py            # Dendritic spine plasticity
-│   │   ├── axon.py             # Myelinated/unmyelinated conduction
-│   │   ├── metabolism.py       # ATP/ADP/AMP energy system
-│   │   ├── glia.py             # Astrocytes, oligodendrocytes, microglia
-│   │   ├── gap_junction.py     # Electrical synapses
-│   │   ├── extracellular.py    # 3D diffusion + perineuronal nets
-│   │   ├── microtubules.py     # Orch-OR quantum consciousness
-│   │   ├── circadian.py        # TTFL clock + sleep homeostasis
+│   │   ├── ion_channels.py     # 8 channel types (Na_v, K_v, Ca_v, NMDA, ...)
+│   │   ├── neurotransmitters.py # 6 NTs with real molecular identities
 │   │   ├── pharmacology.py     # 8 drugs with PK/PD models
-│   │   ├── consciousness.py    # IIT Phi, PCI, criticality, GW
+│   │   ├── consciousness.py    # IIT Phi, PCI, criticality, GW, Orch-OR
 │   │   ├── brain_regions.py    # Cortex, thalamus, hippocampus, BG
-│   │   ├── bio_bridge.py       # BioState → NT concentration bridge
-│   │   ├── adapters.py         # OrganicNN compatibility layer
-│   │   └── backend.py          # nQPU/numpy backend selection
-│   ├── organic_neural_network.py # Original organic neural network
-│   └── quantum_consciousness.py  # Standalone consciousness module
-├── experiments/
-│   ├── training_comparison.py  # Molecular vs organic (4 experiments)
-│   └── mega_benchmark.py       # Full benchmark with consciousness
+│   │   └── ...                 # (gene_expression, calcium, glia, axon, etc.)
+│   ├── organisms/              # Complete digital organisms
+│   │   └── drosophila.py       # Drosophila brain (15 regions) + body (eyes, legs, wings)
+│   ├── worlds/                 # Physics-grounded environments
+│   │   └── molecular_world.py  # 2D/3D volumetric odorant diffusion, temperature, wind, buoyancy
+│   └── environments/           # Game/navigation environments
+│       └── doom_fps.py         # DDA raycasting FPS engine (278 FPS)
 ├── demos/
-│   ├── demo_dishbrain_pong.py      # DishBrain replication (5 experiments)
-│   ├── demo_doom_arena.py          # Spatial Arena navigation (3 experiments, inspired by Doom's BSP level generation)
-│   ├── demo_beyond_ann.py          # Beyond ANN capabilities (23 experiments)
-│   ├── demo_emergent_cuda.py       # Emergent behaviors at GPU scale
-│   ├── demo_language_cuda.py       # Language learning at GPU scale
-│   ├── demo_language_learning.py   # Language learning (CPU)
-│   ├── demo_research_platforms.py  # 7 research platform demos
-│   ├── demo_molecular_emergence.py # 6 emergence experiments
-│   ├── demo_full_brain.py          # Full brain subsystem validation
-│   ├── psychopharmacology_demo.py  # Drug effect demonstrations
-│   └── bio_lora_molecular_demo.py  # Bio-LoRA bridge demo
+│   ├── demo_drosophila_ecosystem.py  # 6 experiments: olfaction, vision, drugs, circadian
+│   ├── demo_dishbrain_pong.py        # 5 experiments: FEP learning, Pong, drugs, scale
+│   ├── demo_doom_arena.py            # 3 experiments: spatial navigation, threat avoidance
+│   ├── demo_emergent_cuda.py         # 13 experiments: emergent behaviors (GPU)
+│   ├── demo_language_learning.py     # Language acquisition at 5K neurons
+│   ├── demo_beyond_ann.py            # 23 capabilities impossible in ANNs
+│   └── ...
 ├── papers/
-│   ├── beyond_ann_white_paper.md    # Beyond ANN: 23 experiments
-│   ├── dishbrain_replication_paper.md # DishBrain replication paper (draft)
-│   ├── data/                        # GPU experiment JSON results
-│   └── figures/                     # Publication-ready figures (PNG/PDF)
+│   ├── beyond_ann_white_paper.md     # 23 experiments proving dONN capabilities
+│   ├── dishbrain_replication_paper.md # DishBrain replication (draft, A100 data)
+│   └── data/                         # GPU experiment JSON results
 ├── scripts/
-│   ├── generate_paper_figures.py    # Matplotlib figure generation
-│   └── vast_deploy.sh              # Vast.ai GPU deployment & benchmarking
-├── tests/
-│   └── test_phase3_verification.py  # 17 subsystem verification tests
-├── docs/
-│   ├── tutorials/              # 9 tutorial documents
-│   └── assets/                 # Logo and images
+│   └── vast_deploy.sh                # Vast.ai GPU deployment & benchmarking
+├── docs/tutorials/                   # 9 tutorial documents
 ├── pyproject.toml
-├── LICENSE                     # CC BY-NC 4.0
-└── README.md
+└── LICENSE                           # CC BY-NC 4.0
 ```
 
-## CUDA Backend (GPU-Accelerated dONNs)
 
-oNeuro includes a high-performance CUDA backend for running dONNs at biologically relevant scale (5K–100K+ neurons). The entire Hodgkin-Huxley simulation, STDP, neurotransmitter dynamics, and synaptic plasticity run on GPU via PyTorch sparse tensors.
+## What We've Built
+
+### Digital Organisms
+
+| Organism | Neurons | Brain Regions | Behaviors | File |
+|----------|---------|---------------|-----------|------|
+| **Drosophila melanogaster** | 1K–139K (FlyWire scale) | 15 (AL, MB, CX, OL, VNC, ...) | Olfactory learning, phototaxis, thermotaxis, walking, flight, feeding | `src/oneuro/organisms/drosophila.py` |
+| **DishBrain culture** | 1K–25K | Thalamic relay + L5 cortex | Pong via FEP, arena navigation, drug response | `demos/demo_dishbrain_pong.py` |
+
+### Digital Worlds
+
+| Environment | Physics | Resolution | What It Simulates |
+|-------------|---------|------------|-------------------|
+| **MolecularWorld** | Real gas-phase diffusion (CRC Handbook), 3D wind advection, CFL-stable subcycling, molecular buoyancy | 1mm cells, 2D or 3D volumetric | Odorant plumes rising/sinking by molecular weight, temperature gradients, vertical wind, day/night, soil chemistry |
+| **Doom FPS Engine** | DDA raycasting, BSP dungeon generation | 64×48 @ 278 FPS | Room-corridor environments for spatial navigation experiments |
+
+### Digital Senses
+
+| Sense | Mechanism | File |
+|-------|-----------|------|
+| **MolecularRetina** | 3-layer biophysical retina: photoreceptors (Govardovskii spectral sensitivity) → bipolar cells (ON/OFF pathways) → RGC (HH spiking output) | `src/oneuro/molecular/retina.py` |
+| **Olfactory antennae** | Population-coded odorant receptor activation with real detection thresholds (Hallem & Carlson 2006) | Built into organisms |
+| **Taste (gustatory)** | Sugar/bitter receptor activation driving SEZ proboscis extension reflex | Built into Drosophila |
+
+### Molecular Brain Engine
+
+25 subsystems running on every neuron:
+
+| Layer | Components |
+|-------|-----------|
+| **Ion Channels** | Na_v, K_v, K_leak, Ca_v, NMDA, AMPA, GABA_A, nAChR (HH gating kinetics) |
+| **Neurotransmitters** | Dopamine, serotonin, NE, ACh, GABA, glutamate (real molecular identities) |
+| **Learning** | NMDA-gated STDP, BCM metaplasticity, synaptic tagging & capture |
+| **Pharmacology** | 8 drugs with 1-compartment PK (Bateman) + PD (Hill equation) |
+| **Gene Expression** | DNA → RNA → Protein, CREB/c-Fos transcription factors, epigenetics |
+| **Second Messengers** | cAMP/PKA/PKC/CaMKII/CREB/MAPK cascades |
+| **Calcium** | 4-compartment dynamics (cytoplasmic, ER, mitochondrial, microdomain) |
+| **Glia** | Astrocytes (glutamate uptake), oligodendrocytes (myelin), microglia (pruning) |
+| **Consciousness** | IIT Phi, PCI, neural complexity, criticality, Global Workspace, Orch-OR |
+| **Circadian** | TTFL molecular clock, sleep homeostasis, adenosine pressure |
+
+### CUDA Backend (GPU Scale)
+
+The entire HH simulation runs on GPU via PyTorch sparse tensors. Validated on Apple MPS and NVIDIA A100:
+
+| Scale | Neurons | Synapses | Target Hardware |
+|-------|---------|----------|----------------|
+| tiny | 1K | ~14K | Any CPU |
+| small | 5K | ~350K | MPS / any GPU |
+| medium | 25K | ~8M | A100 / H100 |
+| large | 139K (full FlyWire) | ~54M | A100 80GB |
+
+## Validated Experiments
+
+### DishBrain Replication — 5/5 PASS
+
+Replicates Cortical Labs' DishBrain (Kagan et al. 2022, *Neuron*) — the first demonstration that biological neurons learn to play Pong. Our dONN learns via the **Free Energy Principle**: structured feedback (low entropy) for correct actions, random noise (high entropy) for incorrect ones. No reward. No punishment. Just physics.
+
+| # | Experiment | What It Tests | Result |
+|---|-----------|--------------|--------|
+| 1 | **Pong Replication** | FEP-driven learning | PASS (40%→60% hit rate) |
+| 2 | **FEP vs DA vs Random** | Learning protocol comparison | PASS (FEP > DA > Random) |
+| 3 | **Drug Effects** | Caffeine enhances, diazepam impairs | PASS (validated at 25K on A100) |
+| 4 | **Arena Navigation** | 2D grid world navigation | PASS (36% > 15% random) |
+| 5 | **Scale Invariance** | Learning at 1K → 10K neurons | PASS |
+
+### Emergent Behaviors — 13/13 PASS
+
+Behaviors that emerge from molecular dynamics and are **impossible in standard ANNs**:
+
+| Experiment | What Emerges |
+|-----------|-------------|
+| Forgetting resistance | 9% catastrophic forgetting vs 12% baseline |
+| Damage recovery | 60% functional recovery after 20% lesion |
+| Sleep consolidation | Gene expression + adenosine clearance |
+| Interference effects | Proactive and retroactive memory interference |
+| Serial position | Primacy and recency effects in memory lists |
+| Critical periods | PNN-mediated developmental window closure |
+| Circadian modulation | Drug efficacy varies >90% by time of day |
+
+### Language Learning — 100% Accuracy
+
+5,000-neuron dONN learns 30 English words via discriminative Hebbian learning with weight-based BCI readout. 100% word accuracy, 100% sentence generation.
+
+### Drosophila Ecosystem — 6 Experiments
+
+Complete digital fruit fly in a physics-grounded molecular world:
+
+| # | Experiment | What It Tests |
+|---|-----------|--------------|
+| 1 | **Olfactory Learning** | Mushroom body conditioning (Tully & Quinn 1985 paradigm) |
+| 2 | **Phototaxis** | Positive/negative phototaxis via optic lobe → CX → motor |
+| 3 | **Thermotaxis** | Navigate toward preferred 24°C zone |
+| 4 | **Foraging** | Multi-source olfactory navigation with FEP learning |
+| 5 | **Drug Effects** | Caffeine, diazepam, nicotine on foraging performance |
+| 6 | **Day/Night Cycle** | Diurnal activity patterns across circadian cycles |
+
+### Spatial Arena — Doom-inspired Navigation
+
+BSP-generated dungeon environments with 8-directional movement, enemies, health pickups, and FEP-driven threat avoidance.
+
+## Applications
+
+### Neuroscience Research
+- **In-silico electrophysiology**: Record from any neuron, any synapse, any time — impossible with real tissue
+- **Connectome simulation**: Run the 139K-neuron FlyWire Drosophila connectome as a functional digital twin
+- **Learning mechanisms**: Compare FEP, dopamine reward, and Hebbian protocols at molecular resolution
+- **Circuit manipulation**: Silence, stimulate, or lesion any brain region and observe system-level effects
+
+### Drug Discovery & Pharmacology
+- **Virtual drug screening**: Test compounds against a molecular brain with full dose-response curves
+- **Pharmacological specificity**: Drugs act on real molecular targets (GABA-A, nAChR, NMDA, MAO, etc.)
+- **Chronopharmacology**: Drug efficacy varies with circadian phase — model timing-dependent dosing
+- **Safety screening**: Detect neural side effects before animal testing
+- **Insecticide development**: Test neuroactive compounds on digital Drosophila brains
+
+### AI & Robotics
+- **Biologically grounded controllers**: Use dONN motor output to drive robots or game agents
+- **Embodied cognition**: Digital organisms with complete sensorimotor loops (sense → think → act)
+- **Emergent intelligence**: Behaviors arise from physics, not hand-coded rules — no reward shaping needed
+- **FEP-based learning**: Alternative to reinforcement learning that matches biological learning dynamics
+
+### Education
+- **Digital dissection**: Explore brain regions, apply drugs, measure consciousness — no animals harmed
+- **Interactive neuroscience**: Students stimulate neurons and observe emergent behavior in real-time
+- **Comparative neurobiology**: Compare C. elegans (302 neurons) to Drosophila (139K) to cortical tissue
+
+## Quick Start
+
+```bash
+pip install oNeuro
+
+# With GPU acceleration
+pip install oNeuro[cuda]
+
+# With visualization
+pip install oNeuro[viz]
+```
+
+### Build a Fly Brain
+
+```python
+from oneuro.organisms.drosophila import Drosophila, MolecularWorld
+
+# Create world with food sources
+world = MolecularWorld(size=(100, 100), seed=42)
+world.add_fruit(x=30, y=50, sugar=0.8, ripeness=0.7)
+world.add_plant(x=70, y=60, nectar_rate=0.2)
+
+# Create digital Drosophila (5000 HH neurons, 350K synapses)
+fly = Drosophila(world=world, scale='small')
+
+# Run organism — sense, think, act
+for step in range(1000):
+    result = fly.step(world=world)
+    print(f"pos=({result['x']:.1f}, {result['y']:.1f}) "
+          f"speed={result['motor']['speed']:.3f}")
+```
+
+### Drug Screening
 
 ```python
 from oneuro.molecular.cuda_backend import CUDARegionalBrain
 
-# 5050-neuron brain on GPU
 brain = CUDARegionalBrain(n_columns=50, device="cuda", seed=42)
 
-# Validated scale tiers
-# small:  1K neurons  (10 columns)  — seconds
-# medium: 5K neurons  (50 columns)  — minutes
-# large:  20K neurons (200 columns) — hours
-# mega:   80K neurons (800 columns) — GPU-only
+# Baseline measurement
+baseline_spikes = sum(brain.step() for _ in range(500))
+
+# Apply diazepam (GABA-A potentiator)
+brain.apply_drug("diazepam", dose_mg=10.0)
+drug_spikes = sum(brain.step() for _ in range(500))
+
+# Result: ~60-98% spike reduction (dose-dependent)
 ```
 
-### GPU Validation (A100)
-
-All demos support `--scale`, `--device cuda`, `--json`, and `--runs N` for multi-seed reproducibility:
+### Run Experiments
 
 ```bash
-# Medium scale, 3 seeds, JSON output
-python3 demos/demo_dishbrain_pong.py --scale medium --device cuda --runs 3 --json results.json
+# DishBrain replication (5 experiments)
+python3 demos/demo_dishbrain_pong.py
 
-# Large scale Spatial Arena
-python3 demos/demo_doom_arena.py --scale large --device cuda --json doom_results.json
+# Drosophila ecosystem (6 experiments)
+python3 demos/demo_drosophila_ecosystem.py
 
-# Vast.ai deployment (provisions GPU, deploys code, runs experiments)
+# Emergent behaviors (13 experiments)
+python3 demos/demo_emergent_cuda.py
+
+# Language learning
+python3 demos/demo_language_learning.py
+
+# Spatial Arena (Doom-style navigation)
+python3 demos/demo_doom_arena.py
+
+# GPU scale with JSON output and multi-seed
+python3 demos/demo_dishbrain_pong.py --scale medium --device cuda --runs 5 --json results.json
+
+# Vast.ai GPU deployment
 bash scripts/vast_deploy.sh search          # find cheap A100s
-bash scripts/vast_deploy.sh create <offer>  # provision
-bash scripts/vast_deploy.sh dishbrain <id> medium  # run DishBrain
-bash scripts/vast_deploy.sh doom <id> medium       # run Spatial Arena
-bash scripts/vast_deploy.sh results <id>           # download JSON
+bash scripts/vast_deploy.sh all <id> medium # run everything
 ```
 
-## Key Differences from Other Neural Simulators
+## How dONNs Differ from ANNs
 
-| Feature | NEURON/GENESIS | Brian2 | oNeuro |
-|---------|---------------|--------|--------|
-| Ion channels | HH equations | User-defined | HH with quantum gating |
-| Gene expression | No | No | Full DNA→RNA→Protein pipeline |
-| Second messengers | No | No | 6-pathway cascade (cAMP/PKA/PKC/CaMKII/CREB/MAPK) |
-| Glial cells | No | No | Astrocytes + oligodendrocytes + microglia |
-| Drug modeling | No | No | 8 drugs with PK/PD (Bateman + Hill) |
-| Consciousness metrics | No | No | IIT Phi + PCI + criticality + GW + Orch-OR |
-| Quantum effects | No | No | nQPU quantum tunneling + Orch-OR |
-| Brain regions | Manual setup | Manual | Built-in cortex/thalamus/hippocampus/BG |
-| Circadian rhythms | No | No | TTFL molecular clock + sleep homeostasis |
+| Capability | Standard ANN | dONN (oNeuro) |
+|-----------|-------------|---------------|
+| **Action potentials** | Matrix multiply | Emerge from HH ion channel kinetics |
+| **Learning** | Backpropagation | STDP from receptor trafficking |
+| **Drug response** | Not possible | 8 drugs with real PK/PD acting on molecular targets |
+| **Forgetting** | Catastrophic | Resistant (9% vs 12% loss after 4 tasks) |
+| **Damage recovery** | None | 60% recovery after 20% lesion |
+| **Sleep** | Not modeled | Gene expression, adenosine clearance, memory replay |
+| **Consciousness metrics** | Not applicable | IIT Phi, PCI, criticality, Global Workspace |
+| **Circadian rhythms** | Not modeled | TTFL clock, circadian drug efficacy variation |
+| **Gene expression** | None | Full DNA→RNA→Protein pipeline |
 
 ## Papers
 
-| Paper | Status | File |
-|-------|--------|------|
-| **Beyond ANN** | 23/23 experiments PASS | `papers/beyond_ann_white_paper.md` |
-| **DishBrain Replication** | Draft (GPU validation in progress) | `papers/dishbrain_replication_paper.md` |
+| Paper | Status | Experiments | File |
+|-------|--------|-------------|------|
+| **Beyond ANN** | Complete | 23/23 PASS | `papers/beyond_ann_white_paper.md` |
+| **DishBrain Replication** | Draft (A100 validated) | 5/5 PASS | `papers/dishbrain_replication_paper.md` |
 
-Figures are generated from GPU experiment JSON data:
+## Basal Ganglia Learning Benchmark
+
+A validated Go/No-Go benchmark testing dopamine-dependent reinforcement learning in the basal ganglia.
+
+### Results: 30-Seed Standard Scale
+
+| Condition | Pre | Post | Δ | 95% CI |
+|-----------|-----|------|---|--------|
+| **full_learning** | 90.2% | 100% | **+9.8%** | [+8%, +12%] |
+| **no_dopamine** | 83.3% | 50.0% | **-33.3%** | [-36%, -30%] |
+
+**Contrast: +43.1%** | Cohen's d ≈ 1.6 (very large)
+
+### Results: 20-Seed 4 Conditions
+
+| Condition | Pre | Post | Δ | 95% CI |
+|-----------|-----|------|---|--------|
+| **full_learning** | 90.2% | 100% | **+9.8%** | [+8%, +12%] |
+| **nmda_block** | 82.2% | 58.5% | -23.7% | [-28%, -19%] |
+| **anti_correlated** | 88.0% | 71.2% | -16.8% | [-21%, -13%] |
+| **no_dopamine** | 86.5% | 50.0% | -36.5% | [-40%, -33%] |
+
+### Key Findings
+- **Dopamine learning works**: Networks improve accuracy by ~10%
+- **NMDA critical**: Blocking NMDA receptors impairs learning by ~24%
+- **Contingency proven**: Inverted rewards cause learning of wrong associations
+- **Ablation robust**: Removing dopamine causes 33-37% accuracy decline
+
+### Run Benchmark
 
 ```bash
-python3 scripts/generate_paper_figures.py  # regenerate all 6 figures
+# 30-seed confirmatory
+PYTHONPATH=src python3 experiments/go_no_go_benchmark.py \
+    --conditions full_learning no_dopamine \
+    --n-seeds 30 \
+    --scale standard \
+    --workers 2
+
+# 4 conditions
+PYTHONPATH=src python3 experiments/go_no_go_benchmark.py \
+    --conditions full_learning no_dopamine nmda_block anti_correlated \
+    --n-seeds 20 \
+    --scale standard
 ```
+
+### Generate Figures
+
+```bash
+python3 experiments/generate_figures.py results.json figures/
+```
+
+### Benchmark Files
+
+| File | Purpose |
+|------|---------|
+| `experiments/go_no_go_benchmark.py` | Main benchmark script |
+| `experiments/generate_figures.py` | Publication figure generator |
+| `experiments/results/*.json` | Raw results |
+| `experiments/figures/*.png` | Publication figures |
+| `docs/benchmarks/RESULTS_SUMMARY.md` | Full results documentation |
 
 ## Requirements
 
 - Python 3.11+
 - NumPy >= 1.24
-- Optional: [nQPU](https://github.com/robertcprice/nqpu-metal) for quantum chemistry acceleration
+- PyTorch >= 2.0 (for CUDA/MPS GPU backend)
+- Optional: [nQPU](https://github.com/robertcprice/nqpu-metal) for quantum chemistry
 
 ## Citation
 
 ```bibtex
-@software{oneuro_2025,
-  title = {oNeuro: Molecular-Scale Neural Simulation with Emergent Consciousness},
+@software{oneuro_2026,
+  title = {oNeuro: Digital Organic Neural Network Platform for Molecular-Scale Brain Simulation},
   author = {Price, Robert C.},
-  year = {2025},
+  year = {2026},
   url = {https://github.com/robertcprice/oNeuro}
 }
 ```

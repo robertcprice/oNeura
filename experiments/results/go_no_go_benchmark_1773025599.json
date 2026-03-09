@@ -1,0 +1,312 @@
+{
+  "config": {
+    "conditions": [
+      "full_learning",
+      "no_dopamine",
+      "nmda_block",
+      "reward_shuffle"
+    ],
+    "n_seeds": 10,
+    "scale": "minimal",
+    "workers": 4,
+    "stim_intensity": 55.0,
+    "n_trials": 120,
+    "trial_steps": 80,
+    "decision_margin": 0.0
+  },
+  "elapsed_seconds": 1.023386001586914,
+  "results": [
+    {
+      "condition": "full_learning",
+      "seed": 0,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 0,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 0,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 0,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 1,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 1,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 1,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 1,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 2,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 2,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 2,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 2,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 3,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 3,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 3,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 3,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 4,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 4,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 4,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 4,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 5,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 5,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 5,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 5,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 6,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 6,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 6,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 6,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 7,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 7,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 7,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 7,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 8,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 8,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 8,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 8,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "full_learning",
+      "seed": 9,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "no_dopamine",
+      "seed": 9,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "nmda_block",
+      "seed": 9,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    },
+    {
+      "condition": "reward_shuffle",
+      "seed": 9,
+      "success": false,
+      "error": "'MolecularSynapse' object has no attribute 'pre'"
+    }
+  ],
+  "summaries": {
+    "full_learning": {
+      "n_seeds": 0,
+      "mean_pre_accuracy": 0.0,
+      "mean_post_accuracy": 0.0,
+      "mean_improvement": 0.0,
+      "sd_improvement": 0.0,
+      "mean_aligned_weight_delta": 0.0,
+      "improvements": []
+    },
+    "no_dopamine": {
+      "n_seeds": 0,
+      "mean_pre_accuracy": 0.0,
+      "mean_post_accuracy": 0.0,
+      "mean_improvement": 0.0,
+      "sd_improvement": 0.0,
+      "mean_aligned_weight_delta": 0.0,
+      "improvements": []
+    },
+    "nmda_block": {
+      "n_seeds": 0,
+      "mean_pre_accuracy": 0.0,
+      "mean_post_accuracy": 0.0,
+      "mean_improvement": 0.0,
+      "sd_improvement": 0.0,
+      "mean_aligned_weight_delta": 0.0,
+      "improvements": []
+    },
+    "reward_shuffle": {
+      "n_seeds": 0,
+      "mean_pre_accuracy": 0.0,
+      "mean_post_accuracy": 0.0,
+      "mean_improvement": 0.0,
+      "sd_improvement": 0.0,
+      "mean_aligned_weight_delta": 0.0,
+      "improvements": []
+    },
+    "_contrasts": {
+      "full_learning - no_dopamine": {
+        "mean_improvement_diff": NaN,
+        "interpretation": "negligible"
+      },
+      "full_learning - nmda_block": {
+        "mean_improvement_diff": NaN,
+        "interpretation": "negligible"
+      },
+      "full_learning - reward_shuffle": {
+        "mean_improvement_diff": NaN,
+        "interpretation": "negligible"
+      }
+    }
+  }
+}
