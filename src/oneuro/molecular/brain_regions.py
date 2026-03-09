@@ -18,15 +18,13 @@ Usage:
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
 from oneuro.molecular.network import MolecularNeuralNetwork
 from oneuro.molecular.neuron import NeuronArchetype
-
 
 # ---------------------------------------------------------------------------
 # Region base
@@ -82,7 +80,11 @@ class CorticalColumn(Region):
         l4_ids = []
         n_l4 = n_per_layer
         for i in range(n_l4):
-            arch = NeuronArchetype.INTERNEURON if i >= int(n_l4 * 0.8) else NeuronArchetype.GRANULE
+            arch = (
+                NeuronArchetype.INTERNEURON
+                if i >= int(n_l4 * 0.8)
+                else NeuronArchetype.GRANULE
+            )
             nid = network.create_neuron_at(
                 ox + np.random.uniform(0, 2),
                 oy + np.random.uniform(0, 2),
@@ -95,7 +97,11 @@ class CorticalColumn(Region):
         l23_ids = []
         n_l23 = n_per_layer
         for i in range(n_l23):
-            arch = NeuronArchetype.INTERNEURON if i >= int(n_l23 * 0.8) else NeuronArchetype.PYRAMIDAL
+            arch = (
+                NeuronArchetype.INTERNEURON
+                if i >= int(n_l23 * 0.8)
+                else NeuronArchetype.PYRAMIDAL
+            )
             nid = network.create_neuron_at(
                 ox + np.random.uniform(0, 2),
                 oy + np.random.uniform(0, 2),
@@ -108,7 +114,11 @@ class CorticalColumn(Region):
         l5_ids = []
         n_l5 = max(5, n_per_layer // 2)
         for i in range(n_l5):
-            arch = NeuronArchetype.INTERNEURON if i >= int(n_l5 * 0.8) else NeuronArchetype.PYRAMIDAL
+            arch = (
+                NeuronArchetype.INTERNEURON
+                if i >= int(n_l5 * 0.8)
+                else NeuronArchetype.PYRAMIDAL
+            )
             nid = network.create_neuron_at(
                 ox + np.random.uniform(0, 2),
                 oy + np.random.uniform(0, 2),
@@ -140,10 +150,18 @@ class CorticalColumn(Region):
 
         # Lateral inhibition within each layer (interneurons → excitatory)
         for layer_ids in [l4_ids, l23_ids, l5_ids]:
-            excitatory = [nid for nid in layer_ids
-                          if network._molecular_neurons[nid].archetype != NeuronArchetype.INTERNEURON]
-            inhibitory = [nid for nid in layer_ids
-                          if network._molecular_neurons[nid].archetype == NeuronArchetype.INTERNEURON]
+            excitatory = [
+                nid
+                for nid in layer_ids
+                if network._molecular_neurons[nid].archetype
+                != NeuronArchetype.INTERNEURON
+            ]
+            inhibitory = [
+                nid
+                for nid in layer_ids
+                if network._molecular_neurons[nid].archetype
+                == NeuronArchetype.INTERNEURON
+            ]
             _connect_layers(network, inhibitory, excitatory, p=0.5, nt="gaba")
             _connect_layers(network, excitatory, inhibitory, p=0.3, nt="glutamate")
 
@@ -326,7 +344,6 @@ class Hippocampus(Region):
             return []
 
         # Sustained pulsed stimulation of CA3 (currents are popped each step)
-        ca1_set = set(ca1_ids)
         ca1_spike_counts = [0] * len(ca1_ids)
         stim_steps = min(settle_steps, 30)  # Stimulate for first 30 steps
 
@@ -448,7 +465,6 @@ class BasalGanglia(Region):
         bg = BasalGanglia(name=name, origin=origin)
         ox, oy, oz = origin
 
-        from oneuro.molecular.receptors import ReceptorType
 
         d1_ids = []
         for _ in range(n_d1):
@@ -456,7 +472,7 @@ class BasalGanglia(Region):
                 ox + np.random.uniform(0, 2),
                 oy + np.random.uniform(0, 1.5),
                 oz + np.random.uniform(-0.3, 0.3),
-                archetype=NeuronArchetype.MEDIUM_SPINY,
+                archetype=NeuronArchetype.D1_MSN,
             )
             d1_ids.append(nid)
 
@@ -466,7 +482,7 @@ class BasalGanglia(Region):
                 ox + np.random.uniform(0, 2),
                 oy + np.random.uniform(2.0, 3.5),
                 oz + np.random.uniform(-0.3, 0.3),
-                archetype=NeuronArchetype.MEDIUM_SPINY,
+                archetype=NeuronArchetype.D2_MSN,
             )
             d2_ids.append(nid)
 
@@ -492,7 +508,6 @@ class RegionalBrain:
 
     Inter-region projections:
       - Thalamus relay → Cortex L4 (feedforward sensory)
-      - Thalamus relay → Cortex L5 (fast sensorimotor shortcut)
       - Cortex L6 → Thalamus relay (corticothalamic feedback)
       - Cortex L5 → Basal Ganglia D1 (action commands)
       - Cortex L2/3 → Hippocampus DG (episodic encoding)
@@ -764,19 +779,14 @@ class RegionalBrain:
         # Thalamus relay → Cortex L4 (feedforward sensory drive)
         thal_relay = self.thalamus.get_ids("relay")
         cortex_l4 = self.cortex.get_ids("L4")
-        cortex_l5 = self.cortex.get_ids("L5")
         _connect_layers(net, thal_relay, cortex_l4, p=0.3, nt="glutamate")
-
-        # Thalamus relay → Cortex L5 (fast sensorimotor shortcut for motor output)
-        # This provides a direct pathway for retina→relay→L5→motor without waiting
-        # for the full L4→L2/3→L5 cascade (critical for real-time action)
-        _connect_layers(net, thal_relay, cortex_l5, p=0.15, nt="glutamate")
 
         # Cortex L6 → Thalamus relay (corticothalamic feedback)
         cortex_l6 = self.cortex.get_ids("L6")
         _connect_layers(net, cortex_l6, thal_relay, p=0.2, nt="glutamate")
 
         # Cortex L5 → Basal Ganglia D1 (action commands)
+        cortex_l5 = self.cortex.get_ids("L5")
         bg_d1 = self.basal_ganglia.get_ids("D1")
         _connect_layers(net, cortex_l5, bg_d1, p=0.25, nt="glutamate")
 
