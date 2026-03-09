@@ -90,6 +90,12 @@ try:
 except ImportError:
     HAS_PIL = False
 
+try:
+    import cv2
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+
 
 # ============================================================================
 # Constants
@@ -258,6 +264,9 @@ class DoomGame:
         self._episode_kills = 0
         self._prev_kills = 0
 
+        # Video recording: save screen buffer each frame
+        self._frame_buffer = []
+
     def new_episode(self) -> np.ndarray:
         """Start a new episode.
 
@@ -344,6 +353,9 @@ class DoomGame:
         if state is None:
             return np.zeros((RETINA_HEIGHT, RETINA_WIDTH, 3), dtype=np.uint8)
         buf = state.screen_buffer  # (120, 160, 3) uint8
+        # Save full-resolution frame for video
+        if hasattr(self, '_frame_buffer'):
+            self._frame_buffer.append(buf.copy())
         img = Image.fromarray(buf)
         img = img.resize((RETINA_WIDTH, RETINA_HEIGHT), Image.BILINEAR)
         return np.array(img, dtype=np.uint8)
@@ -367,6 +379,38 @@ class DoomGame:
     def episode_steps(self) -> int:
         """Steps taken in the current episode."""
         return self._episode_steps
+
+    def save_video(self, path: str, fps: int = 30) -> None:
+        """Save recorded frames as video.
+
+        Args:
+            path: Output video path (.mp4)
+            fps: Frames per second
+        """
+        if not hasattr(self, '_frame_buffer') or not self._frame_buffer:
+            print(f"    No frames recorded")
+            return
+        frames = self._frame_buffer
+        if not frames:
+            print(f"    No frames recorded")
+            return
+        if HAS_CV2:
+            import cv2
+            h, w = frames[0].shape[:2]
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(path, fourcc, fps, (w, h))
+            for frame in frames:
+                out.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            out.release()
+            print(f"    Saved video: {path} ({len(frames)} frames)")
+        else:
+            print(f"    OpenCV not available, saving frames as PNG")
+            import os
+            os.makedirs(path.replace('.mp4', ''), exist_ok=True)
+            for i, frame in enumerate(self._frame_buffer):
+                Image.fromarray(frame).save(f"{path.replace('.mp4', '')}/frame_{i:04d}.png")
+            print(f"    Saved {len(self._frame_buffer)} frames to {path.replace('.mp4', '')}/")
+        self._frame_buffer = []
 
     def close(self) -> None:
         """Shut down the ViZDoom instance."""
@@ -722,6 +766,8 @@ def play_doom_episode(
     stim_steps: int = 20,
     max_game_steps: int = 500,
     neutral_steps: int = 5,
+    record_video: bool = False,
+    video_path: str = None,
 ) -> Dict[str, Any]:
     """Play one Doom episode through the molecular retina pipeline.
 
@@ -795,6 +841,10 @@ def play_doom_episode(
 
         step_count += 1
 
+    # Save video if requested
+    if record_video and video_path:
+        game.save_video(video_path)
+
     return {
         "health_gained": game.episode_health_gained,
         "damage_taken": game.episode_damage_taken,
@@ -863,6 +913,7 @@ def exp_doom_navigation(
     seed: int = 42,
     n_episodes: int = None,
     scenario: str = "health_gathering",
+    record_video: bool = False,
 ) -> Dict[str, Any]:
     """Can a dONN learn to gather health in Doom via the free energy principle?
 
@@ -923,11 +974,15 @@ def exp_doom_navigation(
     report_interval = max(1, n_episodes // 5)
     episode_metrics = []
     for ep in range(n_episodes):
+        # Record first episode video if requested
+        record_this = (record_video and ep == 0)
+        video_path = f"/workspace/doom_exp1_ep{ep+1}.mp4" if record_this else None
         metrics = play_doom_episode(
             rb, game, retina, bridge, decoder, protocol,
             relay_ids, stim_steps=sp["stim_steps"],
             max_game_steps=sp["max_game_steps"],
-            neutral_steps=sp["neutral_steps"])
+            neutral_steps=sp["neutral_steps"],
+            record_video=record_this, video_path=video_path)
         episode_metrics.append(metrics)
 
         if (ep + 1) % report_interval == 0 or ep == n_episodes - 1:
@@ -981,6 +1036,7 @@ def exp_learning_speed(
     seed: int = 42,
     n_episodes: int = None,
     scenario: str = "health_gathering",
+    record_video: bool = False,
 ) -> Dict[str, Any]:
     """Compare free energy vs DA reward vs random protocols on Doom.
 
@@ -1046,11 +1102,14 @@ def exp_learning_speed(
 
         episode_metrics = []
         for ep in range(n_episodes):
+            record_this = (record_video and ep == 0)
+            video_path = f"/workspace/doom_exp2_{condition}_ep{ep+1}.mp4" if record_this else None
             metrics = play_doom_episode(
                 rb, game, retina, bridge, decoder, protocol,
                 relay_ids, stim_steps=sp["stim_steps"],
                 max_game_steps=sp["max_game_steps"],
-                neutral_steps=sp["neutral_steps"])
+                neutral_steps=sp["neutral_steps"],
+                record_video=record_this, video_path=video_path)
             episode_metrics.append(metrics)
 
         game.close()
@@ -1100,6 +1159,7 @@ def exp_pharmacology(
     n_train_episodes: int = None,
     n_test_episodes: int = None,
     scenario: str = "health_gathering",
+    record_video: bool = False,
 ) -> Dict[str, Any]:
     """Drug effects on Doom performance — IMPOSSIBLE on real DishBrain tissue.
 
@@ -1189,11 +1249,14 @@ def exp_pharmacology(
         test_game = DoomGame(scenario=scenario, seed=seed + 1000, visible=False)
         test_metrics = []
         for ep in range(n_test_episodes):
+            record_this = (record_video and ep == 0)
+            video_path = f"/workspace/doom_exp3_{condition}_ep{ep+1}.mp4" if record_this else None
             metrics = play_doom_episode(
                 rb, test_game, retina, bridge, decoder, test_protocol,
                 relay_ids, stim_steps=sp["stim_steps"],
                 max_game_steps=sp["max_game_steps"],
-                neutral_steps=sp["neutral_steps"])
+                neutral_steps=sp["neutral_steps"],
+                record_video=record_this, video_path=video_path)
             test_metrics.append(metrics)
         test_game.close()
 
@@ -1317,6 +1380,7 @@ def _run_single(args, seed: int) -> Dict[str, Any]:
                 "device": args.device,
                 "seed": seed,
                 "scenario": args.scenario,
+                "record_video": args.video,
             }
             if args.episodes and exp_id == 1:
                 kwargs["n_episodes"] = args.episodes
@@ -1355,6 +1419,8 @@ def main():
                         help="Write structured JSON results to file")
     parser.add_argument("--runs", type=int, default=1,
                         help="Run each experiment N times with different seeds")
+    parser.add_argument("--video", action="store_true",
+                        help="Record video of gameplay (requires OpenCV)")
     args = parser.parse_args()
 
     if not HAS_VIZDOOM:
