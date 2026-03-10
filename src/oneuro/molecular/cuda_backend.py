@@ -249,6 +249,7 @@ class CUDAMolecularBrain:
         self.y = torch.zeros(n, device=dev)
         self.z = torch.zeros(n, device=dev)
         self.last_fired_step = torch.zeros(n, dtype=torch.int64, device=dev)
+        self._step_count_tensor = torch.zeros((), dtype=torch.int64, device=dev)
 
         # ---- Synapses (CSR format) ----
         # Empty initially — populated by add_synapses() or region builders
@@ -287,12 +288,14 @@ class CUDAMolecularBrain:
         self._gene_interval = 10
         self._metabolism_interval = 5
         self._microtubule_interval = 10
+        self._interval_biology_enabled = True
         self._glia_interval = 10
 
         # ---- One-hot NT lookup for vectorized spike release ----
         # Pre-build per-NT masks after synapses are added
         self._nt_release_amount = 50.0  # nM per spike
         self._syn_nt_onehot: Optional[torch.Tensor] = None  # (S, 6) lazy-built
+        self._compiled_step_core = None
 
     @staticmethod
     def _resolve_device(device: str) -> torch.device:
@@ -413,6 +416,10 @@ class CUDAMolecularBrain:
 
     def _maybe_rebuild_W(self) -> None:
         """Rebuild sparse W if dirty or enough steps have elapsed (STDP drift)."""
+        if self.device.type == "mps":
+            # MPS sparse COO matmul hits backend gaps at 25K Pong scale.
+            # Use the indexed propagation path instead of sparse caches.
+            return
         if self._W_dirty or self._W_sparse is None:
             self._build_sparse_W()
         elif (self.step_count - self._W_last_rebuild_step) >= self._W_rebuild_interval:
@@ -438,11 +445,9 @@ class CUDAMolecularBrain:
     # Main simulation step
     # ========================================================================
 
-    def step(self) -> None:
-        """Advance simulation by dt milliseconds. All neurons updated in parallel."""
+    def _step_core(self) -> None:
+        """Tensor-only hot path for one simulation step."""
         dt = self.dt
-        self.time += dt
-        self.step_count += 1
 
         # Store previous voltage, clear fired
         self.prev_voltage.copy_(self.voltage)
@@ -487,20 +492,17 @@ class CUDAMolecularBrain:
         spiking = (self.voltage > SPIKE_THRESHOLD) & (self.prev_voltage <= SPIKE_THRESHOLD) & (self.refractory <= 0)
         self.fired = spiking & self.alive
         self.spike_count.add_(self.fired.int())
-        fired_any = self.fired.any()
         # Branchless reset — cached constants, no boolean indexing
         self.last_fired_step = torch.where(
-            self.fired, torch.tensor(self.step_count, dtype=torch.int64, device=self.device),
+            self.fired, self._step_count_tensor,
             self.last_fired_step,
         )
         self.voltage = torch.where(self.fired, self._reset_voltage, self.voltage)
         self.refractory = torch.where(self.fired, self._refractory_ms, self.refractory)
         self.refractory.sub_(dt).clamp_(min=0.0)
 
-        # ---- 5. Spike propagation + STDP (sparse matmul, skip if no spikes) ----
-        has_synapses_and_spikes = self.n_synapses > 0 and fired_any
-        if has_synapses_and_spikes:
-            self._maybe_rebuild_W()
+        # ---- 5. Spike propagation + STDP ----
+        if self.n_synapses > 0:
             self._propagate_spikes()
 
         # ---- 6. Calcium dynamics (4-compartment ODE) ----
@@ -509,17 +511,33 @@ class CUDAMolecularBrain:
         # ---- 7. Second messenger cascades ----
         self._update_second_messengers(dt)
 
-        # ---- 8. STDP (only when spikes occurred) ----
-        if has_synapses_and_spikes:
+        # ---- 8. STDP ----
+        if self.n_synapses > 0:
             self._update_stdp(dt)
 
+    def step(self) -> None:
+        """Advance simulation by dt milliseconds. All neurons updated in parallel."""
+        dt = self.dt
+        self.time += dt
+        self.step_count += 1
+        self._step_count_tensor.add_(1)
+
+        if self.n_synapses > 0:
+            self._maybe_rebuild_W()
+
+        if self._compiled_step_core is not None:
+            self._compiled_step_core()
+        else:
+            self._step_core()
+
         # ---- 9. Interval-gated subsystems ----
-        if self.step_count % self._gene_interval == 0:
-            self._update_gene_expression(dt * self._gene_interval)
-        if self.step_count % self._metabolism_interval == 0:
-            self._update_metabolism(dt * self._metabolism_interval)
-        if self.step_count % self._microtubule_interval == 0:
-            self._update_microtubules(dt * self._microtubule_interval)
+        if self._interval_biology_enabled:
+            if self.step_count % self._gene_interval == 0:
+                self._update_gene_expression(dt * self._gene_interval)
+            if self.step_count % self._metabolism_interval == 0:
+                self._update_metabolism(dt * self._metabolism_interval)
+            if self.step_count % self._microtubule_interval == 0:
+                self._update_microtubules(dt * self._microtubule_interval)
 
         # ---- 10. Consciousness tracking ----
         if self._consciousness_enabled:
@@ -545,6 +563,7 @@ class CUDAMolecularBrain:
         for _ in range(steps):
             self.time += dt
             self.step_count += 1
+            self._step_count_tensor.add_(1)
             self.prev_voltage.copy_(self.voltage)
             self.fired.zero_()
 
@@ -580,18 +599,16 @@ class CUDAMolecularBrain:
             spiking = (self.voltage > SPIKE_THRESHOLD) & (self.prev_voltage <= SPIKE_THRESHOLD) & (self.refractory <= 0)
             self.fired = spiking & self.alive
             self.spike_count.add_(self.fired.int())
-            fired_any = self.fired.any()
             self.last_fired_step = torch.where(
-                self.fired, torch.tensor(self.step_count, dtype=torch.int64, device=self.device),
+                self.fired, self._step_count_tensor,
                 self.last_fired_step,
             )
             self.voltage = torch.where(self.fired, self._reset_voltage, self.voltage)
             self.refractory = torch.where(self.fired, self._refractory_ms, self.refractory)
             self.refractory.sub_(dt).clamp_(min=0.0)
 
-            # Spike propagation + STDP (sparse matmul)
-            if self.n_synapses > 0 and fired_any:
-                self._maybe_rebuild_W()
+            # Spike propagation + STDP
+            if self.n_synapses > 0:
                 self._propagate_spikes()
                 self._update_stdp(dt)
 
@@ -612,6 +629,14 @@ class CUDAMolecularBrain:
 
             self.external_current.zero_()
 
+    def enable_interval_biology(self) -> None:
+        """Enable interval-gated biology subsystems during step()."""
+        self._interval_biology_enabled = True
+
+    def disable_interval_biology(self) -> None:
+        """Disable interval-gated biology subsystems during step()."""
+        self._interval_biology_enabled = False
+
     def compile(self) -> None:
         """JIT-compile the step function for 2-5x speedup on CUDA.
 
@@ -619,7 +644,13 @@ class CUDAMolecularBrain:
         Warmup takes ~10-30s on first step, then subsequent steps are much faster.
         """
         if _CAN_COMPILE and self.device.type == 'cuda':
-            self.step = torch.compile(self.step, mode='reduce-overhead')  # type: ignore
+            # This step mutates many long-lived buffers, so cudagraph-oriented
+            # modes are a poor fit and trigger noisy recompilation attempts.
+            self._compiled_step_core = torch.compile(
+                self._step_core,
+                mode='max-autotune-no-cudagraphs',
+                dynamic=True,
+            )
 
     # ========================================================================
     # Spike propagation
@@ -631,6 +662,10 @@ class CUDAMolecularBrain:
         Uses pre-built sparse W matrix: external_current += W @ fired * psc_scale
         This replaces scatter_add (catastrophically slow on Apple Metal GPUs).
         """
+        if self.device.type == "mps":
+            self._propagate_spikes_mps()
+            return
+
         fired_f = self.fired.float()
 
         # PSC propagation: single sparse matmul instead of scatter_add
@@ -646,6 +681,36 @@ class CUDAMolecularBrain:
                 if nt_w._nnz() > 0:
                     release = torch.sparse.mm(nt_w, fired_col).squeeze(1)
                     self.nt_conc[:, nt_idx].add_(release * self._nt_release_amount)
+
+    def _propagate_spikes_mps(self) -> None:
+        """Propagate spikes on MPS without sparse matmul.
+
+        PyTorch MPS currently fails on the sparse COO `addmm` path used by
+        `torch.sparse.mm` for our spike propagation matrices. For Apple GPUs,
+        fall back to fixed-shape indexed accumulation. Keeping the operand
+        shapes constant avoids repeated MPSGraph recompilation on large Pong
+        runs, which happens if we materialize a variable-length active edge list
+        every step.
+        """
+        if self.n_synapses == 0:
+            return
+
+        active_syn = self.fired[self.syn_pre].float()
+        if not bool(active_syn.any().item()):
+            return
+
+        sign = torch.where(self.syn_nt_type == NT_GABA, -1.0, 1.0)
+        psc_contrib = active_syn * self.syn_weight * self.syn_strength * sign
+        self.external_current.index_add_(0, self.syn_post, psc_contrib * self.psc_scale)
+
+        for nt_idx in range(_NUM_NT):
+            nt_mask = (self.syn_nt_type == nt_idx).float()
+            nt_contrib = active_syn * nt_mask * self._nt_release_amount
+            self.nt_conc[:, nt_idx].index_add_(
+                0,
+                self.syn_post,
+                nt_contrib,
+            )
 
     # ========================================================================
     # Calcium dynamics
@@ -1444,6 +1509,9 @@ class CUDARegionalBrain:
 
     def run(self, steps: int) -> None:
         self.brain.run(steps)
+
+    def fast_run(self, steps: int) -> None:
+        self.brain.fast_run(steps)
 
     def _get_id_tensor(self, cache_key: str, ids: List[int]) -> torch.Tensor:
         """Get or create a cached int64 tensor of neuron IDs on the brain device."""

@@ -48,6 +48,10 @@ from oneuro.molecular.glia import Astrocyte, Oligodendrocyte, Microglia
 from oneuro.molecular.dendrite import DendriticTree, Compartment
 from oneuro.molecular.spine import DendriticSpine, SpineState
 from oneuro.molecular.metabolism import CellularMetabolism
+try:
+    from oneuro_metal import CellularMetabolism as RustCellularMetabolism
+except ImportError:
+    RustCellularMetabolism = None
 
 # Phase 3: Structural biology
 from oneuro.molecular.axon import Axon, AxonSegment, AxonSegmentType, NodeOfRanvier
@@ -121,6 +125,7 @@ __all__ = [
     "DendriticSpine",
     "SpineState",
     "CellularMetabolism",
+    "RustCellularMetabolism",
     # Phase 3: Structural biology
     "Axon",
     "AxonSegment",

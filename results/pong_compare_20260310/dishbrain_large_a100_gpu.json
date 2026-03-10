@@ -1,0 +1,64 @@
+{
+  "command": [
+    "env",
+    "PYTHONPATH=src",
+    "python3",
+    "demos/demo_dishbrain_pong.py",
+    "--scale",
+    "large",
+    "--device",
+    "cuda",
+    "--json",
+    "/workspace/dishbrain_large.json",
+    "--gpu-tiers",
+    "--exp",
+    "1"
+  ],
+  "returncode": 0,
+  "started_at_unix_s": 1773127096.0558872,
+  "ended_at_unix_s": 1773127190.8398201,
+  "wall_time_s": 94.78392943646759,
+  "gpu_telemetry": {
+    "available": true,
+    "interval_s": 0.5,
+    "sample_count": 172,
+    "errors": [],
+    "summary": [
+      {
+        "index": 0,
+        "name": "NVIDIA A100-SXM4-80GB",
+        "sample_count": 172,
+        "utilization_gpu_pct": {
+          "avg": 77.22093023255815,
+          "min": 0.0,
+          "max": 100.0
+        },
+        "utilization_memory_pct": {
+          "avg": 38.5,
+          "min": 0.0,
+          "max": 63.0
+        },
+        "memory_used_mb": {
+          "avg": 3159.6744186046512,
+          "min": 0.0,
+          "max": 4164.0
+        },
+        "memory_utilization_pct": {
+          "avg": 3.857024436773256,
+          "min": 0.0,
+          "max": 5.0830078125
+        },
+        "power_draw_w": {
+          "avg": 164.90494186046513,
+          "min": 59.7,
+          "max": 225.02
+        },
+        "temperature_c": {
+          "avg": 32.30813953488372,
+          "min": 24.0,
+          "max": 37.0
+        }
+      }
+    ]
+  }
+}

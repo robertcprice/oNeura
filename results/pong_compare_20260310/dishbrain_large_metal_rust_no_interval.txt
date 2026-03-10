@@ -1,0 +1,4 @@
+DishBrain Pong | scale=large | benchmark_mode=true | no_interval_biology=true | neurons=25250 | synapses=6969762 | wall=115.097s | bio=3995.0ms | rt_factor=0.034710x | hits=33/80 | gpu_dispatch_active=true
+      116.87 real         3.72 user         1.78 sys
+          1181777920  maximum resident set size
+         1333528184  peak memory footprint

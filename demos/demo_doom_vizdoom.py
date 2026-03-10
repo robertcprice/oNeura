@@ -36,6 +36,8 @@ Usage:
     python3 demos/demo_doom_vizdoom.py --exp 1                 # just navigation
     python3 demos/demo_doom_vizdoom.py --scenario take_cover   # different scenario
     python3 demos/demo_doom_vizdoom.py --scale medium          # more neurons
+    python3 demos/demo_doom_vizdoom.py --exp 1 --pretrain-episodes 2 \
+        --teacher-motor-intensity 60 --teacher-hebbian-delta 1.2  # tuned teacher-guided warmup
     python3 demos/demo_doom_vizdoom.py --json results.json     # structured output
 """
 
@@ -105,6 +107,17 @@ RETINA_WIDTH = 64
 RETINA_HEIGHT = 48
 VIZDOOM_WIDTH = 160
 VIZDOOM_HEIGHT = 120
+
+HOSTILE_KEYWORDS = (
+    "zombieman", "shotgunguy", "chaingunguy", "chaingunner", "demon",
+    "imp", "cacodemon", "hellknight", "baron", "revenant", "mancubus",
+    "arachnotron", "lostsoul", "spectre",
+)
+NON_HOSTILE_KEYWORDS = (
+    "doomplayer", "marine", "medikit", "stimpack", "health", "armor",
+    "greenarmor", "bluearmor", "redarmor", "clip", "ammo", "weapon",
+    "shotgun", "chaingun", "chainsaw",
+)
 
 # Motor populations: L5 neurons split into 6 groups (5 movement + 1 attack)
 MOTOR_FORWARD = 0
@@ -188,6 +201,86 @@ SCENARIOS = {
 }
 
 
+def _scenario_positive_metric(scenario: str) -> str:
+    """Return the primary success metric for a scenario."""
+    return SCENARIOS.get(
+        scenario, SCENARIOS["health_gathering"]
+    ).get("positive_metric", "health_gained")
+
+
+def _episode_metric(metrics: Dict[str, Any], metric_name: str) -> float:
+    """Read an episode metric as a numeric value."""
+    value = metrics.get(metric_name, 0.0)
+    if isinstance(value, bool):
+        return float(value)
+    return float(value)
+
+
+def _metric_label(metric_name: str) -> str:
+    """Human-readable metric label for logs."""
+    if metric_name == "survived":
+        return "survival"
+    return metric_name.replace("_", " ")
+
+
+def _format_metric_value(metric_name: str, value: float) -> str:
+    """Format a metric value for progress logs."""
+    if metric_name == "survived":
+        return f"{value * 100:.0f}%"
+    return f"{value:.1f}"
+
+
+def _active_relay_source_ids(
+    relay_ids: torch.Tensor,
+    activation: torch.Tensor,
+    threshold_ratio: float = 0.35,
+    min_count: int = 8,
+) -> torch.Tensor:
+    """Select the currently active relay subset for targeted credit assignment."""
+    if activation.numel() == 0:
+        return relay_ids
+
+    max_val = float(activation.max().item())
+    if max_val <= 0.0:
+        return relay_ids
+
+    active_idx = torch.nonzero(
+        activation >= max_val * threshold_ratio, as_tuple=False
+    ).flatten()
+
+    if active_idx.numel() < min_count:
+        k = min(len(relay_ids), max(min_count, len(relay_ids) // 12))
+        _, active_idx = torch.topk(activation, k=k)
+
+    active_idx = torch.unique(active_idx).to(device=relay_ids.device, dtype=torch.long)
+    if active_idx.numel() == 0:
+        return relay_ids
+    return relay_ids[active_idx]
+
+
+def _is_hostile_name(name: str) -> bool:
+    """Return whether a ViZDoom label/object name looks like an enemy."""
+    lower = name.lower()
+    if any(token in lower for token in NON_HOSTILE_KEYWORDS):
+        return False
+    return any(token in lower for token in HOSTILE_KEYWORDS)
+
+
+def _normalize_angle_deg(angle: float) -> float:
+    """Wrap degrees to [-180, 180)."""
+    wrapped = (angle + 180.0) % 360.0 - 180.0
+    return wrapped
+
+
+def _default_video_path(stem: str) -> str:
+    """Return a repo-local path for saved Doom recordings."""
+    out_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "results", "doom_videos")
+    )
+    os.makedirs(out_dir, exist_ok=True)
+    return os.path.join(out_dir, stem)
+
+
 # ============================================================================
 # ViZDoom Game Wrapper
 # ============================================================================
@@ -215,14 +308,18 @@ class DoomGame:
 
         self.scenario = scenario
         self.seed = seed
-        self._scenario = scenario  # Track for event handling
         self._game = vzd.DoomGame()
         self._setup(scenario, visible)
         self._prev_health = 100.0
         self._episode_health_gained = 0.0
         self._episode_damage_taken = 0.0
+        self._episode_kills = 0
+        self._episode_survived = True
         self._episode_steps = 0
         self._total_episodes = 0
+        self._last_health_delta = 0.0
+        self._corridor_evasive_steps = 0
+        self._corridor_strafe_dir = MOTOR_STRAFE_LEFT
 
     def _setup(self, scenario: str, visible: bool) -> None:
         """Configure ViZDoom with the selected scenario.
@@ -243,6 +340,8 @@ class DoomGame:
         self._game.set_screen_format(vzd.ScreenFormat.RGB24)
         self._game.set_window_visible(visible)
         self._game.set_mode(vzd.Mode.PLAYER)
+        self._game.set_objects_info_enabled(True)
+        self._game.set_labels_buffer_enabled(True)
 
         # Override buttons: clear cfg defaults, add our 6-action set (5 movement + attack)
         self._game.clear_available_buttons()
@@ -257,6 +356,9 @@ class DoomGame:
         self._game.clear_available_game_variables()
         self._game.add_available_game_variable(vzd.GameVariable.HEALTH)
         self._game.add_available_game_variable(vzd.GameVariable.KILLCOUNT)
+        self._game.add_available_game_variable(vzd.GameVariable.POSITION_X)
+        self._game.add_available_game_variable(vzd.GameVariable.POSITION_Y)
+        self._game.add_available_game_variable(vzd.GameVariable.ANGLE)
 
         self._game.set_seed(self.seed)
         self._game.init()
@@ -278,18 +380,24 @@ class DoomGame:
         self._prev_health = self._get_health()
         self._episode_health_gained = 0.0
         self._episode_damage_taken = 0.0
+        self._episode_kills = 0
+        self._prev_kills = self._get_kills()
+        self._episode_survived = True
         self._episode_steps = 0
+        self._last_health_delta = 0.0
+        self._corridor_evasive_steps = 0
+        self._corridor_strafe_dir = MOTOR_STRAFE_LEFT
         self._total_episodes += 1
         return self._get_frame()
 
-    def step(self, action_idx: int) -> Tuple[str, float, bool, np.ndarray, int]:
+    def step(self, action_idx: int) -> Tuple[str, float, bool, np.ndarray]:
         """Execute one action and return results.
 
         Args:
             action_idx: Motor population index (0-5, ATTACK is 5).
 
         Returns:
-            Tuple of (event, health_delta, done, frame, where event is one of
+            Tuple of (event, health_delta, done, frame), where event is one of
             "health_gained", "damage_taken", "kill", "survived", "neutral", or "episode_end".
         """
         # Build one-hot action vector
@@ -299,41 +407,57 @@ class DoomGame:
         self._game.make_action(action)
         self._episode_steps += 1
 
-        if self._game.is_episode_finished():
-            # Episode ended - this is negative (death) in defend scenarios
-            return "episode_end", 0.0, True, np.zeros(
-                (RETINA_HEIGHT, RETINA_WIDTH, 3), dtype=np.uint8)
-
         # Track kills (positive event - killed enemy)
         current_kills = self._get_kills()
-        kills_delta = current_kills - self._prev_kills
-        event = None
+        kills_delta = max(0, current_kills - self._prev_kills)
         if kills_delta > 0:
             self._episode_kills += kills_delta
-            event = "kill"  # POSITIVE: got a kill!
         self._prev_kills = current_kills
 
         # Track health
         current_health = self._get_health()
         health_delta = current_health - self._prev_health
+        self._last_health_delta = health_delta
         self._prev_health = current_health
+        if health_delta > 0:
+            self._episode_health_gained += health_delta
+        elif health_delta < 0:
+            self._episode_damage_taken += abs(health_delta)
 
-        if event != "kill":
-            if health_delta > 0:
-                self._episode_health_gained += health_delta
-                event = "health_gained"
-            elif health_delta < 0:
-                self._episode_damage_taken += abs(health_delta)
-                event = "damage_taken"  # NEGATIVE: took damage
-            else:
-                # Survival is positive in defend scenarios!
-                if self._scenario == "defend_the_center":
-                    event = "survived"  # POSITIVE: still alive
-                else:
-                    event = "neutral"
+        if self.scenario == "deadly_corridor":
+            if health_delta < 0:
+                self._corridor_evasive_steps = 6
+                self._corridor_strafe_dir = (
+                    MOTOR_STRAFE_RIGHT
+                    if self._corridor_strafe_dir == MOTOR_STRAFE_LEFT
+                    else MOTOR_STRAFE_LEFT
+                )
+            elif self._corridor_evasive_steps > 0:
+                self._corridor_evasive_steps -= 1
+            if kills_delta > 0:
+                self._corridor_evasive_steps = 0
 
-        frame = self._get_frame()
-        return event, health_delta, False, frame
+        episode_finished = self._game.is_episode_finished()
+        if episode_finished and self._is_player_dead(current_health):
+            self._episode_survived = False
+            return "episode_end", health_delta, True, np.zeros(
+                (RETINA_HEIGHT, RETINA_WIDTH, 3), dtype=np.uint8)
+
+        if kills_delta > 0:
+            event = "kill"
+        elif health_delta > 0:
+            event = "health_gained"
+        elif health_delta < 0:
+            event = "damage_taken"
+        elif episode_finished:
+            event = "survived"
+        else:
+            event = "neutral"
+
+        frame = np.zeros(
+            (RETINA_HEIGHT, RETINA_WIDTH, 3), dtype=np.uint8
+        ) if episode_finished else self._get_frame()
+        return event, health_delta, episode_finished, frame
 
     def _get_health(self) -> float:
         """Read current health from game variables."""
@@ -348,6 +472,336 @@ class DoomGame:
             return int(self._game.get_game_variable(vzd.GameVariable.KILLCOUNT))
         except Exception:
             return 0
+
+    def _is_player_dead(self, current_health: Optional[float] = None) -> bool:
+        """Return whether the player died this episode."""
+        try:
+            return bool(self._game.is_player_dead())
+        except Exception:
+            health = self._get_health() if current_health is None else current_health
+            return health <= 0.0
+
+    def visible_labels(self) -> List[Any]:
+        """Return currently visible labeled objects, if the scenario exposes them."""
+        try:
+            state = self._game.get_state()
+            if state is None or getattr(state, "labels", None) is None:
+                return []
+            return list(state.labels)
+        except Exception:
+            return []
+
+    def visible_enemy_labels(self) -> List[Any]:
+        """Return currently visible hostile labels."""
+        return [
+            label for label in self.visible_labels()
+            if _is_hostile_name(getattr(label, "object_name", ""))
+        ]
+
+    def objects_info(self) -> List[Any]:
+        """Return world objects when ViZDoom object info is enabled."""
+        try:
+            state = self._game.get_state()
+            if state is None or getattr(state, "objects", None) is None:
+                return []
+            return list(state.objects)
+        except Exception:
+            return []
+
+    def enemy_objects(self) -> List[Any]:
+        """Return hostile world objects."""
+        return [
+            obj for obj in self.objects_info()
+            if _is_hostile_name(getattr(obj, "name", ""))
+        ]
+
+    def player_pose(self) -> Tuple[float, float, float]:
+        """Return approximate player (x, y, angle) pose."""
+        try:
+            x = float(self._game.get_game_variable(vzd.GameVariable.POSITION_X))
+            y = float(self._game.get_game_variable(vzd.GameVariable.POSITION_Y))
+            angle = float(self._game.get_game_variable(vzd.GameVariable.ANGLE))
+            return x, y, angle
+        except Exception:
+            return 0.0, 0.0, 0.0
+
+    def teacher_guidance(self) -> Dict[str, Any]:
+        """Heuristic action plus confidence metadata for teacher shaping."""
+        if self.scenario == "deadly_corridor":
+            enemy_labels = self.visible_enemy_labels()
+            if enemy_labels:
+                target = max(enemy_labels, key=lambda label: float(label.width * label.height))
+                center_x = float(target.x + target.width * 0.5)
+                area = float(target.width * target.height)
+                if center_x < VIZDOOM_WIDTH * 0.40:
+                    return {
+                        "action": MOTOR_TURN_LEFT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 1.1,
+                    }
+                if center_x > VIZDOOM_WIDTH * 0.60:
+                    return {
+                        "action": MOTOR_TURN_RIGHT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 1.1,
+                    }
+                if self._corridor_evasive_steps > 0:
+                    if area >= 110.0 and self._corridor_evasive_steps % 3 == 0:
+                        return {
+                            "action": MOTOR_ATTACK,
+                            "enemy_visible": True,
+                            "attack_window": True,
+                            "confidence": 1.5,
+                        }
+                    return {
+                        "action": self._corridor_strafe_dir,
+                        "enemy_visible": True,
+                        "attack_window": area >= 90.0,
+                        "confidence": 1.35,
+                    }
+                if area < 70.0:
+                    return {
+                        "action": MOTOR_FORWARD,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 1.0,
+                    }
+                if area < 130.0 and self._episode_steps % 3 == 0:
+                    return {
+                        "action": MOTOR_FORWARD,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 0.9,
+                    }
+                if area >= 160.0 and self._episode_steps % 4 == 0:
+                    return {
+                        "action": self._corridor_strafe_dir,
+                        "enemy_visible": True,
+                        "attack_window": True,
+                        "confidence": 1.1,
+                    }
+                return {
+                    "action": MOTOR_ATTACK,
+                    "enemy_visible": True,
+                    "attack_window": True,
+                    "confidence": 1.7,
+                }
+
+            px, py, angle = self.player_pose()
+            enemies = self.enemy_objects()
+            if enemies:
+                def _enemy_key(obj: Any) -> float:
+                    dx = float(getattr(obj, "position_x", 0.0)) - px
+                    dy = float(getattr(obj, "position_y", 0.0)) - py
+                    return dx * dx + dy * dy
+
+                target = min(enemies, key=_enemy_key)
+                dx = float(getattr(target, "position_x", 0.0)) - px
+                dy = float(getattr(target, "position_y", 0.0)) - py
+                distance = math.sqrt(dx * dx + dy * dy)
+                target_angle = math.degrees(math.atan2(dy, dx))
+                angle_error = _normalize_angle_deg(target_angle - angle)
+
+                if angle_error < -6.0:
+                    return {
+                        "action": MOTOR_TURN_RIGHT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 1.0,
+                    }
+                if angle_error > 6.0:
+                    return {
+                        "action": MOTOR_TURN_LEFT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 1.0,
+                    }
+                if self._corridor_evasive_steps > 0:
+                    return {
+                        "action": self._corridor_strafe_dir,
+                        "enemy_visible": True,
+                        "attack_window": distance < 220.0,
+                        "confidence": 1.2,
+                    }
+                if distance > 260.0:
+                    return {
+                        "action": MOTOR_FORWARD,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 0.95,
+                    }
+                if distance > 170.0 and self._episode_steps % 3 == 0:
+                    return {
+                        "action": MOTOR_FORWARD,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 0.9,
+                    }
+                return {
+                    "action": MOTOR_ATTACK,
+                    "enemy_visible": True,
+                    "attack_window": True,
+                    "confidence": 1.4,
+                }
+
+            if self._corridor_evasive_steps > 0:
+                return {
+                    "action": self._corridor_strafe_dir,
+                    "enemy_visible": False,
+                    "attack_window": False,
+                    "confidence": 0.7,
+                }
+
+            phase = (self._episode_steps // 4) % 4
+            if phase in (0, 2):
+                return {
+                    "action": MOTOR_FORWARD,
+                    "enemy_visible": False,
+                    "attack_window": False,
+                    "confidence": 0.45,
+                }
+            if phase == 1:
+                return {
+                    "action": self._corridor_strafe_dir,
+                    "enemy_visible": False,
+                    "attack_window": False,
+                    "confidence": 0.35,
+                }
+            return {
+                "action": MOTOR_TURN_LEFT if (self._episode_steps // 8) % 2 == 0 else MOTOR_TURN_RIGHT,
+                "enemy_visible": False,
+                "attack_window": False,
+                "confidence": 0.25,
+            }
+
+        if self.scenario == "defend_the_center":
+            enemy_labels = self.visible_enemy_labels()
+            if enemy_labels:
+                target = max(enemy_labels, key=lambda label: float(label.width * label.height))
+                center_x = float(target.x + target.width * 0.5)
+                area = float(target.width * target.height)
+                if center_x < VIZDOOM_WIDTH * 0.44:
+                    return {
+                        "action": MOTOR_TURN_LEFT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 1.0,
+                    }
+                if center_x > VIZDOOM_WIDTH * 0.56:
+                    return {
+                        "action": MOTOR_TURN_RIGHT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 1.0,
+                    }
+                if self.scenario == "deadly_corridor" and area < 140.0:
+                    return {
+                        "action": MOTOR_FORWARD,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 0.9,
+                    }
+                return {
+                    "action": MOTOR_ATTACK,
+                    "enemy_visible": True,
+                    "attack_window": True,
+                    "confidence": 1.7,
+                }
+
+            px, py, angle = self.player_pose()
+            enemies = self.enemy_objects()
+            if enemies:
+                def _enemy_key(obj: Any) -> float:
+                    dx = float(getattr(obj, "position_x", 0.0)) - px
+                    dy = float(getattr(obj, "position_y", 0.0)) - py
+                    return dx * dx + dy * dy
+
+                target = min(enemies, key=_enemy_key)
+                dx = float(getattr(target, "position_x", 0.0)) - px
+                dy = float(getattr(target, "position_y", 0.0)) - py
+                distance = math.sqrt(dx * dx + dy * dy)
+                target_angle = math.degrees(math.atan2(dy, dx))
+                angle_error = _normalize_angle_deg(target_angle - angle)
+
+                if angle_error < -8.0:
+                    return {
+                        "action": MOTOR_TURN_RIGHT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 0.9,
+                    }
+                if angle_error > 8.0:
+                    return {
+                        "action": MOTOR_TURN_LEFT,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 0.9,
+                    }
+                if self.scenario == "deadly_corridor" and distance > 220.0:
+                    return {
+                        "action": MOTOR_FORWARD,
+                        "enemy_visible": True,
+                        "attack_window": False,
+                        "confidence": 0.8,
+                    }
+                return {
+                    "action": MOTOR_ATTACK,
+                    "enemy_visible": True,
+                    "attack_window": True,
+                    "confidence": 1.4,
+                }
+
+            sweep = (self._episode_steps // 6) % 2
+            return {
+                "action": MOTOR_TURN_LEFT if sweep == 0 else MOTOR_TURN_RIGHT,
+                "enemy_visible": False,
+                "attack_window": False,
+                "confidence": 0.0,
+            }
+
+        medikits = [
+            label for label in self.visible_labels()
+            if "medikit" in getattr(label, "object_name", "").lower()
+            or "stimpack" in getattr(label, "object_name", "").lower()
+            or "health" in getattr(label, "object_name", "").lower()
+        ]
+        if medikits:
+            target = max(medikits, key=lambda label: float(label.width * label.height))
+            center_x = float(target.x + target.width * 0.5)
+            if center_x < VIZDOOM_WIDTH * 0.42:
+                return {
+                    "action": MOTOR_TURN_LEFT,
+                    "enemy_visible": False,
+                    "attack_window": False,
+                    "confidence": 1.0,
+                }
+            if center_x > VIZDOOM_WIDTH * 0.58:
+                return {
+                    "action": MOTOR_TURN_RIGHT,
+                    "enemy_visible": False,
+                    "attack_window": False,
+                    "confidence": 1.0,
+                }
+            return {
+                "action": MOTOR_FORWARD,
+                "enemy_visible": False,
+                "attack_window": False,
+                "confidence": 1.2,
+            }
+
+        _, _, angle = self.player_pose()
+        return {
+            "action": MOTOR_TURN_LEFT if int(angle // 45) % 2 == 0 else MOTOR_FORWARD,
+            "enemy_visible": False,
+            "attack_window": False,
+            "confidence": 0.0,
+        }
+
+    def teacher_action(self) -> int:
+        """Heuristic action used for teacher-forced visual pretraining."""
+        return int(self.teacher_guidance()["action"])
 
     def _get_frame(self) -> np.ndarray:
         """Capture and downsample the current frame.
@@ -383,8 +837,8 @@ class DoomGame:
 
     @property
     def episode_survived(self) -> bool:
-        """Whether the episode ended by survival (not death)."""
-        return self._episode_damage_taken < 100  # Didn't die
+        """Whether the player survived the episode horizon."""
+        return self._episode_survived
 
     @property
     def episode_damage_taken(self) -> float:
@@ -463,6 +917,9 @@ class RetinaBridge:
         rng = np.random.RandomState(seed)
         self._rgc_to_relay: Dict[int, List[int]] = {}
         relay_np = relay_ids.cpu().numpy()
+        self._relay_index = {
+            int(nid): idx for idx, nid in enumerate(relay_np.tolist())
+        }
 
         for rgc_idx in range(self.n_rgc):
             rgc = retina.rgc_cells[rgc_idx]
@@ -479,6 +936,39 @@ class RetinaBridge:
 
         self._total_injections = 0
 
+    def activation_from_spikes(self, fired_rgc_ids: List[int],
+                               intensity: float = 45.0) -> torch.Tensor:
+        """Convert fired RGC IDs into a dense relay activation vector."""
+        activation = torch.zeros(
+            self.n_relay, dtype=torch.float32, device=self.relay_ids.device
+        )
+        if not fired_rgc_ids:
+            return activation
+
+        for rgc_id in fired_rgc_ids:
+            if rgc_id not in self._rgc_to_relay:
+                continue
+            for relay_nid in self._rgc_to_relay[rgc_id]:
+                activation[self._relay_index[relay_nid]] += 1.0
+
+        max_val = float(activation.max().item())
+        if max_val > 0:
+            activation = activation * (float(intensity) / max_val)
+        return activation
+
+    def inject_activation(self, brain: CUDAMolecularBrain,
+                          activation: torch.Tensor) -> int:
+        """Inject a precomputed relay activation vector into the brain."""
+        if activation.numel() == 0:
+            return 0
+        if float(activation.max().item()) <= 0:
+            return 0
+        brain.external_current[self.relay_ids] += activation.to(
+            device=brain.device, dtype=torch.float32
+        )
+        self._total_injections += 1
+        return int((activation > 0).sum().item())
+
     def inject_spikes(self, brain: CUDAMolecularBrain, fired_rgc_ids: List[int],
                       intensity: float = 45.0) -> int:
         """Convert RGC spikes into thalamic relay currents.
@@ -494,23 +984,8 @@ class RetinaBridge:
         Returns:
             Number of relay neurons activated.
         """
-        if not fired_rgc_ids:
-            return 0
-
-        activated_relays = set()
-        for rgc_id in fired_rgc_ids:
-            if rgc_id in self._rgc_to_relay:
-                for relay_nid in self._rgc_to_relay[rgc_id]:
-                    activated_relays.add(relay_nid)
-
-        if not activated_relays:
-            return 0
-
-        relay_tensor = torch.tensor(list(activated_relays),
-                                     dtype=torch.int64, device=brain.device)
-        brain.external_current[relay_tensor] += intensity
-        self._total_injections += 1
-        return len(activated_relays)
+        activation = self.activation_from_spikes(fired_rgc_ids, intensity=intensity)
+        return self.inject_activation(brain, activation)
 
 
 # ============================================================================
@@ -603,7 +1078,8 @@ class DoomFEPProtocol:
                  structured_intensity: float = 5.0,
                  unstructured_intensity: float = 5.0,
                  ne_boost: float = 50.0,
-                 hebbian_delta: float = 1.5):
+                 hebbian_delta: float = 1.5,
+                 structured_replay_scale: float = 0.0):
         self.cortex_ids = cortex_ids
         self.relay_ids = relay_ids
         self.l5_ids = l5_ids
@@ -615,9 +1091,12 @@ class DoomFEPProtocol:
         self.unstructured_intensity = unstructured_intensity
         self.ne_boost = ne_boost
         self.hebbian_delta = hebbian_delta
+        self.structured_replay_scale = structured_replay_scale
         # Track last active motor population for Hebbian nudge
         self.last_action: int = 0
         self.motor_populations: Optional[List[torch.Tensor]] = None
+        self.last_activation: Optional[torch.Tensor] = None
+        self.last_active_relay_ids: Optional[torch.Tensor] = None
         # ACTION HISTORY for proper credit assignment (RL)
         # Reward the action that led to health (2-3 steps delay)
         self.action_history: List[Tuple[int, int]] = []  # (action, steps_ago)
@@ -636,10 +1115,18 @@ class DoomFEPProtocol:
         """
         brain = rb.brain
 
-        # MINIMAL: Don't stimulate entire cortex - it disrupts natural motor output
-        # Instead, just do brief network settling
-        rb.step()
-        rb.step()
+        if self.ne_boost > 0:
+            brain.nt_conc[self.cortex_ids, NT_NE] += self.ne_boost
+
+        replay_activation = None
+        if self.last_activation is not None and self.structured_replay_scale > 0:
+            replay_activation = self.last_activation * self.structured_replay_scale
+
+        n_steps = max(2, self.structured_steps)
+        for s in range(n_steps):
+            if replay_activation is not None and s % 2 == 0:
+                brain.external_current[self.relay_ids] += replay_activation
+            rb.step()
 
         # ONLY Hebbian nudge on relay->correct motor pathway (no cortex stimulation)
         if self.motor_populations is not None and self.hebbian_delta > 0:
@@ -648,7 +1135,8 @@ class DoomFEPProtocol:
                           for i in range(N_MOTOR_POPULATIONS)
                           if i != self.last_action]
             _doom_hebbian_nudge(brain, self.relay_ids, correct_pop,
-                                wrong_pops, self.hebbian_delta)
+                                wrong_pops, self.hebbian_delta,
+                                source_ids=self.last_active_relay_ids)
 
     def deliver_negative(self, rb: CUDARegionalBrain) -> None:
         """Unstructured feedback for negative events (damage taken).
@@ -661,6 +1149,10 @@ class DoomFEPProtocol:
         # MINIMAL: Just brief settling, no random cortex stimulation
         for _ in range(3):
             rb.step()
+
+    def deliver_survival_reward(self, rb: CUDARegionalBrain) -> None:
+        """Treat survival as another structured positive event."""
+        self.deliver_positive(rb)
 
 
 class DoomDAProtocol:
@@ -682,6 +1174,7 @@ class DoomDAProtocol:
         self.settle_steps = settle_steps
         self.last_action: int = 0
         self.motor_populations: Optional[List[torch.Tensor]] = None
+        self.last_active_relay_ids: Optional[torch.Tensor] = None
 
     def deliver_positive(self, rb: CUDARegionalBrain) -> None:
         """DA reward at L5 motor neurons."""
@@ -708,6 +1201,7 @@ class DoomRandomProtocol:
         self.settle_steps = settle_steps
         self.last_action: int = 0
         self.motor_populations: Optional[List[torch.Tensor]] = None
+        self.last_active_relay_ids: Optional[torch.Tensor] = None
 
     def deliver_positive(self, rb: CUDARegionalBrain) -> None:
         """Same as negative — no differential feedback."""
@@ -745,6 +1239,7 @@ class DoomRLProtocol:
         self.settle_steps = settle_steps
         self.last_action: int = 0
         self.motor_populations: Optional[List[torch.Tensor]] = None
+        self.last_active_relay_ids: Optional[torch.Tensor] = None
 
         # ACTION HISTORY for temporal credit assignment
         # Track (action, steps_since) - reward the action that led to outcome
@@ -797,7 +1292,8 @@ class DoomRLProtocol:
                               for i in range(N_MOTOR_POPULATIONS)
                               if i != action]
                 _doom_hebbian_nudge(brain, self.relay_ids, correct_pop,
-                                    wrong_pops, 2.0)  # Stronger nudge for RL
+                                    wrong_pops, 2.0,
+                                    source_ids=self.last_active_relay_ids)  # Stronger nudge for RL
 
     def deliver_negative(self, rb: CUDARegionalBrain) -> None:
         """CORTISOL (stress) for damage taken!
@@ -871,7 +1367,8 @@ class DoomRLProtocol:
 def _doom_hebbian_nudge(brain: CUDAMolecularBrain, relay_ids: torch.Tensor,
                         correct_pop: torch.Tensor,
                         wrong_pops: List[torch.Tensor],
-                        delta: float = 0.5) -> None:
+                        delta: float = 0.5,
+                        source_ids: Optional[torch.Tensor] = None) -> None:
     """Hebbian weight update for Doom motor populations.
 
     Strengthens relay->correct_motor synapses, weakens relay->wrong_motor.
@@ -883,11 +1380,15 @@ def _doom_hebbian_nudge(brain: CUDAMolecularBrain, relay_ids: torch.Tensor,
         correct_pop: Neuron IDs of the correct motor population.
         wrong_pops: List of neuron ID tensors for incorrect motor populations.
         delta: Weight update magnitude.
+        source_ids: Optional relay subset to credit instead of all relays.
     """
     if brain.n_synapses == 0:
         return
 
-    relay_set = set(relay_ids.cpu().tolist())
+    if source_ids is None:
+        source_ids = relay_ids
+
+    relay_set = set(source_ids.cpu().tolist())
     correct_set = set(correct_pop.cpu().tolist())
 
     pre_np = brain.syn_pre.cpu().numpy()
@@ -917,6 +1418,121 @@ def _doom_hebbian_nudge(brain: CUDAMolecularBrain, relay_ids: torch.Tensor,
     brain._NT_W_sparse = None
 
 
+def _present_doom_stimulus(
+    rb: CUDARegionalBrain,
+    bridge: RetinaBridge,
+    decoder: DoomMotorDecoder,
+    activation: torch.Tensor,
+    stim_steps: int = 20,
+    teacher_motor_ids: Optional[torch.Tensor] = None,
+    teacher_motor_intensity: float = 0.0,
+) -> List[int]:
+    """Present one retinal activation pattern and return motor spike counts."""
+    brain = rb.brain
+    motor_acc = torch.zeros(N_MOTOR_POPULATIONS, device=brain.device)
+    for s in range(stim_steps):
+        if s % 2 == 0:
+            bridge.inject_activation(brain, activation)
+            if teacher_motor_ids is not None and teacher_motor_intensity > 0:
+                brain.external_current[teacher_motor_ids] += teacher_motor_intensity
+        rb.step()
+        for pop_idx, pop_ids in enumerate(decoder.populations):
+            motor_acc[pop_idx] += brain.fired[pop_ids].sum()
+    return motor_acc.int().tolist()
+
+
+def _apply_teacher_action_shaping(
+    brain: CUDAMolecularBrain,
+    decoder: DoomMotorDecoder,
+    relay_ids: torch.Tensor,
+    activation: torch.Tensor,
+    target_action: int,
+    delta: float,
+) -> None:
+    """Apply a targeted relay-to-motor nudge for the teacher-indicated action."""
+    if delta <= 0:
+        return
+    source_ids = _active_relay_source_ids(relay_ids, activation)
+    wrong_pops = [
+        decoder.populations[i]
+        for i in range(N_MOTOR_POPULATIONS)
+        if i != target_action
+    ]
+    _doom_hebbian_nudge(
+        brain,
+        relay_ids,
+        decoder.populations[target_action],
+        wrong_pops,
+        delta=delta,
+        source_ids=source_ids,
+    )
+
+
+def _apply_motor_penalty(
+    brain: CUDAMolecularBrain,
+    motor_pop: torch.Tensor,
+    source_ids: torch.Tensor,
+    delta: float,
+) -> None:
+    """Weaken source->motor synapses for a specific motor population."""
+    if delta <= 0 or brain.n_synapses == 0 or source_ids.numel() == 0:
+        return
+
+    source_set = set(source_ids.cpu().tolist())
+    motor_set = set(motor_pop.cpu().tolist())
+    pre_np = brain.syn_pre.cpu().numpy()
+    post_np = brain.syn_post.cpu().numpy()
+    weaken_mask = np.isin(pre_np, list(source_set)) & np.isin(post_np, list(motor_set))
+    if weaken_mask.any():
+        idx = torch.tensor(np.where(weaken_mask)[0], device=brain.device)
+        brain.syn_strength[idx] = torch.clamp(
+            brain.syn_strength[idx] - delta, 0.3, 8.0
+        )
+        brain._W_dirty = True
+        brain._W_sparse = None
+        brain._NT_W_sparse = None
+
+
+def _apply_doom_event_feedback(
+    rb: CUDARegionalBrain,
+    protocol,
+    event: str,
+    action: int,
+    neutral_steps: int,
+) -> Tuple[int, int]:
+    """Apply event feedback and return (positive_count, negative_count)."""
+    positive = 0
+    negative = 0
+
+    if event == "health_gained":
+        protocol.deliver_positive(rb)
+        positive += 1
+    elif event == "kill":
+        if hasattr(protocol, 'deliver_kill_reward'):
+            protocol.deliver_kill_reward(rb)
+        protocol.deliver_positive(rb)
+        positive += 5
+    elif event == "survived":
+        if hasattr(protocol, 'deliver_survival_reward'):
+            protocol.deliver_survival_reward(rb)
+        else:
+            protocol.deliver_positive(rb)
+        positive += 1
+    elif event == "damage_taken":
+        protocol.deliver_negative(rb)
+        negative += 1
+    elif event == "episode_end":
+        protocol.deliver_negative(rb)
+        negative += 10
+    else:
+        if action == MOTOR_ATTACK and hasattr(protocol, 'deliver_miss_punishment'):
+            if np.random.random() < 0.3:
+                protocol.deliver_miss_punishment(rb)
+        rb.run(neutral_steps)
+
+    return positive, negative
+
+
 # ============================================================================
 # Doom Game Loop
 # ============================================================================
@@ -932,6 +1548,9 @@ def play_doom_episode(
     stim_steps: int = 20,
     max_game_steps: int = 500,
     neutral_steps: int = 5,
+    combat_teacher_shaping_delta: float = 0.0,
+    combat_attack_window_delta: float = 0.0,
+    combat_attack_miss_delta: float = 0.0,
     record_video: bool = False,
     video_path: str = None,
 ) -> Dict[str, Any]:
@@ -952,8 +1571,8 @@ def play_doom_episode(
         max_game_steps: Maximum steps before forced episode end.
 
     Returns:
-        Dict with episode metrics: health_gained, damage_taken, steps,
-        actions taken, positive/negative event counts.
+        Dict with episode metrics: health_gained, kills, survived,
+        damage_taken, steps, action counts, and event counts.
     """
     brain = rb.brain
     frame = game.new_episode()
@@ -963,29 +1582,77 @@ def play_doom_episode(
     total_negative = 0
     action_counts = [0] * N_MOTOR_POPULATIONS
     step_count = 0
+    teacher_match_steps = 0
+    teacher_match_hits = 0
+    attack_window_steps = 0
+    attack_window_shots = 0
+    missed_attack_windows = 0
+    blind_attack_shots = 0
 
     while game.is_running and step_count < max_game_steps:
         # 1. Process frame through molecular retina (pixel -> RGC spikes)
         fired_rgc_ids = retina.process_frame(frame, n_steps=5)
+        activation = bridge.activation_from_spikes(fired_rgc_ids, intensity=45.0)
+        active_relay_ids = _active_relay_source_ids(relay_ids, activation)
+        guidance = game.teacher_guidance()
 
-        # 2. Inject RGC spikes into thalamic relay neurons
-        bridge.inject_spikes(brain, fired_rgc_ids, intensity=45.0)
-
-        # 3. Run brain for stim_steps (pulsed to avoid depolarization block)
-        # Accumulate motor spike counts on GPU
-        motor_acc = torch.zeros(N_MOTOR_POPULATIONS, device=brain.device)
-        for s in range(stim_steps):
-            rb.step()
-            for pop_idx, pop_ids in enumerate(decoder.populations):
-                motor_acc[pop_idx] += brain.fired[pop_ids].sum()
-
-        # 4. Decode motor action from spike counts (single GPU->CPU sync)
-        counts = motor_acc.int().tolist()
+        # 2. Present retinal activation and decode motor action
+        counts = _present_doom_stimulus(
+            rb, bridge, decoder, activation, stim_steps=stim_steps
+        )
         action, _ = decoder.decode(brain, counts=counts)
+
+        if guidance["enemy_visible"]:
+            teacher_match_steps += 1
+            if action == guidance["action"]:
+                teacher_match_hits += 1
+            if combat_teacher_shaping_delta > 0:
+                shaped_delta = combat_teacher_shaping_delta * max(
+                    1.0, float(guidance["confidence"])
+                )
+                _apply_teacher_action_shaping(
+                    brain,
+                    decoder,
+                    relay_ids,
+                    activation,
+                    int(guidance["action"]),
+                    delta=shaped_delta,
+                )
+
+        if guidance["enemy_visible"] and guidance["attack_window"]:
+            attack_window_steps += 1
+            if action == MOTOR_ATTACK:
+                attack_window_shots += 1
+                if combat_attack_window_delta > 0:
+                    _apply_teacher_action_shaping(
+                        brain,
+                        decoder,
+                        relay_ids,
+                        activation,
+                        MOTOR_ATTACK,
+                        delta=combat_attack_window_delta * max(
+                            1.0, float(guidance["confidence"])
+                        ),
+                    )
+            else:
+                missed_attack_windows += 1
+        elif action == MOTOR_ATTACK:
+            blind_attack_shots += 1
+            if combat_attack_miss_delta > 0:
+                _apply_motor_penalty(
+                    brain,
+                    decoder.populations[MOTOR_ATTACK],
+                    active_relay_ids,
+                    delta=combat_attack_miss_delta,
+                )
 
         # Track which action the protocol should credit
         if hasattr(protocol, 'last_action'):
             protocol.last_action = action
+        if hasattr(protocol, 'last_activation'):
+            protocol.last_activation = activation
+        if hasattr(protocol, 'last_active_relay_ids'):
+            protocol.last_active_relay_ids = active_relay_ids
 
         # FOR RL: Record action in history for temporal credit assignment
         if hasattr(protocol, 'record_action'):
@@ -995,46 +1662,24 @@ def play_doom_episode(
 
         # 5. Execute action in ViZDoom
         event, health_delta, done, frame = game.step(action)
+        step_count += 1
+
+        # 6. Deliver feedback based on game event
+        pos_delta, neg_delta = _apply_doom_event_feedback(
+            rb, protocol, event, action, neutral_steps
+        )
+        total_positive += pos_delta
+        total_negative += neg_delta
 
         if done:
             break
 
-        # 6. Deliver feedback based on game event
-        if event == "health_gained":
-            # Dopamine for health!
-            protocol.deliver_positive(rb)
-            total_positive += 1
-        elif event == "kill":
-            # HUGE dopamine for killing enemy!
-            if hasattr(protocol, 'deliver_kill_reward'):
-                protocol.deliver_kill_reward(rb)
-            # Also deliver positive for the kill
-            protocol.deliver_positive(rb)
-            total_positive += 5  # Big reward
-        elif event == "survived":
-            # Positive in defend scenarios - still alive!
-            # Small positive reinforcement for surviving
-            if hasattr(protocol, 'deliver_survival_reward'):
-                protocol.deliver_survival_reward(rb)
-            total_positive += 0.1  # Small reward
-        elif event == "damage_taken":
-            # Cortisol for damage!
-            protocol.deliver_negative(rb)
-            total_negative += 1
-        elif event == "episode_end":
-            # Died - big negative!
-            protocol.deliver_negative(rb)
-            total_negative += 10
+    if step_count >= max_game_steps and game.is_running and game.episode_survived:
+        if hasattr(protocol, 'deliver_survival_reward'):
+            protocol.deliver_survival_reward(rb)
         else:
-            # Check for attack misses: if attack action but no kill
-            if action == 5 and hasattr(protocol, 'deliver_miss_punishment'):
-                # Small chance of missing punishment
-                if np.random.random() < 0.3:
-                    protocol.deliver_miss_punishment(rb)
-            # Neutral step: brief settling
-            rb.run(neutral_steps)
-
-        step_count += 1
+            protocol.deliver_positive(rb)
+        total_positive += 1
 
     # Save video if requested
     if record_video and video_path:
@@ -1042,11 +1687,124 @@ def play_doom_episode(
 
     return {
         "health_gained": game.episode_health_gained,
+        "kills": game.episode_kills,
+        "survived": float(game.episode_survived),
         "damage_taken": game.episode_damage_taken,
         "steps": game.episode_steps,
         "positive_events": total_positive,
         "negative_events": total_negative,
         "action_counts": action_counts,
+        "teacher_match_rate": (
+            teacher_match_hits / max(1, teacher_match_steps)
+        ),
+        "attack_window_fire_rate": (
+            attack_window_shots / max(1, attack_window_steps)
+        ),
+        "missed_attack_windows": missed_attack_windows,
+        "blind_attack_shots": blind_attack_shots,
+    }
+
+
+def teacher_forced_doom_episode(
+    rb: CUDARegionalBrain,
+    game: DoomGame,
+    retina: MolecularRetina,
+    bridge: RetinaBridge,
+    decoder: DoomMotorDecoder,
+    protocol,
+    relay_ids: torch.Tensor,
+    stim_steps: int = 20,
+    max_game_steps: int = 500,
+    neutral_steps: int = 5,
+    teacher_motor_intensity: float = 30.0,
+    teacher_hebbian_delta: float = 1.2,
+) -> Dict[str, Any]:
+    """Teacher-guided visual warmup before autonomous Doom play."""
+    brain = rb.brain
+    frame = game.new_episode()
+    retina.reset()
+
+    total_positive = 0
+    total_negative = 0
+    step_count = 0
+    action_counts = [0] * N_MOTOR_POPULATIONS
+    teacher_match_steps = 0
+    teacher_match_hits = 0
+
+    while game.is_running and step_count < max_game_steps:
+        fired_rgc_ids = retina.process_frame(frame, n_steps=5)
+        activation = bridge.activation_from_spikes(fired_rgc_ids, intensity=45.0)
+        guidance = game.teacher_guidance()
+        teacher_action = int(guidance["action"])
+        teacher_motor_ids = decoder.populations[teacher_action]
+        active_relay_ids = _active_relay_source_ids(relay_ids, activation)
+        motor_intensity = teacher_motor_intensity * max(1.0, float(guidance["confidence"]))
+
+        counts = _present_doom_stimulus(
+            rb,
+            bridge,
+            decoder,
+            activation,
+            stim_steps=stim_steps,
+            teacher_motor_ids=teacher_motor_ids,
+            teacher_motor_intensity=motor_intensity,
+        )
+        decoded_action, _ = decoder.decode(brain, counts=counts)
+        teacher_match_steps += 1
+        if decoded_action == teacher_action:
+            teacher_match_hits += 1
+
+        if hasattr(protocol, 'last_action'):
+            protocol.last_action = teacher_action
+        if hasattr(protocol, 'last_activation'):
+            protocol.last_activation = activation
+        if hasattr(protocol, 'last_active_relay_ids'):
+            protocol.last_active_relay_ids = active_relay_ids
+        if hasattr(protocol, 'record_action'):
+            protocol.record_action(teacher_action)
+
+        if teacher_hebbian_delta > 0:
+            shaped_delta = teacher_hebbian_delta * max(1.0, float(guidance["confidence"]))
+            _apply_teacher_action_shaping(
+                brain,
+                decoder,
+                relay_ids,
+                activation,
+                teacher_action,
+                delta=shaped_delta,
+            )
+
+        action_counts[teacher_action] += 1
+        event, _, done, frame = game.step(teacher_action)
+        step_count += 1
+        pos_delta, neg_delta = _apply_doom_event_feedback(
+            rb, protocol, event, teacher_action, neutral_steps
+        )
+        total_positive += pos_delta
+        total_negative += neg_delta
+
+        if done:
+            break
+
+    if step_count >= max_game_steps and game.is_running and game.episode_survived:
+        if hasattr(protocol, 'deliver_survival_reward'):
+            protocol.deliver_survival_reward(rb)
+        else:
+            protocol.deliver_positive(rb)
+        total_positive += 1
+
+    return {
+        "health_gained": game.episode_health_gained,
+        "kills": game.episode_kills,
+        "survived": float(game.episode_survived),
+        "damage_taken": game.episode_damage_taken,
+        "steps": game.episode_steps,
+        "positive_events": total_positive,
+        "negative_events": total_negative,
+        "action_counts": action_counts,
+        "teacher_match_rate": (
+            teacher_match_hits / max(1, teacher_match_steps)
+        ),
     }
 
 
@@ -1109,12 +1867,20 @@ def exp_doom_navigation(
     n_episodes: int = None,
     scenario: str = "health_gathering",
     record_video: bool = False,
+    pretrain_episodes: int = 0,
+    structured_replay_scale: float = 0.0,
+    teacher_motor_intensity: float = 30.0,
+    teacher_hebbian_delta: float = 1.2,
+    combat_teacher_shaping_delta: float = 0.0,
+    combat_attack_window_delta: float = 0.0,
+    combat_attack_miss_delta: float = 0.0,
+    metric_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Can a dONN learn to gather health in Doom via the free energy principle?
 
-    Tracks health gained per episode. Learning is evidenced by increasing
-    health acquisition over time as the FEP protocol strengthens sensorimotor
-    pathways through structured feedback and Hebbian nudging.
+    Tracks the scenario's configured positive metric per episode. Learning is
+    evidenced by improvement in that metric over time as the FEP protocol
+    strengthens sensorimotor pathways through structured feedback.
 
     Args:
         scale: Network scale.
@@ -1129,6 +1895,8 @@ def exp_doom_navigation(
     sp = SCALE_PARAMS.get(scale, SCALE_PARAMS["large"])
     if n_episodes is None:
         n_episodes = sp["n_episodes"]
+    metric_name = metric_override or _scenario_positive_metric(scenario)
+    metric_label = _metric_label(metric_name)
 
     _header(
         f"Exp 1: Doom Navigation ({scenario})",
@@ -1155,6 +1923,7 @@ def exp_doom_navigation(
         unstructured_steps=sp["unstructured_steps"],
         structured_intensity=40.0, unstructured_intensity=40.0,
         hebbian_delta=delta,
+        structured_replay_scale=structured_replay_scale,
     )
     protocol.motor_populations = decoder.populations
 
@@ -1165,58 +1934,88 @@ def exp_doom_navigation(
     # Game
     game = DoomGame(scenario=scenario, seed=seed, visible=False)
 
+    pretrain_metrics = []
+    if pretrain_episodes > 0:
+        print(f"    Teacher pretraining: {pretrain_episodes} episodes")
+        for _ in range(pretrain_episodes):
+            metrics = teacher_forced_doom_episode(
+                rb, game, retina, bridge, decoder, protocol,
+                relay_ids, stim_steps=sp["stim_steps"],
+                max_game_steps=sp["max_game_steps"],
+                neutral_steps=sp["neutral_steps"],
+                teacher_motor_intensity=teacher_motor_intensity,
+                teacher_hebbian_delta=teacher_hebbian_delta,
+            )
+            pretrain_metrics.append(metrics)
+        avg_teacher = sum(m["teacher_match_rate"] for m in pretrain_metrics) / len(pretrain_metrics)
+        avg_pre_metric = sum(_episode_metric(m, metric_name) for m in pretrain_metrics) / len(pretrain_metrics)
+        print(f"    Teacher warmup complete: match {avg_teacher:.0%}, "
+              f"{metric_label} {_format_metric_value(metric_name, avg_pre_metric)}")
+
     # Play episodes
     report_interval = max(1, n_episodes // 5)
     episode_metrics = []
     for ep in range(n_episodes):
         # Record first episode video if requested
         record_this = (record_video and ep == 0)
-        video_path = f"/workspace/doom_exp1_ep{ep+1}.mp4" if record_this else None
+        video_path = _default_video_path(
+            f"doom_exp1_{scenario}_ep{ep+1}.mp4"
+        ) if record_this else None
         metrics = play_doom_episode(
             rb, game, retina, bridge, decoder, protocol,
             relay_ids, stim_steps=sp["stim_steps"],
             max_game_steps=sp["max_game_steps"],
             neutral_steps=sp["neutral_steps"],
+            combat_teacher_shaping_delta=combat_teacher_shaping_delta,
+            combat_attack_window_delta=combat_attack_window_delta,
+            combat_attack_miss_delta=combat_attack_miss_delta,
             record_video=record_this, video_path=video_path)
         episode_metrics.append(metrics)
 
         if (ep + 1) % report_interval == 0 or ep == n_episodes - 1:
             recent = episode_metrics[max(0, ep - report_interval + 1):ep + 1]
-            avg_health = sum(m["health_gained"] for m in recent) / len(recent)
+            avg_metric = sum(_episode_metric(m, metric_name) for m in recent) / len(recent)
             avg_damage = sum(m["damage_taken"] for m in recent) / len(recent)
             print(f"    Episode {ep + 1:3d}/{n_episodes}: "
-                  f"health +{avg_health:.0f}, damage -{avg_damage:.0f} "
+                  f"{metric_label} {_format_metric_value(metric_name, avg_metric)}, "
+                  f"damage -{avg_damage:.0f} "
                   f"(last {len(recent)})")
 
     game.close()
 
     # Analyze results
-    health_per_ep = [m["health_gained"] for m in episode_metrics]
+    metric_per_ep = [_episode_metric(m, metric_name) for m in episode_metrics]
     quarter = max(1, n_episodes // 4)
-    first_q = health_per_ep[:quarter]
-    last_q = health_per_ep[-quarter:]
+    first_q = metric_per_ep[:quarter]
+    last_q = metric_per_ep[-quarter:]
     first_avg = sum(first_q) / len(first_q) if first_q else 0
     last_avg = sum(last_q) / len(last_q) if last_q else 0
-    total_health = sum(health_per_ep)
+    total_metric = sum(metric_per_ep)
 
     elapsed = time.perf_counter() - t0
 
-    # Pass: health gathered improves over episodes OR total health > 0
-    passed = (last_avg > first_avg) or (total_health > 0)
+    # Pass: positive metric improves over episodes OR shows non-zero success.
+    passed = (last_avg > first_avg) or (total_metric > 0)
 
     print(f"\n    Results:")
-    print(f"    First quarter avg health: {first_avg:.1f}")
-    print(f"    Last quarter avg health:  {last_avg:.1f}")
-    print(f"    Total health gathered:    {total_health:.0f}")
+    print(f"    First quarter avg {metric_label}: {first_avg:.1f}")
+    print(f"    Last quarter avg {metric_label}:  {last_avg:.1f}")
+    print(f"    Total {metric_label}:             {total_metric:.1f}")
     print(f"    Improvement:              {last_avg - first_avg:+.1f}")
     print(f"    {'PASS' if passed else 'FAIL'} in {elapsed:.1f}s")
 
     return {
         "passed": passed,
         "time": elapsed,
+        "metric_name": metric_name,
         "first_q_avg": first_avg,
         "last_q_avg": last_avg,
-        "total_health": total_health,
+        "total_metric": total_metric,
+        "pretrain_episodes": pretrain_episodes,
+        "combat_teacher_shaping_delta": combat_teacher_shaping_delta,
+        "combat_attack_window_delta": combat_attack_window_delta,
+        "combat_attack_miss_delta": combat_attack_miss_delta,
+        "pretrain_metrics": pretrain_metrics,
         "episode_metrics": episode_metrics,
     }
 
@@ -1236,7 +2035,7 @@ def exp_learning_speed(
     """Compare free energy vs DA reward vs random protocols on Doom.
 
     Each protocol trains an identical brain (same seed) and plays the same
-    scenario. Metrics: total health gathered per protocol.
+    scenario. Metrics use that scenario's configured positive metric.
 
     Args:
         scale: Network scale.
@@ -1251,6 +2050,8 @@ def exp_learning_speed(
     sp = SCALE_PARAMS.get(scale, SCALE_PARAMS["large"])
     if n_episodes is None:
         n_episodes = sp["n_episodes"]
+    metric_name = _scenario_positive_metric(scenario)
+    metric_label = _metric_label(metric_name)
 
     _header(
         "Exp 2: Learning Speed Comparison",
@@ -1304,7 +2105,9 @@ def exp_learning_speed(
         episode_metrics = []
         for ep in range(n_episodes):
             record_this = (record_video and ep == 0)
-            video_path = f"/workspace/doom_exp2_{condition}_ep{ep+1}.mp4" if record_this else None
+            video_path = _default_video_path(
+                f"doom_exp2_{condition}_ep{ep+1}.mp4"
+            ) if record_this else None
             metrics = play_doom_episode(
                 rb, game, retina, bridge, decoder, protocol,
                 relay_ids, stim_steps=sp["stim_steps"],
@@ -1315,34 +2118,35 @@ def exp_learning_speed(
 
         game.close()
 
-        total_health = sum(m["health_gained"] for m in episode_metrics)
+        total_metric = sum(_episode_metric(m, metric_name) for m in episode_metrics)
         last_q = episode_metrics[-(n_episodes // 4):]
-        last_q_health = sum(m["health_gained"] for m in last_q) / len(last_q)
+        last_q_metric = sum(_episode_metric(m, metric_name) for m in last_q) / len(last_q)
 
         all_results[condition] = {
-            "total_health": total_health,
-            "last_q_avg": last_q_health,
+            "total_metric": total_metric,
+            "last_q_avg": last_q_metric,
             "episode_metrics": episode_metrics,
         }
-        print(f"    {condition:15s}: total health = {total_health:.0f}, "
-              f"last quarter avg = {last_q_health:.1f}")
+        print(f"    {condition:15s}: total {metric_label} = {total_metric:.1f}, "
+              f"last quarter avg = {last_q_metric:.1f}")
 
     elapsed = time.perf_counter() - t0
 
     # Pass: FEP or DA outperforms random
-    fe_total = all_results["free_energy"]["total_health"]
-    da_total = all_results["da_reward"]["total_health"]
-    rand_total = all_results["random"]["total_health"]
+    fe_total = all_results["free_energy"]["total_metric"]
+    da_total = all_results["da_reward"]["total_metric"]
+    rand_total = all_results["random"]["total_metric"]
     passed = (fe_total > rand_total or da_total > rand_total)
 
-    print(f"\n    Free Energy: {fe_total:.0f} total health")
-    print(f"    DA Reward:   {da_total:.0f} total health")
-    print(f"    Random:      {rand_total:.0f} total health")
+    print(f"\n    Free Energy: {fe_total:.1f} total {metric_label}")
+    print(f"    DA Reward:   {da_total:.1f} total {metric_label}")
+    print(f"    Random:      {rand_total:.1f} total {metric_label}")
     print(f"    {'PASS' if passed else 'FAIL'} in {elapsed:.1f}s")
 
     return {
         "passed": passed,
         "time": elapsed,
+        "metric_name": metric_name,
         "results": {k: {kk: vv for kk, vv in v.items() if kk != "episode_metrics"}
                     for k, v in all_results.items()},
         "all_results": all_results,
@@ -1388,6 +2192,8 @@ def exp_pharmacology(
         n_train_episodes = sp["n_train_episodes"]
     if n_test_episodes is None:
         n_test_episodes = sp["n_test_episodes"]
+    metric_name = _scenario_positive_metric(scenario)
+    metric_label = _metric_label(metric_name)
 
     _header(
         "Exp 3: Pharmacological Effects on Doom Performance",
@@ -1451,7 +2257,9 @@ def exp_pharmacology(
         test_metrics = []
         for ep in range(n_test_episodes):
             record_this = (record_video and ep == 0)
-            video_path = f"/workspace/doom_exp3_{condition}_ep{ep+1}.mp4" if record_this else None
+            video_path = _default_video_path(
+                f"doom_exp3_{condition}_ep{ep+1}.mp4"
+            ) if record_this else None
             metrics = play_doom_episode(
                 rb, test_game, retina, bridge, decoder, test_protocol,
                 relay_ids, stim_steps=sp["stim_steps"],
@@ -1461,35 +2269,36 @@ def exp_pharmacology(
             test_metrics.append(metrics)
         test_game.close()
 
-        total_health = sum(m["health_gained"] for m in test_metrics)
-        avg_health = total_health / n_test_episodes
+        total_metric = sum(_episode_metric(m, metric_name) for m in test_metrics)
+        avg_metric = total_metric / n_test_episodes
         test_results[condition] = {
-            "total_health": total_health,
-            "avg_health": avg_health,
+            "total_metric": total_metric,
+            "avg_metric": avg_metric,
             "test_metrics": test_metrics,
         }
-        print(f"    {condition:10s}: avg health = {avg_health:.1f} "
-              f"(total {total_health:.0f} over {n_test_episodes} episodes)")
+        print(f"    {condition:10s}: avg {metric_label} = {avg_metric:.1f} "
+              f"(total {total_metric:.1f} over {n_test_episodes} episodes)")
 
     elapsed = time.perf_counter() - t0
 
     # Pass: diazepam < baseline (GABA-A enhancement impairs performance)
-    baseline_health = test_results["baseline"]["total_health"]
-    diazepam_health = test_results["diazepam"]["total_health"]
-    caffeine_health = test_results["caffeine"]["total_health"]
+    baseline_metric = test_results["baseline"]["total_metric"]
+    diazepam_metric = test_results["diazepam"]["total_metric"]
+    caffeine_metric = test_results["caffeine"]["total_metric"]
 
-    passed = diazepam_health < baseline_health
+    passed = diazepam_metric < baseline_metric
 
-    print(f"\n    Baseline:  {baseline_health:.0f} total health")
-    print(f"    Caffeine:  {caffeine_health:.0f} total health "
-          f"({caffeine_health - baseline_health:+.0f})")
-    print(f"    Diazepam:  {diazepam_health:.0f} total health "
-          f"({diazepam_health - baseline_health:+.0f})")
+    print(f"\n    Baseline:  {baseline_metric:.1f} total {metric_label}")
+    print(f"    Caffeine:  {caffeine_metric:.1f} total {metric_label} "
+          f"({caffeine_metric - baseline_metric:+.1f})")
+    print(f"    Diazepam:  {diazepam_metric:.1f} total {metric_label} "
+          f"({diazepam_metric - baseline_metric:+.1f})")
     print(f"    {'PASS' if passed else 'FAIL'} in {elapsed:.1f}s")
 
     return {
         "passed": passed,
         "time": elapsed,
+        "metric_name": metric_name,
         "test_results": {k: {kk: vv for kk, vv in v.items() if kk != "test_metrics"}
                          for k, v in test_results.items()},
     }
@@ -1585,8 +2394,25 @@ def _run_single(args, seed: int) -> Dict[str, Any]:
             }
             if args.episodes and exp_id == 1:
                 kwargs["n_episodes"] = args.episodes
+                kwargs["pretrain_episodes"] = args.pretrain_episodes
+                kwargs["structured_replay_scale"] = args.structured_replay_scale
+                kwargs["teacher_motor_intensity"] = args.teacher_motor_intensity
+                kwargs["teacher_hebbian_delta"] = args.teacher_hebbian_delta
+                kwargs["combat_teacher_shaping_delta"] = args.combat_teacher_shaping_delta
+                kwargs["combat_attack_window_delta"] = args.combat_attack_window_delta
+                kwargs["combat_attack_miss_delta"] = args.combat_attack_miss_delta
+                kwargs["metric_override"] = args.metric_override
             elif args.episodes and exp_id == 2:
                 kwargs["n_episodes"] = args.episodes
+            elif exp_id == 1:
+                kwargs["pretrain_episodes"] = args.pretrain_episodes
+                kwargs["structured_replay_scale"] = args.structured_replay_scale
+                kwargs["teacher_motor_intensity"] = args.teacher_motor_intensity
+                kwargs["teacher_hebbian_delta"] = args.teacher_hebbian_delta
+                kwargs["combat_teacher_shaping_delta"] = args.combat_teacher_shaping_delta
+                kwargs["combat_attack_window_delta"] = args.combat_attack_window_delta
+                kwargs["combat_attack_miss_delta"] = args.combat_attack_miss_delta
+                kwargs["metric_override"] = args.metric_override
             result = func(**kwargs)
             results[exp_id] = result
         except Exception as e:
@@ -1616,6 +2442,22 @@ def main():
                         help="ViZDoom scenario (default: health_gathering)")
     parser.add_argument("--episodes", type=int, default=None,
                         help="Override number of episodes for experiments 1 & 2")
+    parser.add_argument("--pretrain-episodes", type=int, default=0,
+                        help="Teacher-guided visual warmup episodes for exp 1")
+    parser.add_argument("--structured-replay-scale", type=float, default=0.0,
+                        help="Relay replay strength on positive feedback for exp 1")
+    parser.add_argument("--teacher-motor-intensity", type=float, default=30.0,
+                        help="Teacher motor clamp strength during exp 1 pretraining")
+    parser.add_argument("--teacher-hebbian-delta", type=float, default=1.2,
+                        help="Teacher relay->motor Hebbian nudge during exp 1 pretraining")
+    parser.add_argument("--combat-teacher-shaping-delta", type=float, default=0.0,
+                        help="Combat-only online teacher Hebbian shaping during exp 1 play")
+    parser.add_argument("--combat-attack-window-delta", type=float, default=0.0,
+                        help="Combat-only Hebbian bonus for attack actions in valid attack windows")
+    parser.add_argument("--combat-attack-miss-delta", type=float, default=0.0,
+                        help="Combat-only Hebbian suppression for blind attack actions")
+    parser.add_argument("--metric-override", type=str, default=None,
+                        help="Override exp 1 success metric, e.g. kills")
     parser.add_argument("--json", type=str, default=None, metavar="PATH",
                         help="Write structured JSON results to file")
     parser.add_argument("--runs", type=int, default=1,

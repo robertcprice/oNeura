@@ -1,0 +1,356 @@
+<!--
+  Drosophila melanogaster MuJoCo Model (MJCF format)
+
+  SCALE: Model is scaled 1000x for numerical stability
+  Real: ~2.5mm body length, ~1mg total mass
+  Scaled: ~2.5m body length, ~1kg total mass
+
+  Body segments:
+  - Head (compound eyes, antennae, proboscis)
+  - Thorax (3 segments, 6 legs, 2 wings)
+  - Abdomen (8 segments)
+-->
+<mujoco model="drosophila_melanogaster">
+  <compiler angle="radian" autolimits="true"/>
+
+  <!-- Simulation options -->
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="RK4">
+    <flag contact="enable" warmstart="enable"/>
+  </option>
+
+  <!-- Default values -->
+  <default>
+    <joint armature="0.001" damping="0.1" limited="true"/>
+    <geom contype="1" conaffinity="1" friction="0.8 0.02 0.01" solimp="0.9 0.95 0.001"/>
+    <motor ctrllimited="true"/>
+  </default>
+
+  <!-- Assets for visualization -->
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.2 0.3 0.2" rgb2="0.1 0.2 0.1" width="512" height="512"/>
+    <material name="grid_mat" texture="grid" texrepeat="8 8" reflectance="0.1"/>
+    <material name="exo_mat" rgba="0.4 0.3 0.2 1"/>
+    <material name="wing_mat" rgba="0.9 0.9 0.9 0.3"/>
+    <material name="eye_mat" rgba="0.8 0.2 0.1 1"/>
+  </asset>
+
+  <worldbody>
+    <!-- Ground plane -->
+    <geom name="floor" type="plane" size="10 10 0.1" material="grid_mat"/>
+
+    <!-- Drosophila body (scaled 1000x) -->
+    <body name="thorax" pos="0 0 2.5">
+      <!-- Free joint for 6-DOF body motion -->
+      <freejoint name="root"/>
+
+      <!-- Thorax: main body mass ~0.5kg scaled -->
+      <inertial pos="0 0 0" mass="0.5" diaginertia="0.001 0.002 0.0015"/>
+      <geom name="thorax" type="ellipsoid" size="0.6 0.4 0.35" material="exo_mat"/>
+
+      <!-- ========== HEAD ========== -->
+      <body name="head" pos="0.9 0 0">
+        <joint name="neck_pitch" type="hinge" axis="0 1 0" range="-0.5 0.5"/>
+        <inertial pos="0 0 0" mass="0.05" diaginertia="0.0002 0.0002 0.00015"/>
+        <geom name="head" type="sphere" size="0.25" material="exo_mat"/>
+
+        <!-- Compound eyes -->
+        <geom name="left_eye" type="sphere" size="0.15" pos="0.1 0.15 0.05" material="eye_mat"/>
+        <geom name="right_eye" type="sphere" size="0.15" pos="0.1 -0.15 0.05" material="eye_mat"/>
+
+        <!-- Antennae -->
+        <body name="left_antenna" pos="0.2 0.1 0.15">
+          <joint name="antenna_L_yaw" type="hinge" axis="0 0 1" range="-1.0 1.0"/>
+          <inertial pos="0 0 0.15" mass="0.001" diaginertia="1e-8 1e-8 1e-8"/>
+          <geom name="antenna_L" type="capsule" size="0.02 0.3" euler="0 1.5 0" material="exo_mat"/>
+        </body>
+        <body name="right_antenna" pos="0.2 -0.1 0.15">
+          <joint name="antenna_R_yaw" type="hinge" axis="0 0 1" range="-1.0 1.0"/>
+          <inertial pos="0 0 0.15" mass="0.001" diaginertia="1e-8 1e-8 1e-8"/>
+          <geom name="antenna_R" type="capsule" size="0.02 0.3" euler="0 1.5 0" material="exo_mat"/>
+        </body>
+
+        <!-- Proboscis -->
+        <body name="proboscis" pos="0.25 0 -0.1">
+          <joint name="proboscis_extend" type="slide" axis="1 0 0" range="0 0.5"/>
+          <inertial pos="0.1 0 0" mass="0.001" diaginertia="1e-8 1e-8 1e-8"/>
+          <geom name="proboscis" type="capsule" size="0.03 0.2" material="exo_mat"/>
+        </body>
+      </body>
+
+      <!-- ========== WINGS ========== -->
+      <body name="left_wing" pos="0 0.35 0.1">
+        <joint name="wing_L" type="hinge" axis="0 0.03 1" range="-2.5 2.5" damping="0.01"/>
+        <inertial pos="1.0 0 0" mass="0.01" diaginertia="0.001 1e-6 0.001"/>
+        <geom name="wing_L" type="box" size="1.5 0.6 0.01" pos="1.0 0 0" material="wing_mat"/>
+      </body>
+      <body name="right_wing" pos="0 -0.35 0.1">
+        <joint name="wing_R" type="hinge" axis="0 -0.03 1" range="-2.5 2.5" damping="0.01"/>
+        <inertial pos="1.0 0 0" mass="0.01" diaginertia="0.001 1e-6 0.001"/>
+        <geom name="wing_R" type="box" size="1.5 0.6 0.01" pos="1.0 0 0" material="wing_mat"/>
+      </body>
+
+      <!-- ========== LEGS ========== -->
+      <!-- LEFT FRONT LEG (L1) -->
+      <body name="leg_L1_coxa" pos="0.4 0.2 -0.2">
+        <joint name="C1_L_yaw" type="hinge" axis="0 0 1" range="-1.2 1.2"/>
+        <joint name="C1_L_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+        <inertial pos="0 0.1 0" mass="0.01" diaginertia="1e-6 1e-6 1e-6"/>
+        <geom name="C1_L" type="capsule" size="0.03 0.08" fromto="0 0 0 0 0.15 0" material="exo_mat"/>
+
+        <body name="leg_L1_femur" pos="0 0.15 0">
+          <joint name="F1_L_pitch" type="hinge" axis="0 1 0" range="-0.3 2.0"/>
+          <inertial pos="0 0.15 0" mass="0.015" diaginertia="4e-6 1e-7 4e-6"/>
+          <geom name="F1_L" type="capsule" size="0.03 0.18" fromto="0 0 0 0 0.3 0" material="exo_mat"/>
+
+          <body name="leg_L1_tibia" pos="0 0.3 0">
+            <joint name="T1_L_pitch" type="hinge" axis="0 1 0" range="-2.0 0.3"/>
+            <inertial pos="0 0.1 0" mass="0.01" diaginertia="2e-6 1e-7 2e-6"/>
+            <geom name="T1_L" type="capsule" size="0.02 0.15" fromto="0 0 0 0 0.2 0" material="exo_mat"/>
+
+            <body name="leg_L1_tarsus" pos="0 0.2 0">
+              <joint name="Ta1_L_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+              <inertial pos="0 0.06 0" mass="0.005" diaginertia="1e-6 1e-7 1e-6"/>
+              <geom name="Ta1_L" type="capsule" size="0.01 0.1" fromto="0 0 0 0 0.12 0" material="exo_mat"/>
+              <site name="touch_L1_site" pos="0 0.12 0" size="0.02"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- LEFT MIDDLE LEG (L2) -->
+      <body name="leg_L2_coxa" pos="0 0.25 -0.25">
+        <joint name="C2_L_yaw" type="hinge" axis="0 0 1" range="-1.2 1.2"/>
+        <joint name="C2_L_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+        <inertial pos="0 0.1 0" mass="0.01" diaginertia="1e-6 1e-6 1e-6"/>
+        <geom name="C2_L" type="capsule" size="0.03 0.08" fromto="0 0 0 0 0.15 0" material="exo_mat"/>
+
+        <body name="leg_L2_femur" pos="0 0.15 0">
+          <joint name="F2_L_pitch" type="hinge" axis="0 1 0" range="-0.3 2.0"/>
+          <inertial pos="0 0.18 0" mass="0.018" diaginertia="5e-6 1e-7 5e-6"/>
+          <geom name="F2_L" type="capsule" size="0.03 0.22" fromto="0 0 0 0 0.35 0" material="exo_mat"/>
+
+          <body name="leg_L2_tibia" pos="0 0.35 0">
+            <joint name="T2_L_pitch" type="hinge" axis="0 1 0" range="-2.0 0.3"/>
+            <inertial pos="0 0.12 0" mass="0.012" diaginertia="3e-6 1e-7 3e-6"/>
+            <geom name="T2_L" type="capsule" size="0.02 0.18" fromto="0 0 0 0 0.25 0" material="exo_mat"/>
+
+            <body name="leg_L2_tarsus" pos="0 0.25 0">
+              <joint name="Ta2_L_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+              <inertial pos="0 0.075 0" mass="0.006" diaginertia="1e-6 1e-7 1e-6"/>
+              <geom name="Ta2_L" type="capsule" size="0.01 0.12" fromto="0 0 0 0 0.15 0" material="exo_mat"/>
+              <site name="touch_L2_site" pos="0 0.15 0" size="0.02"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- LEFT HIND LEG (L3) -->
+      <body name="leg_L3_coxa" pos="-0.4 0.25 -0.25">
+        <joint name="C3_L_yaw" type="hinge" axis="0 0 1" range="-1.2 1.2"/>
+        <joint name="C3_L_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+        <inertial pos="0 0.1 0" mass="0.012" diaginertia="1e-6 1e-6 1e-6"/>
+        <geom name="C3_L" type="capsule" size="0.03 0.1" fromto="0 0 0 0 0.18 0" material="exo_mat"/>
+
+        <body name="leg_L3_femur" pos="0 0.18 0">
+          <joint name="F3_L_pitch" type="hinge" axis="0 1 0" range="-0.3 2.0"/>
+          <inertial pos="0 0.2 0" mass="0.02" diaginertia="6e-6 1e-7 6e-6"/>
+          <geom name="F3_L" type="capsule" size="0.03 0.25" fromto="0 0 0 0 0.4 0" material="exo_mat"/>
+
+          <body name="leg_L3_tibia" pos="0 0.4 0">
+            <joint name="T3_L_pitch" type="hinge" axis="0 1 0" range="-2.0 0.3"/>
+            <inertial pos="0 0.14 0" mass="0.014" diaginertia="4e-6 1e-7 4e-6"/>
+            <geom name="T3_L" type="capsule" size="0.02 0.2" fromto="0 0 0 0 0.28 0" material="exo_mat"/>
+
+            <body name="leg_L3_tarsus" pos="0 0.28 0">
+              <joint name="Ta3_L_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+              <inertial pos="0 0.08 0" mass="0.007" diaginertia="2e-6 1e-7 2e-6"/>
+              <geom name="Ta3_L" type="capsule" size="0.01 0.14" fromto="0 0 0 0 0.16 0" material="exo_mat"/>
+              <site name="touch_L3_site" pos="0 0.16 0" size="0.02"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- RIGHT FRONT LEG (R1) -->
+      <body name="leg_R1_coxa" pos="0.4 -0.2 -0.2">
+        <joint name="C1_R_yaw" type="hinge" axis="0 0 1" range="-1.2 1.2"/>
+        <joint name="C1_R_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+        <inertial pos="0 -0.1 0" mass="0.01" diaginertia="1e-6 1e-6 1e-6"/>
+        <geom name="C1_R" type="capsule" size="0.03 0.08" fromto="0 0 0 0 -0.15 0" material="exo_mat"/>
+
+        <body name="leg_R1_femur" pos="0 -0.15 0">
+          <joint name="F1_R_pitch" type="hinge" axis="0 1 0" range="-0.3 2.0"/>
+          <inertial pos="0 -0.15 0" mass="0.015" diaginertia="4e-6 1e-7 4e-6"/>
+          <geom name="F1_R" type="capsule" size="0.03 0.18" fromto="0 0 0 0 -0.3 0" material="exo_mat"/>
+
+          <body name="leg_R1_tibia" pos="0 -0.3 0">
+            <joint name="T1_R_pitch" type="hinge" axis="0 1 0" range="-2.0 0.3"/>
+            <inertial pos="0 -0.1 0" mass="0.01" diaginertia="2e-6 1e-7 2e-6"/>
+            <geom name="T1_R" type="capsule" size="0.02 0.15" fromto="0 0 0 0 -0.2 0" material="exo_mat"/>
+
+            <body name="leg_R1_tarsus" pos="0 -0.2 0">
+              <joint name="Ta1_R_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+              <inertial pos="0 -0.06 0" mass="0.005" diaginertia="1e-6 1e-7 1e-6"/>
+              <geom name="Ta1_R" type="capsule" size="0.01 0.1" fromto="0 0 0 0 -0.12 0" material="exo_mat"/>
+              <site name="touch_R1_site" pos="0 -0.12 0" size="0.02"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- RIGHT MIDDLE LEG (R2) -->
+      <body name="leg_R2_coxa" pos="0 -0.25 -0.25">
+        <joint name="C2_R_yaw" type="hinge" axis="0 0 1" range="-1.2 1.2"/>
+        <joint name="C2_R_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+        <inertial pos="0 -0.1 0" mass="0.01" diaginertia="1e-6 1e-6 1e-6"/>
+        <geom name="C2_R" type="capsule" size="0.03 0.08" fromto="0 0 0 0 -0.15 0" material="exo_mat"/>
+
+        <body name="leg_R2_femur" pos="0 -0.15 0">
+          <joint name="F2_R_pitch" type="hinge" axis="0 1 0" range="-0.3 2.0"/>
+          <inertial pos="0 -0.18 0" mass="0.018" diaginertia="5e-6 1e-7 5e-6"/>
+          <geom name="F2_R" type="capsule" size="0.03 0.22" fromto="0 0 0 0 -0.35 0" material="exo_mat"/>
+
+          <body name="leg_R2_tibia" pos="0 -0.35 0">
+            <joint name="T2_R_pitch" type="hinge" axis="0 1 0" range="-2.0 0.3"/>
+            <inertial pos="0 -0.12 0" mass="0.012" diaginertia="3e-6 1e-7 3e-6"/>
+            <geom name="T2_R" type="capsule" size="0.02 0.18" fromto="0 0 0 0 -0.25 0" material="exo_mat"/>
+
+            <body name="leg_R2_tarsus" pos="0 -0.25 0">
+              <joint name="Ta2_R_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+              <inertial pos="0 -0.075 0" mass="0.006" diaginertia="1e-6 1e-7 1e-6"/>
+              <geom name="Ta2_R" type="capsule" size="0.01 0.12" fromto="0 0 0 0 -0.15 0" material="exo_mat"/>
+              <site name="touch_R2_site" pos="0 -0.15 0" size="0.02"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- RIGHT HIND LEG (R3) -->
+      <body name="leg_R3_coxa" pos="-0.4 -0.25 -0.25">
+        <joint name="C3_R_yaw" type="hinge" axis="0 0 1" range="-1.2 1.2"/>
+        <joint name="C3_R_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+        <inertial pos="0 -0.1 0" mass="0.012" diaginertia="1e-6 1e-6 1e-6"/>
+        <geom name="C3_R" type="capsule" size="0.03 0.1" fromto="0 0 0 0 -0.18 0" material="exo_mat"/>
+
+        <body name="leg_R3_femur" pos="0 -0.18 0">
+          <joint name="F3_R_pitch" type="hinge" axis="0 1 0" range="-0.3 2.0"/>
+          <inertial pos="0 -0.2 0" mass="0.02" diaginertia="6e-6 1e-7 6e-6"/>
+          <geom name="F3_R" type="capsule" size="0.03 0.25" fromto="0 0 0 0 -0.4 0" material="exo_mat"/>
+
+          <body name="leg_R3_tibia" pos="0 -0.4 0">
+            <joint name="T3_R_pitch" type="hinge" axis="0 1 0" range="-2.0 0.3"/>
+            <inertial pos="0 -0.14 0" mass="0.014" diaginertia="4e-6 1e-7 4e-6"/>
+            <geom name="T3_R" type="capsule" size="0.02 0.2" fromto="0 0 0 0 -0.28 0" material="exo_mat"/>
+
+            <body name="leg_R3_tarsus" pos="0 -0.28 0">
+              <joint name="Ta3_R_pitch" type="hinge" axis="0 1 0" range="-0.5 1.0"/>
+              <inertial pos="0 -0.08 0" mass="0.007" diaginertia="2e-6 1e-7 2e-6"/>
+              <geom name="Ta3_R" type="capsule" size="0.01 0.14" fromto="0 0 0 0 -0.16 0" material="exo_mat"/>
+              <site name="touch_R3_site" pos="0 -0.16 0" size="0.02"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ========== ABDOMEN ========== -->
+      <body name="abdomen" pos="-0.8 0 0">
+        <joint name="abdomen_pitch" type="hinge" axis="0 1 0" range="-0.3 0.3"/>
+        <inertial pos="-0.4 0 0" mass="0.3" diaginertia="0.0008 0.0005 0.0006"/>
+        <geom name="abdomen" type="ellipsoid" size="0.8 0.35 0.3" pos="-0.4 0 0" material="exo_mat"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- ========== ACTUATORS ========== -->
+  <actuator>
+    <!-- Wing motors -->
+    <motor name="wing_L_motor" joint="wing_L" ctrllimited="true" ctrlrange="-1 1" gear="0.1"/>
+    <motor name="wing_R_motor" joint="wing_R" ctrllimited="true" ctrlrange="-1 1" gear="0.1"/>
+
+    <!-- Left front leg (L1) -->
+    <motor name="C1_L_motor" joint="C1_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="F1_L_motor" joint="F1_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="T1_L_motor" joint="T1_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.03"/>
+    <motor name="Ta1_L_motor" joint="Ta1_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.02"/>
+
+    <!-- Left middle leg (L2) -->
+    <motor name="C2_L_motor" joint="C2_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="F2_L_motor" joint="F2_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="T2_L_motor" joint="T2_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.03"/>
+    <motor name="Ta2_L_motor" joint="Ta2_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.02"/>
+
+    <!-- Left hind leg (L3) -->
+    <motor name="C3_L_motor" joint="C3_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="F3_L_motor" joint="F3_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="T3_L_motor" joint="T3_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.03"/>
+    <motor name="Ta3_L_motor" joint="Ta3_L_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.02"/>
+
+    <!-- Right front leg (R1) -->
+    <motor name="C1_R_motor" joint="C1_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="F1_R_motor" joint="F1_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="T1_R_motor" joint="T1_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.03"/>
+    <motor name="Ta1_R_motor" joint="Ta1_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.02"/>
+
+    <!-- Right middle leg (R2) -->
+    <motor name="C2_R_motor" joint="C2_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="F2_R_motor" joint="F2_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="T2_R_motor" joint="T2_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.03"/>
+    <motor name="Ta2_R_motor" joint="Ta2_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.02"/>
+
+    <!-- Right hind leg (R3) -->
+    <motor name="C3_R_motor" joint="C3_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="F3_R_motor" joint="F3_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.05"/>
+    <motor name="T3_R_motor" joint="T3_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.03"/>
+    <motor name="Ta3_R_motor" joint="Ta3_R_pitch" ctrllimited="true" ctrlrange="-1 1" gear="0.02"/>
+  </actuator>
+
+  <!-- ========== SENSORS ========== -->
+  <sensor>
+    <!-- Body position/velocity -->
+    <framepos name="thorax_pos" objtype="body" objname="thorax"/>
+    <framequat name="thorax_quat" objtype="body" objname="thorax"/>
+    <framelinvel name="thorax_vel" objtype="body" objname="thorax"/>
+    <frameangvel name="thorax_angvel" objtype="body" objname="thorax"/>
+
+    <!-- Wing joint positions -->
+    <jointpos name="wing_L_pos" joint="wing_L"/>
+    <jointpos name="wing_R_pos" joint="wing_R"/>
+
+    <!-- Leg joint positions (all legs) -->
+    <jointpos name="C1_L_pos" joint="C1_L_pitch"/>
+    <jointpos name="F1_L_pos" joint="F1_L_pitch"/>
+    <jointpos name="T1_L_pos" joint="T1_L_pitch"/>
+    <jointpos name="C2_L_pos" joint="C2_L_pitch"/>
+    <jointpos name="F2_L_pos" joint="F2_L_pitch"/>
+    <jointpos name="T2_L_pos" joint="T2_L_pitch"/>
+    <jointpos name="C3_L_pos" joint="C3_L_pitch"/>
+    <jointpos name="F3_L_pos" joint="F3_L_pitch"/>
+    <jointpos name="T3_L_pos" joint="T3_L_pitch"/>
+
+    <jointpos name="C1_R_pos" joint="C1_R_pitch"/>
+    <jointpos name="F1_R_pos" joint="F1_R_pitch"/>
+    <jointpos name="T1_R_pos" joint="T1_R_pitch"/>
+    <jointpos name="C2_R_pos" joint="C2_R_pitch"/>
+    <jointpos name="F2_R_pos" joint="F2_R_pitch"/>
+    <jointpos name="T2_R_pos" joint="T2_R_pitch"/>
+    <jointpos name="C3_R_pos" joint="C3_R_pitch"/>
+    <jointpos name="F3_R_pos" joint="F3_R_pitch"/>
+    <jointpos name="T3_R_pos" joint="T3_R_pitch"/>
+
+    <!-- Tarsus joint positions -->
+    <jointpos name="Ta1_L_pos" joint="Ta1_L_pitch"/>
+    <jointpos name="Ta2_L_pos" joint="Ta2_L_pitch"/>
+    <jointpos name="Ta3_L_pos" joint="Ta3_L_pitch"/>
+    <jointpos name="Ta1_R_pos" joint="Ta1_R_pitch"/>
+    <jointpos name="Ta2_R_pos" joint="Ta2_R_pitch"/>
+    <jointpos name="Ta3_R_pos" joint="Ta3_R_pitch"/>
+
+    <!-- Touch sensors on tarsi -->
+    <touch name="touch_L1" site="touch_L1_site"/>
+    <touch name="touch_L2" site="touch_L2_site"/>
+    <touch name="touch_L3" site="touch_L3_site"/>
+    <touch name="touch_R1" site="touch_R1_site"/>
+    <touch name="touch_R2" site="touch_R2_site"/>
+    <touch name="touch_R3" site="touch_R3_site"/>
+  </sensor>
+</mujoco>

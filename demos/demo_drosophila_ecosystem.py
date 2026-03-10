@@ -121,12 +121,16 @@ if _USING_STUBS:
 
         def __init__(
             self,
-            n_neurons: int = 800,
+            scale: str = "small",
             device: str = "auto",
             seed: int = 42,
         ):
             torch.manual_seed(seed)
+            n_neurons = self.SCALES.get(scale, self.SCALES["small"])[0]
             self.n_neurons = n_neurons
+            self.n_total = n_neurons
+            self.scale = scale
+            self.seed = seed
             self.brain = CUDAMolecularBrain(n_neurons, device=device)
             self.device = self.brain.device
 
@@ -168,6 +172,43 @@ if _USING_STUBS:
                                          device=self.device)
             self._all_t = torch.arange(n_neurons, dtype=torch.int64,
                                        device=self.device)
+
+            # ------ Lateralized tensors (left/right halves for bilateral wiring) ------
+            # These enable left-eye→left-DN→left-VNC style pathways.
+            # Split each region into left/right halves.
+            def _split_half(ids):
+                n = len(ids)
+                mid = n // 2
+                return ids[:mid], ids[mid:]
+
+            al_l, al_r = _split_half(self.antennal_lobe_ids)
+            optic_l, optic_r = _split_half(self.optic_lobe_ids)
+            cx_l, cx_r = _split_half(self.central_complex_ids)
+            motor_l, motor_r = _split_half(self.motor_ids)
+            kc_l, kc_r = _split_half(self.kenyon_cell_ids)
+            mbon_l, mbon_r = _split_half(self.mb_output_ids)
+
+            self._al_left_t = torch.tensor(al_l, dtype=torch.int64, device=self.device)
+            self._al_right_t = torch.tensor(al_r, dtype=torch.int64, device=self.device)
+            self._optic_left_t = torch.tensor(optic_l, dtype=torch.int64, device=self.device)
+            self._optic_right_t = torch.tensor(optic_r, dtype=torch.int64, device=self.device)
+            self._cx_left_t = torch.tensor(cx_l, dtype=torch.int64, device=self.device)
+            self._cx_right_t = torch.tensor(cx_r, dtype=torch.int64, device=self.device)
+            self._motor_left_t = torch.tensor(motor_l, dtype=torch.int64, device=self.device)
+            self._motor_right_t = torch.tensor(motor_r, dtype=torch.int64, device=self.device)
+            self._kc_left_t = torch.tensor(kc_l, dtype=torch.int64, device=self.device)
+            self._kc_right_t = torch.tensor(kc_r, dtype=torch.int64, device=self.device)
+            self._mbon_left_t = torch.tensor(mbon_l, dtype=torch.int64, device=self.device)
+            self._mbon_right_t = torch.tensor(mbon_r, dtype=torch.int64, device=self.device)
+
+            # For DrosophilaMotor: VNC = motor neurons
+            self._t_vnc_left = self._motor_left_t
+            self._t_vnc_right = self._motor_right_t
+
+            # For chemotaxis: descending neurons = central complex (navigation center)
+            self._dn_left_t = self._cx_left_t
+            self._dn_right_t = self._cx_right_t
+            self._dn_t = self._cx_t
 
             # Wire basic circuits
             self._wire(seed)
@@ -254,8 +295,7 @@ if _USING_STUBS:
         @classmethod
         def build(cls, scale: str = "small", device: str = "auto",
                   seed: int = 42) -> "DrosophilaBrain":
-            n = cls.SCALES.get(scale, cls.SCALES["small"])[0]
-            return cls(n_neurons=n, device=device, seed=seed)
+            return cls(scale=scale, device=device, seed=seed)
 
     # ------------------------------------------------------------------
     # Stub: DrosophilaBody
@@ -560,12 +600,13 @@ class DrosophilaSensory:
             glom_right_t = self.brain._al_right_t[start_r:end_r]
 
             # Left antenna → left glomerulus (tonic: proportional to concentration)
-            left_current = min(20.0, odor_left * 10.0)
+            # Increased strength for reliable chemotaxis (was 10x, now 25x)
+            left_current = min(50.0, odor_left * 25.0)
             if left_current > 0.1 and len(glom_left_t) > 0:
                 b.external_current[glom_left_t] += left_current
 
             # Right antenna → right glomerulus
-            right_current = min(20.0, odor_right * 10.0)
+            right_current = min(50.0, odor_right * 25.0)
             if right_current > 0.1 and len(glom_right_t) > 0:
                 b.external_current[glom_right_t] += right_current
 
@@ -573,17 +614,33 @@ class DrosophilaSensory:
             # odor first appears, critical for conditioning)
             d_odor = odor_center - prev
             if d_odor > 0.005:
-                phasic = min(50.0, d_odor * 1000.0)
+                phasic = min(60.0, d_odor * 1200.0)
                 if len(glom_left_t) > 0:
                     b.external_current[glom_left_t] += phasic
                 if len(glom_right_t) > 0:
                     b.external_current[glom_right_t] += phasic
             elif d_odor < -0.005:
-                off_phasic = min(30.0, abs(d_odor) * 500.0) * 0.3
+                off_phasic = min(40.0, abs(d_odor) * 600.0) * 0.3
                 if len(glom_left_t) > 0:
                     b.external_current[glom_left_t] += off_phasic
                 if len(glom_right_t) > 0:
                     b.external_current[glom_right_t] += off_phasic
+
+            # FAST CHEMOTAXIS PATHWAY: Direct AL → DN for rapid odor tracking
+            # Real flies have direct lateral horn → DN pathways for innate chemotaxis
+            # (avoidance, attraction) that bypass the mushroom body. This creates
+            # rapid turning responses to bilateral odor asymmetry.
+            # (Rytz et al. 2013, Sass et al. 2020)
+            odor_asymmetry = (odor_left - odor_right) / max(0.01, max(odor_left, odor_right))
+            if abs(odor_asymmetry) > 0.1 and (odor_left > 0.05 or odor_right > 0.05):
+                # Asymmetric DN drive: more odor on left → turn right (toward source)
+                chemotaxis_current = abs(odor_asymmetry) * 40.0 * max(odor_left, odor_right)
+                if odor_left > odor_right:
+                    # Left antenna detects more → turn right (via right DN)
+                    b.external_current[self.brain._dn_right_t] += chemotaxis_current
+                else:
+                    # Right antenna detects more → turn left
+                    b.external_current[self.brain._dn_left_t] += chemotaxis_current
 
             intensities[f"odor_{compound}_L"] = float(left_current)
             intensities[f"odor_{compound}_R"] = float(right_current)
@@ -612,34 +669,109 @@ class DrosophilaSensory:
         intensities["light_R"] = float(right_visual)
         intensities["light_gradient"] = float(light_left - light_right)
 
-        # ------- Thermosensory (bilateral antennae → left/right AL thermo) -------
+        # ------- Thermosensory (TRP channels: hot dTRPA1 + cold Brivido) -------
+        # Real Drosophila thermotaxis uses SEPARATE hot and cold pathways:
+        #   - dTRPA1 (TRPA1): activated by T > 25C, drives heat avoidance
+        #   - Brivido (Brv): activated by T < 22C, drives cold avoidance
+        # These are SEPARATE neuron populations that project to different
+        # brain regions (Hamada et al. 2008, Gallio et al. 2011).
+        #
+        # The key: each antenna has BOTH hot and cold sensors. When one side
+        # is more aversive (hotter OR colder), that side fires more, creating
+        # asymmetric motor output via the lateralized wiring:
+        #   left thermo → left DN → left VNC → turn right (away from aversive)
+        #   right thermo → right DN → right VNC → turn left
+        #
+        # We also add TEMPORAL DERIVATIVE sensing (dT/dt) to detect temperature
+        # change even when spatial gradient is minimal. This mimics real
+        # thermosensory neurons that respond to both absolute T and T change.
+
         temp_left = world.temperature_at(left_ax, left_ay)
         temp_right = world.temperature_at(right_ax, right_ay)
         temp_center = world.temperature_at(body.x, body.y)
+        prev_temp = self._prev_temp
         self._prev_temp = temp_center
 
-        # Temperature-sensitive neurons respond proportionally to deviation
-        # from preferred temperature. More deviation = more current.
-        left_temp_err = abs(temp_left - PREFERRED_TEMP_C)
-        right_temp_err = abs(temp_right - PREFERRED_TEMP_C)
-
-        # Inject into thermosensory subset of AL (last 1/5 of each side)
+        # Thermosensory subset of AL (last 1/5 of each side)
         n_al_half = len(self.brain._al_left_t)
-        thermo_n = max(2, n_al_half // 5)
+        thermo_n = max(4, n_al_half // 5)
         thermo_left_t = self.brain._al_left_t[-thermo_n:]
         thermo_right_t = self.brain._al_right_t[-thermo_n:]
 
-        # More current when further from preferred (drives aversive turning)
-        left_thermo_current = min(30.0, left_temp_err * 5.0)
-        right_thermo_current = min(30.0, right_temp_err * 5.0)
-        if left_thermo_current > 0.5:
-            b.external_current[thermo_left_t] += left_thermo_current
-        if right_thermo_current > 0.5:
-            b.external_current[thermo_right_t] += right_thermo_current
+        # Split thermo population: first half = hot (TRPA1), second half = cold (Brv)
+        hot_left_t = thermo_left_t[:thermo_n//2]
+        hot_right_t = thermo_right_t[:thermo_n//2]
+        cold_left_t = thermo_left_t[thermo_n//2:]
+        cold_right_t = thermo_right_t[thermo_n//2:]
+
+        # Hot-sensing (TRPA1): fire when T > 24C, proportional to heat
+        # Threshold ~25C with sigmoid activation (biological TRPA1 kinetics)
+        heat_threshold = 25.0  # dTRPA1 activation threshold
+        left_hot = max(0.0, (temp_left - heat_threshold) / 10.0)  # normalized 0-1
+        right_hot = max(0.0, (temp_right - heat_threshold) / 10.0)
+        # Sigmoid scaling for smooth activation
+        left_hot = left_hot * left_hot / (left_hot + 0.1) if left_hot > 0 else 0.0
+        right_hot = right_hot * right_hot / (right_hot + 0.1) if right_hot > 0 else 0.0
+
+        # Cold-sensing (Brivido): fire when T < 24C, proportional to cold
+        cold_threshold = 23.0  # Brivido activation threshold
+        left_cold = max(0.0, (cold_threshold - temp_left) / 10.0)
+        right_cold = max(0.0, (cold_threshold - temp_right) / 10.0)
+        left_cold = left_cold * left_cold / (left_cold + 0.1) if left_cold > 0 else 0.0
+        right_cold = right_cold * right_cold / (right_cold + 0.1) if right_cold > 0 else 0.0
+
+        # Current injection: hot and cold sensors drive their respective neurons
+        hot_current_scale = 40.0   # strong aversive drive
+        cold_current_scale = 35.0  # slightly weaker (flies tolerate cold better)
+
+        left_hot_current = min(50.0, left_hot * hot_current_scale)
+        right_hot_current = min(50.0, right_hot * hot_current_scale)
+        left_cold_current = min(45.0, left_cold * cold_current_scale)
+        right_cold_current = min(45.0, right_cold * cold_current_scale)
+
+        if left_hot_current > 0.5 and len(hot_left_t) > 0:
+            b.external_current[hot_left_t] += left_hot_current
+        if right_hot_current > 0.5 and len(hot_right_t) > 0:
+            b.external_current[hot_right_t] += right_hot_current
+        if left_cold_current > 0.5 and len(cold_left_t) > 0:
+            b.external_current[cold_left_t] += left_cold_current
+        if right_cold_current > 0.5 and len(cold_right_t) > 0:
+            b.external_current[cold_right_t] += right_cold_current
+
+        # TEMPORAL DERIVATIVE: dT/dt sensing
+        # If temperature is increasing (moving toward hot), inject extra current
+        # to the hot sensors. If decreasing, inject to cold sensors.
+        # This provides navigational signal even without spatial gradient.
+        dT = temp_center - prev_temp
+        dt_threshold = 0.05  # 0.05C change is detectable
+        if dT > dt_threshold:  # warming up (bad if already warm)
+            if temp_center > heat_threshold and len(hot_left_t) > 0:
+                # Warming while already hot = strong aversive
+                b.external_current[hot_left_t] += 30.0
+                b.external_current[hot_right_t] += 30.0
+        elif dT < -dt_threshold:  # cooling down (bad if already cold)
+            if temp_center < cold_threshold and len(cold_left_t) > 0:
+                b.external_current[cold_left_t] += 25.0
+                b.external_current[cold_right_t] += 25.0
+
+        # Comfort signal: weak tonic drive when near preferred temp
+        # This provides a "reward" signal that keeps the fly in the comfort zone
+        comfort_error = abs(temp_center - PREFERRED_TEMP_C)
+        if comfort_error < 2.0:  # within comfort zone
+            comfort = (2.0 - comfort_error) * 5.0
+            # Comfort suppresses aversive thermo activity (lateral inhibition)
+            # This is implemented as negative current (hyperpolarization)
+            if len(thermo_left_t) > 0:
+                b.external_current[thermo_left_t] -= comfort * 0.5
+            if len(thermo_right_t) > 0:
+                b.external_current[thermo_right_t] -= comfort * 0.5
 
         intensities["temperature"] = float(temp_center)
-        intensities["temp_err_L"] = float(left_temp_err)
-        intensities["temp_err_R"] = float(right_temp_err)
+        intensities["temp_hot_L"] = float(left_hot_current)
+        intensities["temp_hot_R"] = float(right_hot_current)
+        intensities["temp_cold_L"] = float(left_cold_current)
+        intensities["temp_cold_R"] = float(right_cold_current)
+        intensities["dT_dt"] = float(dT)
 
         # ------- Food / gustatory -------
         food = world.food_at(body.x, body.y)
@@ -769,7 +901,7 @@ class OlfactoryConditioningProtocol:
       Present CS+ vs CS- and compare MB output activity.
     """
 
-    def __init__(self, brain: DrosophilaBrain, da_amount: float = 200.0):
+    def __init__(self, brain: DrosophilaBrain, da_amount: float = 500.0):
         self.brain = brain
         self.da_amount = da_amount
         self.dev = brain.device
@@ -795,9 +927,13 @@ class OlfactoryConditioningProtocol:
             # Encode current environment (odor at fly's position)
             sensory.encode(world, body)
 
-            if reward and s % 3 == 0:
-                # DA reward to mushroom body (mimics PPL1/PAM DA neurons)
-                b.nt_conc[self.brain._kc_t, NT_DA] += self.da_amount
+            if reward and s % 2 == 0:
+                # DA reward to MBON compartment (mimics PAM/PPL1 DA neurons)
+                # DA must reach POST-synaptic side of KC→MBON synapses
+                # because three-factor STDP checks da_post (line 796 in cuda_backend)
+                b.nt_conc[self.brain._mbon_t, NT_DA] += self.da_amount
+                # Also DA at KC for AL→KC plasticity
+                b.nt_conc[self.brain._kc_t, NT_DA] += self.da_amount * 0.3
 
             # Pulsed tonic drive
             if s % 2 == 0:
@@ -846,26 +982,35 @@ class FreeEnergyNavigation:
         self.brain = brain
         self.dev = brain.device
 
-    def deliver_approach(self, n_steps: int = 30,
-                         intensity: float = 40.0) -> None:
-        """Structured feedback: synchronized pulse to all neurons."""
+    def deliver_approach(self, n_steps: int = 15,
+                         intensity: float = 50.0) -> None:
+        """Structured feedback: synchronized pulse to all neurons.
+
+        This is the "reward" signal — coherent, predictable input that
+        reduces free energy by confirming the brain's expectations.
+        """
         b = self.brain.brain
-        # NE boost for STDP enhancement
-        b.nt_conc[self.brain._kc_t, NT_NE] += 150.0
+        # NE boost for STDP enhancement (reinforces approach behavior)
+        b.nt_conc[self.brain._kc_t, NT_NE] += 200.0
+        b.nt_conc[self.brain._cx_t, NT_DA] += 100.0  # DA to central complex for reward
         for s in range(n_steps):
             if s % 2 == 0:
                 b.external_current[self.brain._all_t] += intensity
             self.brain.step()
 
-    def deliver_failure(self, n_steps: int = 50) -> None:
-        """Unstructured feedback: random noise to random subsets."""
+    def deliver_failure(self, n_steps: int = 25) -> None:
+        """Unstructured feedback: random noise to random subsets.
+
+        This is the "punishment" signal — unpredictable input that
+        increases free energy, indicating the brain's predictions failed.
+        """
         b = self.brain.brain
         n_all = self.brain.n_total
         for s in range(n_steps):
-            mask = torch.rand(n_all, device=self.dev) < 0.3
+            mask = torch.rand(n_all, device=self.dev) < 0.4
             active = self.brain._all_t[mask]
             if active.numel() > 0:
-                noise = torch.rand(active.numel(), device=self.dev) * 35.0
+                noise = torch.rand(active.numel(), device=self.dev) * 45.0
                 b.external_current[active] += noise
             self.brain.step()
 
@@ -1014,7 +1159,7 @@ def exp_olfactory_learning(
     scale: str = "small",
     device: str = "auto",
     seed: int = 42,
-    n_train_episodes: int = 30,
+    n_train_episodes: int = 50,
     n_test_trials: int = 10,
 ) -> Dict[str, Any]:
     """Classical olfactory conditioning -- Tully & Quinn (1985).
@@ -1049,7 +1194,7 @@ def exp_olfactory_learning(
     body = DrosophilaBody(x=50.0, y=50.0)
     sensory = DrosophilaSensory(brain)
     motor = DrosophilaMotor(brain)
-    protocol = OlfactoryConditioningProtocol(brain, da_amount=200.0)
+    protocol = OlfactoryConditioningProtocol(brain, da_amount=500.0)
 
     # Warmup
     _warmup(brain)
@@ -1069,15 +1214,15 @@ def exp_olfactory_learning(
         body.x = 48.0 + rng.uniform(-5, 5)
         body.y = 48.0 + rng.uniform(-5, 5)
         protocol.train_trial(world_csplus, body, sensory, motor,
-                             reward=True, n_steps=40)
-        brain.run(20)
+                             reward=True, n_steps=60)
+        brain.run(30)
 
         # CS- trial: novel odor, NO reward (differential conditioning)
         body.x = 48.0 + rng.uniform(-5, 5)
         body.y = 48.0 + rng.uniform(-5, 5)
         protocol.train_trial(world_csminus, body, sensory, motor,
-                             reward=False, n_steps=40)
-        brain.run(20)
+                             reward=False, n_steps=60)
+        brain.run(30)
 
         if (ep + 1) % 5 == 0:
             print(f"      Episode {ep + 1}/{n_train_episodes}")
@@ -1463,16 +1608,16 @@ def exp_foraging(
                 world.deplete_food_near(body.x, body.y)
                 body.feed(0.01)
 
-            # FEP feedback every 20 steps
-            if step_i > 0 and step_i % 20 == 0:
+            # FEP feedback every 10 steps (more frequent for better learning)
+            if step_i > 0 and step_i % 10 == 0:
                 curr_min_dist = min(body.distance_to(fx, fy)
                                     for fx, fy in food_positions)
                 if curr_min_dist < prev_min_dist:
-                    # Moving closer -> structured feedback
-                    fep.deliver_approach(n_steps=10, intensity=30.0)
+                    # Moving closer -> structured feedback (reward)
+                    fep.deliver_approach(n_steps=8, intensity=40.0)
                 else:
-                    # Moving away -> noise
-                    fep.deliver_failure(n_steps=15)
+                    # Moving away -> noise (punishment)
+                    fep.deliver_failure(n_steps=12)
                 prev_min_dist = curr_min_dist
 
         total_distances.append(body.total_distance)

@@ -1,0 +1,38 @@
+============================================================================
+  DISHBRAIN REPLICATION — dONN GAME LEARNING (FREE ENERGY PRINCIPLE)
+  Backend: cuda | Scale: large | Device: cuda
+  Replicating Kagan et al. (2022) Neuron
+============================================================================
+
+============================================================================
+  Exp 1: DishBrain Pong Replication
+  Free energy principle — structured vs unstructured feedback, NO reward
+============================================================================
+    Brain: 25250 neurons, 6975250 synapses on cuda
+    Warmup complete
+    Rally  10/80: hit rate = 10% (last 10)
+    Rally  20/80: hit rate = 40% (last 10)
+    Rally  30/80: hit rate = 20% (last 10)
+    Rally  40/80: hit rate = 40% (last 10)
+    Rally  50/80: hit rate = 30% (last 10)
+    Rally  60/80: hit rate = 50% (last 10)
+    Rally  70/80: hit rate = 40% (last 10)
+    Rally  80/80: hit rate = 60% (last 10)
+
+    Results:
+    First 10 rallies:  10% hit rate
+    Last 10 rallies:   60% hit rate
+    Total:             36% (29/80)
+    Random baseline:   30%
+    Improvement:       +50%
+    PASS in 91.9s
+
+============================================================================
+  DISHBRAIN REPLICATION — SUMMARY
+============================================================================
+    1. DishBrain Pong Replication          [PASS]  91.9s
+
+  Total: 1/1 passed in 91.9s
+============================================================================
+
+  JSON results written to: /workspace/dishbrain_large.json

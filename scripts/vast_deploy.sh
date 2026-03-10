@@ -17,6 +17,7 @@
 #
 #   # Step 4: Run experiments
 #   bash scripts/vast_deploy.sh run <id> [scale]                # language learning
+#   bash scripts/vast_deploy.sh profile <id> [steps]            # raw 25K regional profile
 #   bash scripts/vast_deploy.sh dishbrain <id> [scale] [flags]  # DishBrain Pong
 #   bash scripts/vast_deploy.sh doom <id> [scale] [flags]       # Spatial Arena
 #   bash scripts/vast_deploy.sh all <id> [scale]                # everything
@@ -45,6 +46,21 @@ NC='\033[0m'
 log() { echo -e "${GREEN}[oNeuro]${NC} $*"; }
 warn() { echo -e "${YELLOW}[oNeuro]${NC} $*"; }
 err() { echo -e "${RED}[oNeuro]${NC} $*" >&2; }
+
+REMOTE_CUDA_PREFLIGHT=$(cat <<'EOF'
+if ! command -v gcc >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential
+fi
+if [ ! -e /usr/lib/x86_64-linux-gnu/libcuda.so ] && [ -e /usr/lib/x86_64-linux-gnu/libcuda.so.1 ]; then
+    ln -sf /usr/lib/x86_64-linux-gnu/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so
+fi
+if [ ! -e /lib/x86_64-linux-gnu/libcuda.so ] && [ -e /lib/x86_64-linux-gnu/libcuda.so.1 ]; then
+    ln -sf /lib/x86_64-linux-gnu/libcuda.so.1 /lib/x86_64-linux-gnu/libcuda.so
+fi
+ldconfig >/dev/null 2>&1 || true
+EOF
+)
 
 # =============================================================================
 # Commands
@@ -170,6 +186,7 @@ cmd_run() {
 
     ssh -o StrictHostKeyChecking=no "${ssh_url}" bash -s <<RUNCMD
 set -euo pipefail
+${REMOTE_CUDA_PREFLIGHT}
 cd /workspace/oNeuro
 PYTHONPATH=src python3 demos/demo_language_cuda.py --scale ${scale} --device cuda 2>&1 | tee /workspace/results_${scale}.txt
 echo ""
@@ -178,6 +195,36 @@ RUNCMD
 
     log "Experiments complete! Fetch results with:"
     log "  bash scripts/vast_deploy.sh results ${instance_id}"
+}
+
+cmd_profile() {
+    local instance_id="${1:?Usage: vast_deploy.sh profile <instance_id> [steps]}"
+    local steps="${2:-100}"
+    log "Running raw 25K regional profile for ${steps} timed steps on instance ${instance_id}..."
+
+    local ssh_url
+    ssh_url=$(vastai ssh-url "${instance_id}" 2>/dev/null)
+
+    ssh -o StrictHostKeyChecking=no "${ssh_url}" bash -s <<RUNCMD
+set -euo pipefail
+${REMOTE_CUDA_PREFLIGHT}
+cd /workspace/oNeuro
+env PYTHONPATH=src python3 scripts/profile_cuda_backend.py \\
+    --target regional \\
+    --device cuda \\
+    --columns 250 \\
+    --n-per-layer 20 \\
+    --warmup-steps 20 \\
+    --steps ${steps} \\
+    --json /workspace/profile_25k_cuda.json \\
+    2>&1 | tee /workspace/profile_25k_cuda.txt
+echo ""
+echo "=== 25K CUDA profile saved ==="
+echo "  Text: /workspace/profile_25k_cuda.txt"
+echo "  JSON: /workspace/profile_25k_cuda.json"
+RUNCMD
+
+    log "Raw 25K profile complete!"
 }
 
 cmd_dishbrain() {
@@ -192,17 +239,22 @@ cmd_dishbrain() {
 
     ssh -o StrictHostKeyChecking=no "${ssh_url}" bash -s <<RUNCMD
 set -euo pipefail
+${REMOTE_CUDA_PREFLIGHT}
 cd /workspace/oNeuro
-PYTHONPATH=src python3 demos/demo_dishbrain_pong.py \\
-    --scale ${scale} --device cuda \\
-    --json /workspace/dishbrain_${scale}.json \\
-    --gpu-tiers \\
-    ${extra_args} \\
+python3 scripts/run_with_gpu_telemetry.py \\
+    --json /workspace/dishbrain_${scale}_gpu.json \\
+    -- \\
+    env PYTHONPATH=src python3 demos/demo_dishbrain_pong.py \\
+        --scale ${scale} --device cuda \\
+        --json /workspace/dishbrain_${scale}.json \\
+        --gpu-tiers \\
+        ${extra_args} \\
     2>&1 | tee /workspace/dishbrain_${scale}.txt
 echo ""
 echo "=== DishBrain results saved ==="
 echo "  Text: /workspace/dishbrain_${scale}.txt"
 echo "  JSON: /workspace/dishbrain_${scale}.json"
+echo "  GPU telemetry: /workspace/dishbrain_${scale}_gpu.json"
 RUNCMD
 
     log "DishBrain experiments complete!"
@@ -220,16 +272,21 @@ cmd_doom() {
 
     ssh -o StrictHostKeyChecking=no "${ssh_url}" bash -s <<RUNCMD
 set -euo pipefail
+${REMOTE_CUDA_PREFLIGHT}
 cd /workspace/oNeuro
-PYTHONPATH=src python3 demos/demo_doom_arena.py \\
-    --scale ${scale} --device cuda \\
-    --json /workspace/doom_${scale}.json \\
-    ${extra_args} \\
+python3 scripts/run_with_gpu_telemetry.py \\
+    --json /workspace/doom_${scale}_gpu.json \\
+    -- \\
+    env PYTHONPATH=src python3 demos/demo_doom_arena.py \\
+        --scale ${scale} --device cuda \\
+        --json /workspace/doom_${scale}.json \\
+        ${extra_args} \\
     2>&1 | tee /workspace/doom_${scale}.txt
 echo ""
 echo "=== Spatial Arena results saved ==="
 echo "  Text: /workspace/doom_${scale}.txt"
 echo "  JSON: /workspace/doom_${scale}.json"
+echo "  GPU telemetry: /workspace/doom_${scale}_gpu.json"
 RUNCMD
 
     log "Spatial Arena experiments complete!"
@@ -284,6 +341,8 @@ cmd_results() {
 
     mkdir -p results
     scp -o StrictHostKeyChecking=no "${ssh_url}:/workspace/results_*.txt" results/ 2>/dev/null || true
+    scp -o StrictHostKeyChecking=no "${ssh_url}:/workspace/profile_25k_cuda.txt" results/ 2>/dev/null || true
+    scp -o StrictHostKeyChecking=no "${ssh_url}:/workspace/profile_25k_cuda.json" results/ 2>/dev/null || true
     scp -o StrictHostKeyChecking=no "${ssh_url}:/workspace/dishbrain_*.txt" results/ 2>/dev/null || true
     scp -o StrictHostKeyChecking=no "${ssh_url}:/workspace/dishbrain_*.json" results/ 2>/dev/null || true
     scp -o StrictHostKeyChecking=no "${ssh_url}:/workspace/doom_*.txt" results/ 2>/dev/null || true
@@ -390,6 +449,7 @@ case "${1:-help}" in
     create)    cmd_create "${2:-}" ;;
     deploy)    cmd_deploy "${2:-}" ;;
     run)       cmd_run "${2:-}" "${3:-100k}" ;;
+    profile)   cmd_profile "${2:-}" "${3:-100}" ;;
     dishbrain) shift; cmd_dishbrain "$@" ;;
     doom)      shift; cmd_doom "$@" ;;
     drosophila) shift; cmd_drosophila "$@" ;;
@@ -407,6 +467,7 @@ case "${1:-help}" in
         echo "  create <offer_id>               Create a new instance"
         echo "  deploy <id>                     Deploy oNeuro to instance"
         echo "  run <id> [scale]                Run language experiments (mega/100k/1m)"
+        echo "  profile <id> [steps]            Run raw 25K regional CUDA profile"
         echo "  dishbrain <id> [scale] [flags]  Run DishBrain Pong experiments"
         echo "  doom <id> [scale] [flags]       Run Spatial Arena experiments"
         echo "  drosophila <id> [scale] [flags] Run Drosophila ecosystem experiments"
@@ -418,6 +479,7 @@ case "${1:-help}" in
         echo "Scales: small, medium, large, mega, 100k, 1m"
         echo ""
         echo "Examples:"
+        echo "  bash scripts/vast_deploy.sh profile 12345 100"
         echo "  bash scripts/vast_deploy.sh dishbrain 12345 medium --runs 5"
         echo "  bash scripts/vast_deploy.sh doom 12345 large"
         echo "  bash scripts/vast_deploy.sh all 12345 medium"

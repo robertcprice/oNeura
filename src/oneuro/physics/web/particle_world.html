@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>oNeuro - True Emergent Fly Simulation (GPU)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #ui {
+            position: absolute; top: 20px; left: 20px;
+            color: #0f0; font-family: 'Courier New', monospace;
+            background: rgba(0,20,0,0.9); padding: 15px;
+            border: 2px solid #0f0; border-radius: 8px;
+            font-size: 11px; min-width: 220px;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 14px; color: #0f0; }
+        .stat { display: flex; justify-content: space-between; margin: 2px 0; }
+        .val { color: #fff; font-weight: bold; }
+        .legend { margin-top: 10px; padding-top: 10px; border-top: 1px solid #333; font-size: 10px; }
+        .legend-item { display: flex; align-items: center; margin: 3px 0; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .mode { margin-top: 8px; padding: 5px; text-align: center; font-weight: bold; }
+        .mode.food { background: #442200; color: #ff8800; }
+        .mode.repellent { background: #220044; color: #ff00ff; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>🧬 oNeuro True Emergent Simulation</h1>
+        <div class="stat"><span>Particles:</span><span class="val" id="particle-count">0</span></div>
+        <div class="stat"><span>FPS:</span><span class="val" id="fps">0</span></div>
+        <div class="stat"><span>Mode:</span><span class="val" id="mode">FOOD</span></div>
+        <div class="stat"><span>Fly State:</span><span class="val" id="state">-</span></div>
+        <div class="stat"><span>Fly X/Z:</span><span class="val" id="fly-pos">0/0</span></div>
+        <div class="stat"><span>Dist to Food:</span><span class="val" id="dist">0</span></div>
+        <div class="stat"><span>Neural Activity:</span><span class="val" id="activity">0</span></div>
+        <div class="stat"><span>L/R Sensors:</span><span class="val" id="sensors">0/0</span></div>
+
+        <div class="legend">
+            <div class="legend-item"><div class="dot" style="background:#00ff00;"></div>Green: Ethyl Acetate odor</div>
+            <div class="legend-item"><div class="dot" style="background:#0044ff;"></div>Blue: Air molecules</div>
+            <div class="legend-item"><div class="dot" style="background:#ff4444;"></div>Red: TRACKING (found odor!)</div>
+            <div class="legend-item"><div class="dot" style="background:#4444ff;"></div>Blue-dark: CASTING (searching)</div>
+            <div class="legend-item"><div class="dot" style="background:#ff8800;"></div>Orange: Food source</div>
+            <div class="legend-item"><div class="dot" style="background:#ff00ff;"></div>Pink: Repellent source</div>
+        </div>
+
+        <div class="mode food" id="mode-display">FOOD MODE | Press R to toggle</div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+    </script>
+
+    <script type="module">
+    import * as THREE from 'three';
+
+    // ============================================================
+    // CONFIG
+    // ============================================================
+    const WORLD_SIZE = 30;
+    const PARTICLE_COUNT = 100000; // 100K GPU particles
+    const GRID_SIZE = 64; // Scent field grid for sampling
+
+    // Food/repellent sources
+    let foodSources = [
+        { x: 8, z: 0, strength: 15, type: 'food' }
+    ];
+
+    let mode = 'food'; // 'food' or 'repellent'
+
+    // Flies
+    const flies = [];
+
+    // ============================================================
+    // GPU PARTICLE SYSTEM (VISUAL + SCENT FIELD)
+    // ============================================================
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050510);
+    scene.fog = new THREE.FogExp2(0x050510, 0.02);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.set(0, 20, 30);
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0x404040, 1));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
+
+    // Ground
+    const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE),
+        new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    // ============================================================
+    // GPU PARTICLES WITH GPGPU SIMULATION
+    // ============================================================
+    const size = Math.ceil(Math.sqrt(PARTICLE_COUNT));
+
+    // Create render targets for ping-pong
+    function createRenderTarget() {
+        return new THREE.WebGLRenderTarget(size, size, {
+            minFilter: THREE.NearestFilter,
+            magFilter: THREE.NearestFilter,
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType
+        });
+    }
+
+    let positionRT1 = createRenderTarget();
+    let positionRT2 = createRenderTarget();
+    let velocityRT1 = createRenderTarget();
+    let velocityRT2 = createRenderTarget();
+    let typeRT = createRenderTarget();
+
+    // GPGPU setup
+    const gpuCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const gpuScene = new THREE.Scene();
+    const gpuQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+    gpuScene.add(gpuQuad);
+
+    // Scent field grid (CPU-accessible for fly sensing)
+    const scentGrid = new Float32Array(GRID_SIZE * GRID_SIZE);
+
+    // Position update shader - handles physics and emits from food
+    const positionShader = `
+        uniform float uTime;
+        uniform float uDelta;
+        uniform vec3 uFood1;
+        uniform float uFood1Strength;
+        uniform float uFood1Type; // 1 = food, -1 = repellent
+
+        float rand(vec2 co) {
+            return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 pos = texture2D(uPositionTexture, uv);
+            vec4 vel = texture2D(uVelocityTexture, uv);
+            float ptype = texture2D(uTypeTexture, uv).r;
+
+            vec3 p = pos.xyz;
+            vec3 v = vel.xyz;
+            float mass = vel.w;
+
+            // Brownian motion (thermal noise)
+            float temp = 0.5;
+            v.x += (rand(uv + uTime * 0.1) - 0.5) * temp / mass;
+            v.y += (rand(uv + uTime * 0.2) - 0.5) * temp / mass;
+            v.z += (rand(uv + uTime * 0.3) - 0.5) * temp / mass;
+
+            // Slight upward drift for odor molecules
+            if (ptype > 0.5) {
+                v.y += 0.02; // Odor rises
+            }
+
+            // Gravity
+            v.y -= 0.002;
+
+            // Emit from food source
+            if (ptype > 0.5) {
+                float dist = distance(p.xz, uFood1.xz);
+                if (dist < 2.0 && p.y < 3.0) {
+                    vec3 toFood = normalize(p - vec3(uFood1.x, 0.0, uFood1.y));
+                    v += toFood * 0.15;
+                    v.y += 0.2;
+                }
+            }
+
+            // Damping
+            v *= 0.98;
+
+            // Update position
+            p += v * uDelta * 60.0;
+
+            // Bounds
+            float half = 15.0;
+            if (p.x < -half || p.x > half) v.x *= -0.8;
+            if (p.y < 0.0) { p.y = 0.0; v.y *= -0.5; }
+            if (p.y > 20.0) v.y *= -0.8;
+            if (p.z < -half || p.z > half) v.z *= -0.8;
+
+            p.x = clamp(p.x, -half, half);
+            p.z = clamp(p.z, -half, half);
+            p.y = clamp(p.y, 0.0, 20.0);
+
+            gl_FragColor = vec4(p, 1.0);
+        }
+    `;
+
+    // Velocity shader
+    const velocityShader = `
+        uniform float uTime;
+        uniform float uFood1Type;
+
+        float rand(vec2 co) {
+            return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 vel = texture2D(uVelocityTexture, uv);
+            float ptype = texture2D(uTypeTexture, uv).r;
+
+            // Initial velocity
+            if (uTime < 0.1) {
+                vel.x = (rand(uv) - 0.5) * 0.3;
+                vel.y = (rand(uv + 1.0) - 0.5) * 0.3;
+                vel.z = (rand(uv + 2.0) - 0.5) * 0.3;
+                // Mass: air = 28, odor = 88
+                vel.w = ptype > 0.5 ? 88.0 : 28.0;
+            }
+
+            gl_FragColor = vel;
+        }
+    `;
+
+    // Position material
+    const positionMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uPositionTexture: { value: null },
+            uVelocityTexture: { value: null },
+            uTypeTexture: { value: null },
+            uTime: { value: 0 },
+            uDelta: { value: 0 },
+            uFood1: { value: new THREE.Vector2(8, 0) },
+            uFood1Strength: { value: 15 },
+            uFood1Type: { value: 1 },
+            resolution: { value: new THREE.Vector2(size, size) }
+        },
+        vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
+        fragmentShader: positionShader
+    });
+
+    // Velocity material
+    const velocityMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uVelocityTexture: { value: null },
+            uTypeTexture: { value: null },
+            uTime: { value: 0 },
+            uFood1Type: { value: 1 },
+            resolution: { value: new THREE.Vector2(size, size) }
+        },
+        vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
+        fragmentShader: velocityShader
+    });
+
+    // ============================================================
+    // INITIALIZE PARTICLES
+    // ============================================================
+    const posData = new Float32Array(size * size * 4);
+    const velData = new Float32Array(size * size * 4);
+    const typeData = new Float32Array(size * size * 4);
+
+    for (let i = 0; i < size * size; i++) {
+        // Position - scattered in world
+        posData[i * 4 + 0] = (Math.random() - 0.5) * WORLD_SIZE;
+        posData[i * 4 + 1] = Math.random() * 10 + 0.5;
+        posData[i * 4 + 2] = (Math.random() - 0.5) * WORLD_SIZE;
+        posData[i * 4 + 3] = 1;
+
+        // Velocity
+        velData[i * 4 + 0] = (Math.random() - 0.5) * 0.2;
+        velData[i * 4 + 1] = (Math.random() - 0.5) * 0.2;
+        velData[i * 4 + 2] = (Math.random() - 0.5) * 0.2;
+        velData[i * 4 + 3] = 28;
+
+        // Type: 80% air, 20% odor (spawn near food)
+        const fx = foodSources[0].x;
+        const fz = foodSources[0].z;
+        const px = posData[i * 4];
+        const pz = posData[i * 4 + 2];
+        const dist = Math.sqrt((px - fx) ** 2 + (pz - fz) ** 2);
+
+        if (i < PARTICLE_COUNT * 0.82) {
+            typeData[i * 4] = 0; // Air
+        } else if (dist < 4) {
+            typeData[i * 4] = 1; // Odor near food
+        } else {
+            typeData[i * 4] = 0;
+        }
+    }
+
+    // Create data textures
+    const posTex = new THREE.DataTexture(posData, size, size, THREE.RGBAFormat, THREE.FloatType);
+    posTex.needsUpdate = true;
+
+    const velTex = new THREE.DataTexture(velData, size, size, THREE.RGBAFormat, THREE.FloatType);
+    velTex.needsUpdate = true;
+
+    const typeTex = new THREE.DataTexture(typeData, size, size, THREE.RGBAFormat, THREE.FloatType);
+    typeTex.needsUpdate = true;
+
+    // Initialize render targets
+    gpuQuad.material = new THREE.MeshBasicMaterial({ map: posTex });
+    renderer.setRenderTarget(positionRT1);
+    renderer.render(gpuScene, gpuCamera);
+    renderer.setRenderTarget(positionRT2);
+    renderer.render(gpuScene, gpuCamera);
+
+    gpuQuad.material = new THREE.MeshBasicMaterial({ map: velTex });
+    renderer.setRenderTarget(velocityRT1);
+    renderer.render(gpuScene, gpuCamera);
+    renderer.setRenderTarget(velocityRT2);
+    renderer.render(gpuScene, gpuCamera);
+
+    gpuQuad.material = new THREE.MeshBasicMaterial({ map: typeTex });
+    renderer.setRenderTarget(typeRT);
+    renderer.render(gpuScene, gpuCamera);
+
+    renderer.setRenderTarget(null);
+
+    // ============================================================
+    // PARTICLE VISUALIZATION
+    // ============================================================
+    const particleGeo = new THREE.BufferGeometry();
+    const uvs = new Float32Array(PARTICLE_COUNT * 2);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const x = (i % size) / size;
+        const y = Math.floor(i / size) / size;
+        uvs[i * 2] = x + 0.5 / size;
+        uvs[i * 2 + 1] = y + 0.5 / size;
+    }
+    particleGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+    const particleMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uPositionTexture: { value: null },
+            uTypeTexture: { value: typeTex }
+        },
+        vertexShader: `
+            uniform sampler2D uPositionTexture;
+            uniform sampler2D uTypeTexture;
+            attribute vec2 uv;
+            varying vec3 vColor;
+            varying float vType;
+
+            void main() {
+                vec4 pos = texture2D(uPositionTexture, uv);
+                vec4 type = texture2D(uTypeTexture, uv);
+                vType = type.r;
+
+                // Color by type
+                if (type.r < 0.5) {
+                    vColor = vec3(0.2, 0.4, 0.8); // Air - blue
+                } else {
+                    vColor = vec3(0.2, 1.0, 0.2); // Odor - green
+                }
+
+                vec4 mvPos = modelViewMatrix * vec4(pos.xyz, 1.0);
+                gl_Position = projectionMatrix * mvPos;
+                gl_PointSize = 2.0;
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+            varying float vType;
+            void main() {
+                float alpha = vType > 0.5 ? 0.8 : 0.3;
+                gl_FragColor = vec4(vColor, alpha);
+            }
+        `,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    const particles = new THREE.Points(particleGeo, particleMat);
+    scene.add(particles);
+
+    // ============================================================
+    // FOOD VISUALIZATION
+    // ============================================================
+    const foodGroup = new THREE.Group();
+    scene.add(foodGroup);
+
+    function updateFoodVisuals() {
+        foodGroup.clear();
+        for (const f of foodSources) {
+            const geo = new THREE.SphereGeometry(0.8, 16, 16);
+            const mat = new THREE.MeshStandardMaterial({
+                color: f.type === 'food' ? 0xff8800 : 0xff00ff,
+                emissive: f.type === 'food' ? 0xff4400 : 0xff00ff,
+                emissiveIntensity: 0.5
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(f.x, 0.5, f.z);
+            foodGroup.add(mesh);
+        }
+    }
+    updateFoodVisuals();
+
+    // ============================================================
+    // SCENT FIELD - CPU accessible grid for fly sensing
+    // ============================================================
+    function updateScentField(positionTexture) {
+        // Read back GPU positions to CPU for scent sampling
+        // This is expensive, so we do it once per frame
+        // For performance, we use a simplified approach
+
+        // Reset grid
+        scentGrid.fill(0);
+
+        // For now, use analytical scent field (more efficient)
+        // In a full implementation, we'd read back GPU texture
+        for (let gz = 0; gz < GRID_SIZE; gz++) {
+            for (let gx = 0; gx < GRID_SIZE; gx++) {
+                const wx = (gx / GRID_SIZE - 0.5) * WORLD_SIZE;
+                const wz = (gz / GRID_SIZE - 0.5) * WORLD_SIZE;
+
+                let scent = 0;
+                for (const f of foodSources) {
+                    const dx = f.x - wx;
+                    const dz = f.z - wz;
+                    const dist = Math.sqrt(dx * dx + dz * dz);
+                    if (dist < 20) {
+                        const sign = f.type === 'food' ? 1 : -1;
+                        scent += (f.strength / (dist * dist + 1)) * sign;
+                    }
+                }
+                scentGrid[gz * GRID_SIZE + gx] = scent;
+            }
+        }
+    }
+
+    function sampleScent(x, z) {
+        // Convert world coords to grid coords
+        const gx = Math.floor((x / WORLD_SIZE + 0.5) * GRID_SIZE);
+        const gz = Math.floor((z / WORLD_SIZE + 0.5) * GRID_SIZE);
+
+        if (gx >= 0 && gx < GRID_SIZE && gz >= 0 && gz < GRID_SIZE) {
+            return scentGrid[gz * GRID_SIZE + gx];
+        }
+        return 0;
+    }
+
+    // ============================================================
+    // FLY BRAIN - TRUE EMERGENT BEHAVIOR
+    // Uses bilateral sampling, not hardcoded "go to food"
+    // ============================================================
+    class FlyBrain {
+        constructor() {
+            this.alActivity = 0;
+            this.state = 'casting';
+            this.timeInState = 0;
+
+            // Heading memory (CX neurons)
+            this.headingMemory = 0;
+            this.headingConfidence = 0;
+
+            // Motor neurons
+            this.turnSignal = 0;
+        }
+
+        // Bilateral antennae sampling - EMERGENT from real biology
+        step(dt, scentLeft, scentRight, scentCenter, attractSign) {
+            this.timeInState += dt;
+
+            // Hill function receptor activation
+            const kd = 0.1;
+            const n = 2;
+            const odorAbs = Math.abs(scentCenter);
+
+            // Activity = odor^n / (kd^n + odor^n)
+            const targetActivity = Math.pow(odorAbs, n) / (Math.pow(kd, n) + Math.pow(odorAbs, n));
+
+            // Differential rise/decay (PN / LN neurons)
+            if (targetActivity > this.alActivity) {
+                this.alActivity += (targetActivity - this.alActivity) * 8.0 * dt;
+            } else {
+                this.alActivity += (targetActivity - this.alActivity) * 2.0 * dt;
+            }
+            this.alActivity = Math.max(0, Math.min(1, this.alActivity));
+
+            // State transition (casting vs tracking)
+            const wasState = this.state;
+            this.state = odorAbs > 0.08 ? 'tracking' : 'casting';
+
+            // Heading memory (CX ring attractor) - remember direction when first detecting
+            if (this.state === 'tracking' && wasState === 'casting') {
+                // Just started tracking - capture the gradient direction
+                const initialGradient = (scentRight - scentLeft) * attractSign;
+                this.headingMemory = initialGradient;
+                this.headingConfidence = 1.0;
+            }
+
+            // Confidence decays when casting
+            if (this.state === 'casting') {
+                this.headingConfidence *= 0.98;
+            }
+
+            // Motor output: bilateral comparison
+            // If right antenna smells more → turn right
+            // If left antenna smells more → turn left
+            const gradient = (scentRight - scentLeft) * attractSign;
+
+            // Deadzone to prevent oscillation at plume edges
+            const deadzone = 0.015;
+            let turn = 0;
+            if (Math.abs(gradient) > deadzone) {
+                turn = Math.sign(gradient) * (Math.abs(gradient) - deadzone);
+            }
+
+            // When very close, gradient becomes unreliable (both sides equal)
+            // Use heading memory instead
+            const veryClose = odorAbs > 0.5;
+            if (veryClose) {
+                // Strong heading memory - go in stored direction
+                turn = Math.sign(this.headingMemory) * 0.4;
+                this.headingConfidence = Math.min(this.headingConfidence + 0.02, 1.0);
+
+                // Also slow down to land
+                this.turnSignal = turn * 0.5;
+                return {
+                    turn: turn * 0.5,
+                    speed: 0.15, // Slow when very close
+                    activity: this.alActivity,
+                    state: this.state,
+                    confidence: this.headingConfidence
+                };
+            }
+
+            // Blend current gradient with heading memory
+            const memoryInfluence = this.headingConfidence * 0.6;
+            turn = turn * (1 - memoryInfluence) + this.headingMemory * memoryInfluence;
+
+            // Speed based on state
+            const speed = this.state === 'tracking' ? 0.4 : 0.15;
+
+            this.turnSignal = turn;
+
+            return {
+                turn: turn,
+                speed: speed,
+                activity: this.alActivity,
+                state: this.state,
+                confidence: this.headingConfidence
+            };
+        }
+    }
+
+    // ============================================================
+    // FLY
+    // ============================================================
+    class Fly {
+        constructor(x, z) {
+            this.x = x;
+            this.y = 2 + Math.random() * 2;
+            this.z = z;
+            this.heading = Math.random() * Math.PI * 2;
+            this.brain = new FlyBrain();
+
+            // Visual
+            const geo = new THREE.SphereGeometry(0.25, 8, 8);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x4444ff });
+            this.mesh = new THREE.Mesh(geo, mat);
+            scene.add(this.mesh);
+
+            // Antennae visualization
+            const antGeo = new THREE.CylinderGeometry(0.03, 0.02, 0.4, 4);
+            const antMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            this.leftAntenna = new THREE.Mesh(antGeo, antMat);
+            this.rightAntenna = new THREE.Mesh(antGeo, antMat);
+            this.mesh.add(this.leftAntenna);
+            this.mesh.add(this.rightAntenna);
+            this.leftAntenna.position.set(-0.15, 0.2, 0);
+            this.rightAntenna.position.set(0.15, 0.2, 0);
+        }
+
+        // Sample odor at positions in front of left/right antennae
+        sampleOdor() {
+            const senseDist = 2.0;
+
+            // Center sample
+            const scentCenter = sampleScent(this.x, this.z);
+
+            // Sample ahead and to the left
+            const leftX = this.x + Math.cos(this.heading) * senseDist + Math.sin(this.heading) * 0.5;
+            const leftZ = this.z + Math.sin(this.heading) * senseDist - Math.cos(this.heading) * 0.5;
+            const scentLeft = sampleScent(leftX, leftZ);
+
+            // Sample ahead and to the right
+            const rightX = this.x + Math.cos(this.heading) * senseDist - Math.sin(this.heading) * 0.5;
+            const rightZ = this.z + Math.sin(this.heading) * senseDist + Math.cos(this.heading) * 0.5;
+            const scentRight = sampleScent(rightX, rightZ);
+
+            return { scentCenter, scentLeft, scentRight };
+        }
+
+        update(dt) {
+            // Sample odor field
+            const { scentCenter, scentLeft, scentRight } = this.sampleOdor();
+
+            // Determine attract/repel
+            const attractSign = mode === 'food' ? 1 : -1;
+
+            // Process through brain
+            const motor = this.brain.step(dt, scentLeft, scentRight, scentCenter, attractSign);
+
+            // Apply motor output
+            this.heading += motor.turn * 0.8;
+
+            // Add casting motion (search behavior)
+            if (this.brain.state === 'casting') {
+                this.heading += (Math.random() - 0.5) * 0.3;
+            } else {
+                this.heading += (Math.random() - 0.5) * 0.05;
+            }
+
+            // Move
+            const speed = motor.speed;
+            this.x += Math.cos(this.heading) * speed;
+            this.z += Math.sin(this.heading) * speed;
+
+            // Bounds
+            this.x = Math.max(-14, Math.min(14, this.x));
+            this.z = Math.max(-14, Math.min(14, this.z));
+
+            // Altitude - land when very close to food
+            const distToFood = Math.sqrt((this.x - foodSources[0].x) ** 2 + (this.z - foodSources[0].z) ** 2);
+            if (distToFood < 1.5 && motor.activity > 0.3) {
+                // Land on food
+                this.y = Math.max(0.5, this.y - 0.1);
+            } else if (this.y < 2) {
+                this.y += 0.02; // Take off
+            } else {
+                this.y += (Math.random() - 0.5) * 0.1;
+            }
+            this.y = Math.max(0.5, Math.min(5, this.y));
+
+            // Update mesh
+            this.mesh.position.set(this.x, this.y, this.z);
+
+            // Color based on state
+            if (this.brain.state === 'tracking') {
+                this.mesh.material.color.setHex(0xff4444);
+            } else {
+                this.mesh.material.color.setHex(0x4444ff);
+            }
+
+            return {
+                x: this.x,
+                z: this.z,
+                dist: distToFood,
+                activity: motor.activity,
+                state: motor.state,
+                scentLeft,
+                scentRight,
+                confidence: motor.confidence
+            };
+        }
+    }
+
+    // Create flies
+    for (let i = 0; i < 5; i++) {
+        flies.push(new Fly(-10 + Math.random() * 4, (Math.random() - 0.5) * 8));
+    }
+
+    // ============================================================
+    // INPUT
+    // ============================================================
+    const keys = {};
+    let camYaw = 0, camPitch = 0.4, camDist = 35;
+
+    document.addEventListener('keydown', e => {
+        keys[e.code] = true;
+        if (e.code === 'KeyR') {
+            mode = mode === 'food' ? 'repellent' : 'food';
+            foodSources[0].type = mode;
+            foodSources[0].strength = mode === 'food' ? 15 : -15;
+            updateFoodVisuals();
+            document.getElementById('mode').textContent = mode.toUpperCase();
+            document.getElementById('mode-display').textContent = mode.toUpperCase() + ' MODE | Press R to toggle';
+            document.getElementById('mode-display').className = 'mode ' + mode;
+            positionMaterial.uniforms.uFood1Type.value = mode === 'food' ? 1 : -1;
+        }
+    });
+    document.addEventListener('keyup', e => keys[e.code] = false);
+
+    let dragging = false, lx = 0, ly = 0;
+    renderer.domElement.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
+    renderer.domElement.addEventListener('mouseup', () => dragging = false);
+    renderer.domElement.addEventListener('mousemove', e => {
+        if (dragging) {
+            camYaw += (e.clientX - lx) * 0.01;
+            camPitch += (e.clientY - ly) * 0.01;
+            camPitch = Math.max(-0.5, Math.min(1.5, camPitch));
+            lx = e.clientX; ly = e.clientY;
+        }
+    });
+    renderer.domElement.addEventListener('wheel', e => {
+        camDist += e.deltaY * 0.05;
+        camDist = Math.max(10, Math.min(60, camDist));
+    });
+
+    // ============================================================
+    // LOOP
+    // ============================================================
+    let lastTime = 0;
+    let frame = 0;
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+
+        const t = time * 0.001;
+        const dt = Math.min((time - lastTime) * 0.001, 0.05);
+        lastTime = time;
+
+        // Update scent field
+        updateScentField();
+
+        // GPGPU physics
+        velocityMaterial.uniforms.uVelocityTexture.value = velocityRT1.texture;
+        velocityMaterial.uniforms.uTypeTexture.value = typeTex;
+        velocityMaterial.uniforms.uTime.value = t;
+        velocityMaterial.uniforms.uFood1Type.value = mode === 'food' ? 1 : -1;
+        gpuQuad.material = velocityMaterial;
+        renderer.setRenderTarget(velocityRT2);
+        renderer.render(gpuScene, gpuCamera);
+        [velocityRT1, velocityRT2] = [velocityRT2, velocityRT1];
+
+        positionMaterial.uniforms.uPositionTexture.value = positionRT1.texture;
+        positionMaterial.uniforms.uVelocityTexture.value = velocityRT1.texture;
+        positionMaterial.uniforms.uTypeTexture.value = typeTex;
+        positionMaterial.uniforms.uTime.value = t;
+        positionMaterial.uniforms.uDelta.value = dt;
+        positionMaterial.uniforms.uFood1.value.set(foodSources[0].x, foodSources[0].z);
+        positionMaterial.uniforms.uFood1Strength.value = Math.abs(foodSources[0].strength);
+        positionMaterial.uniforms.uFood1Type.value = mode === 'food' ? 1 : -1;
+        gpuQuad.material = positionMaterial;
+        renderer.setRenderTarget(positionRT2);
+        renderer.render(gpuScene, gpuCamera);
+        [positionRT1, positionRT2] = [positionRT2, positionRT1];
+
+        // Update particles
+        particleMat.uniforms.uPositionTexture.value = positionRT1.texture;
+
+        // Update flies
+        let flyStats = null;
+        for (const fly of flies) {
+            flyStats = fly.update(dt);
+        }
+
+        // Camera
+        if (keys['KeyW']) camDist -= 0.5;
+        if (keys['KeyS']) camDist += 0.5;
+        if (keys['KeyA']) camYaw -= 0.03;
+        if (keys['KeyD']) camYaw += 0.03;
+
+        camera.position.x = Math.sin(camYaw) * Math.cos(camPitch) * camDist;
+        camera.position.y = Math.sin(camPitch) * camDist + 2;
+        camera.position.z = Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+        camera.lookAt(0, 3, 0);
+
+        // Render
+        renderer.setRenderTarget(null);
+        renderer.render(scene, camera);
+
+        // UI
+        if (++frame % 15 === 0) {
+            document.getElementById('fps').textContent = Math.round(1 / dt);
+            document.getElementById('particle-count').textContent = PARTICLE_COUNT.toLocaleString();
+
+            if (flyStats) {
+                document.getElementById('state').textContent = flyStats.state.toUpperCase();
+                document.getElementById('fly-pos').textContent = flyStats.x.toFixed(1) + '/' + flyStats.z.toFixed(1);
+                document.getElementById('dist').textContent = flyStats.dist.toFixed(1);
+                document.getElementById('activity').textContent = flyStats.activity.toFixed(2);
+                document.getElementById('sensors').textContent = flyStats.scentLeft.toFixed(2) + '/' + flyStats.scentRight.toFixed(2);
+            }
+        }
+    }
+
+    animate(0);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    </script>
+</body>
+</html>

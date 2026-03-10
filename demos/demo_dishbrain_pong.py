@@ -15,12 +15,14 @@ Terminology:
   - dONN:   digital Organic Neural Network — oNeuro's biophysically faithful simulation
   - oNeuro: The platform for building and running dONNs
 
-5 Experiments:
+7 Experiments:
    1. DishBrain Pong Replication (free energy principle)
    2. Learning Speed Comparison (free energy vs DA reward vs random)
    3. Pharmacological Effects (caffeine improves, diazepam impairs — IMPOSSIBLE on real tissue)
    4. Arena Navigation (simplified Spatial Arena: 2D grid, 4 actions)
    5. Scale Invariance (learning at 1K, 5K, 25K neurons)
+   6. Pong Signal Optimization (held-out protocol tuning)
+   7. Retina Teacher Pretraining (visual imprinting before free play)
 
 Key innovation: Learning via FREE ENERGY PRINCIPLE, not reward/punishment.
   - Hit (correct): STRUCTURED pulse to all cortical neurons (predictable = low entropy)
@@ -34,10 +36,12 @@ References:
     Nature Reviews Neuroscience 11:127-138
 
 Usage:
-    python3 demos/demo_dishbrain_pong.py                            # all 5, small
+    python3 demos/demo_dishbrain_pong.py                            # all 6, small
     python3 demos/demo_dishbrain_pong.py --exp 1                    # just Pong
     python3 demos/demo_dishbrain_pong.py --scale medium --exp 1 3   # medium, Pong + drugs
     python3 demos/demo_dishbrain_pong.py --rallies 100              # more training
+    python3 demos/demo_dishbrain_pong.py --exp 6 --runs 3          # held-out Pong tuning
+    python3 demos/demo_dishbrain_pong.py --exp 7 --runs 3          # retina teacher pretraining
     python3 demos/demo_dishbrain_pong.py --json results.json        # JSON output
     python3 demos/demo_dishbrain_pong.py --runs 5                   # multi-seed
 """
@@ -57,6 +61,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 import numpy as np
 
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from oneuro.molecular.cuda_backend import (
@@ -65,15 +75,17 @@ from oneuro.molecular.cuda_backend import (
     detect_backend,
     NT_DA, NT_5HT, NT_NE, NT_GLU, NT_GABA,
 )
+from oneuro.molecular.retina import MolecularRetina
 
 from demo_language_cuda import (
-    _warmup,
     _header,
     _get_region_ids,
     _get_all_cortex_ids,
     _get_cortex_l5_ids,
     SCALE_COLUMNS,
 )
+
+PONG_BENCHMARK_MODE = False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -141,6 +153,54 @@ class SimplePong:
                 return "miss", self.ball_y
 
         return "play", self.ball_y
+
+    def render_display_frame(
+        self,
+        width: int = 320,
+        height: int = 192,
+        action: Optional[int] = None,
+        outcome: Optional[str] = None,
+    ) -> np.ndarray:
+        """Render a larger human-readable Pong frame for recordings."""
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+        frame[..., 0] = 8
+        frame[..., 1] = 14
+        frame[..., 2] = 18
+
+        margin = 16
+        frame[:, width // 2 - 1:width // 2 + 1] = np.array([28, 56, 60], dtype=np.uint8)
+
+        progress = min(1.0, max(0.0, self.steps_taken / 12.0))
+        ball_x = int(round(margin + 20 + progress * (width - 2 * margin - 60)))
+        ball_y = int(round(margin + self.ball_y * (height - 2 * margin)))
+        paddle_y = int(round(margin + self.paddle_y * (height - 2 * margin)))
+        paddle_half = max(10, int(round(self.paddle_half_width * (height - 2 * margin))))
+        paddle_x0 = width - margin - 18
+        paddle_x1 = width - margin - 8
+
+        frame[max(0, paddle_y - paddle_half):min(height, paddle_y + paddle_half), paddle_x0:paddle_x1] = \
+            np.array([120, 230, 140], dtype=np.uint8)
+        frame[max(0, ball_y - 4):min(height, ball_y + 4),
+              max(0, ball_x - 4):min(width, ball_x + 4)] = np.array([255, 240, 180], dtype=np.uint8)
+
+        # Top action bar
+        action_colors = {
+            0: np.array([90, 170, 255], dtype=np.uint8),
+            1: np.array([255, 120, 120], dtype=np.uint8),
+            2: np.array([200, 200, 200], dtype=np.uint8),
+        }
+        if action is not None:
+            bar = action_colors.get(action, np.array([150, 150, 150], dtype=np.uint8))
+            frame[8:16, 12:width - 12] = (frame[8:16, 12:width - 12] * 0.35 + bar * 0.65).astype(np.uint8)
+
+        outcome_colors = {
+            "hit": np.array([70, 220, 110], dtype=np.uint8),
+            "miss": np.array([230, 90, 90], dtype=np.uint8),
+            "play": np.array([110, 150, 160], dtype=np.uint8),
+            None: np.array([110, 150, 160], dtype=np.uint8),
+        }
+        frame[-14:-8, 12:width - 12] = outcome_colors.get(outcome, outcome_colors[None])
+        return frame
 
 
 class SimpleArena:
@@ -228,6 +288,311 @@ class SensoryEncoder:
         diff = self.preferred - position
         activation = torch.exp(-diff * diff / self.two_sigma_sq) * intensity
         return activation
+
+    def encode_game(self, game: SimplePong, intensity: float = 60.0) -> torch.Tensor:
+        """Encode the current Pong state."""
+        return self.encode(game.ball_y, intensity=intensity)
+
+
+class PongRetinaBridge:
+    """Map retinal ganglion spikes to relay-neuron currents."""
+
+    def __init__(self, retina: MolecularRetina, relay_ids: torch.Tensor, seed: int = 42):
+        self.retina = retina
+        self.relay_ids = relay_ids
+        self.n_relay = len(relay_ids)
+        relay_np = relay_ids.cpu().numpy()
+        self._relay_index = {
+            int(nid): idx for idx, nid in enumerate(relay_np.tolist())
+        }
+        self._rgc_to_relay: Dict[int, List[int]] = {}
+
+        rng = np.random.RandomState(seed)
+        for rgc_idx in range(retina.n_rgc):
+            rgc = retina.rgc_cells[rgc_idx]
+            center_idx = int(rgc.y * self.n_relay)
+            center_idx = min(center_idx, self.n_relay - 1)
+            fan_out = min(max(2, self.n_relay // max(retina.n_rgc, 1) * 3), 4)
+            offsets = list(range(-(fan_out // 2), fan_out // 2 + 1))
+            rng.shuffle(offsets)
+            relay_targets = []
+            for off in offsets[:fan_out]:
+                idx = min(max(0, center_idx + off), self.n_relay - 1)
+                relay_targets.append(int(relay_np[idx]))
+            self._rgc_to_relay[rgc.neuron_id] = relay_targets
+
+    def activation_from_spikes(
+        self,
+        fired_rgc_ids: List[int],
+        intensity: float = 45.0,
+    ) -> torch.Tensor:
+        """Convert fired RGC IDs into a relay activation vector."""
+        activation = torch.zeros(
+            self.n_relay, dtype=torch.float32, device=self.relay_ids.device
+        )
+        if not fired_rgc_ids:
+            return activation
+
+        for rgc_id in fired_rgc_ids:
+            for relay_nid in self._rgc_to_relay.get(rgc_id, []):
+                activation[self._relay_index[relay_nid]] += 1.0
+
+        max_val = float(activation.max().item())
+        if max_val > 0:
+            activation = activation * (float(intensity) / max_val)
+        return activation
+
+
+class RetinalPongEncoder:
+    """Render Pong to a tiny frame and encode it through a molecular retina."""
+
+    def __init__(
+        self,
+        relay_ids: torch.Tensor,
+        resolution: Tuple[int, int] = (16, 16),
+        seed: int = 42,
+        include_paddle: bool = False,
+        retina_steps: int = 3,
+        relay_intensity: float = 45.0,
+    ):
+        self.relay_ids = relay_ids
+        self.resolution = resolution
+        self.include_paddle = include_paddle
+        self.retina_steps = max(1, int(retina_steps))
+        self.relay_intensity = float(relay_intensity)
+        self.retina = MolecularRetina(resolution=resolution, seed=seed, device="cpu")
+        self.bridge = PongRetinaBridge(self.retina, relay_ids, seed=seed)
+
+    def render_frame(self, game: SimplePong) -> np.ndarray:
+        """Render a small RGB Pong frame."""
+        width, height = self.resolution
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # Ball: bright 2x2 patch near the center column.
+        bx = width // 2
+        by = min(height - 1, max(0, int(round(game.ball_y * (height - 1)))))
+        frame[max(0, by - 1):min(height, by + 1), max(0, bx - 1):min(width, bx + 1)] = 255
+
+        if self.include_paddle:
+            px = width - 2
+            py = min(height - 1, max(0, int(round(game.paddle_y * (height - 1)))))
+            half = max(1, int(round(game.paddle_half_width * height)))
+            frame[max(0, py - half):min(height, py + half + 1), px:px + 1] = np.array(
+                [160, 255, 160], dtype=np.uint8
+            )
+
+        return frame
+
+    def encode_game(self, game: SimplePong, intensity: float = 45.0) -> torch.Tensor:
+        """Encode the current Pong frame through the retina and bridge."""
+        frame = self.render_frame(game)
+        fired_rgc_ids = self.retina.process_frame(frame, n_steps=self.retina_steps, dt=0.5)
+        return self.bridge.activation_from_spikes(
+            fired_rgc_ids,
+            intensity=min(float(intensity), self.relay_intensity),
+        )
+
+
+def _encode_pong_state(encoder, game: SimplePong) -> torch.Tensor:
+    """Encode the current Pong observation for either scalar or retina inputs."""
+    if hasattr(encoder, "encode_game"):
+        return encoder.encode_game(game)
+    return encoder.encode(game.ball_y)
+
+
+def _prepare_pong_brain(brain: CUDAMolecularBrain) -> None:
+    """Apply compile and benchmark settings for Pong experiments."""
+    if brain.device.type == "cuda":
+        brain.compile()
+    if PONG_BENCHMARK_MODE:
+        brain.disable_interval_biology()
+    else:
+        brain.enable_interval_biology()
+
+
+def _run_brain_steps(rb: CUDARegionalBrain, steps: int) -> None:
+    """Advance the brain using the fastest valid path for this Pong mode."""
+    if steps <= 0:
+        return
+    brain = rb.brain
+    if PONG_BENCHMARK_MODE and brain.device.type == "cuda":
+        rb.fast_run(steps)
+    else:
+        rb.run(steps)
+
+
+def _warmup_pong(rb: CUDARegionalBrain, n_steps: int = 300) -> None:
+    """Warm up the network with periodic thalamic stimulation."""
+    for s in range(n_steps):
+        if s % 4 == 0:
+            rb.stimulate_thalamus(15.0)
+        if PONG_BENCHMARK_MODE and rb.brain.device.type == "cuda":
+            rb.fast_run(1)
+        else:
+            rb.step()
+
+
+def _read_decoder_spike_totals(
+    brain: CUDAMolecularBrain,
+    decoder: "MotorDecoder",
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Read cumulative spike totals for the Pong motor populations."""
+    up_total = brain.spike_count[decoder.up_ids].sum(dtype=torch.int64)
+    down_total = brain.spike_count[decoder.down_ids].sum(dtype=torch.int64)
+    return up_total, down_total
+
+
+def _present_pong_stimulus(
+    rb: CUDARegionalBrain,
+    decoder: "MotorDecoder",
+    relay_ids: torch.Tensor,
+    activation: torch.Tensor,
+    stim_steps: int = 30,
+    teacher_motor_ids: Optional[torch.Tensor] = None,
+    teacher_motor_intensity: float = 0.0,
+) -> Tuple[int, int]:
+    """Present one sensory frame and return the resulting motor spike counts."""
+    brain = rb.brain
+    up_before, down_before = _read_decoder_spike_totals(brain, decoder)
+
+    n_pairs = stim_steps // 2
+    for _ in range(n_pairs):
+        brain.external_current[relay_ids] += activation
+        if teacher_motor_ids is not None and teacher_motor_intensity > 0:
+            brain.external_current[teacher_motor_ids] += teacher_motor_intensity
+        _run_brain_steps(rb, 2)
+
+    if stim_steps % 2:
+        brain.external_current[relay_ids] += activation
+        if teacher_motor_ids is not None and teacher_motor_intensity > 0:
+            brain.external_current[teacher_motor_ids] += teacher_motor_intensity
+        _run_brain_steps(rb, 1)
+
+    up_after, down_after = _read_decoder_spike_totals(brain, decoder)
+    return int((up_after - up_before).item()), int((down_after - down_before).item())
+
+
+def _predict_pong_intercept(game: SimplePong) -> float:
+    """Predict ball position when it reaches the paddle zone."""
+    ball_y = float(game.ball_y)
+    ball_dir = int(game.ball_dir)
+    remaining_steps = max(0, 12 - game.steps_taken)
+    for _ in range(remaining_steps):
+        ball_y += ball_dir * game.ball_speed
+        if ball_y >= 1.0:
+            ball_y = 2.0 - ball_y
+            ball_dir = -1
+        elif ball_y <= 0.0:
+            ball_y = -ball_y
+            ball_dir = 1
+    return min(1.0, max(0.0, ball_y))
+
+
+def _oracle_pong_action(game: SimplePong, deadband: float = 0.02) -> int:
+    """Expert policy: move toward the predicted intercept, hold when aligned."""
+    target_y = _predict_pong_intercept(game)
+    delta = target_y - game.paddle_y
+    if delta > deadband:
+        return 0
+    if delta < -deadband:
+        return 1
+    return 2
+
+
+def _teacher_forced_pong_rally(
+    rb: CUDARegionalBrain,
+    game: SimplePong,
+    encoder,
+    decoder: "MotorDecoder",
+    protocol,
+    relay_ids: torch.Tensor,
+    stim_steps: int = 30,
+    teacher_motor_intensity: float = 28.0,
+    teacher_hebbian_delta: float = 0.9,
+    teacher_deadband: float = 0.02,
+    inter_frame_settle_steps: int = 5,
+) -> Dict[str, Any]:
+    """Imprint a visuomotor mapping by clamping the teacher's chosen action."""
+    brain = rb.brain
+    game.reset()
+    if hasattr(encoder, "retina"):
+        encoder.retina.reset()
+
+    alignment_steps = 0
+    alignment_matches = 0
+    step_count = 0
+    last_activation = None
+    last_correct_ids = None
+    last_wrong_ids = None
+
+    while True:
+        activation = _encode_pong_state(encoder, game)
+        last_activation = activation
+        teacher_action = _oracle_pong_action(game, deadband=teacher_deadband)
+
+        teacher_motor_ids = None
+        correct_ids = None
+        wrong_ids = None
+        if teacher_action == 0:
+            teacher_motor_ids = decoder.up_ids
+            correct_ids = decoder.up_ids
+            wrong_ids = decoder.down_ids
+        elif teacher_action == 1:
+            teacher_motor_ids = decoder.down_ids
+            correct_ids = decoder.down_ids
+            wrong_ids = decoder.up_ids
+
+        up_count, down_count = _present_pong_stimulus(
+            rb,
+            decoder,
+            relay_ids,
+            activation,
+            stim_steps=stim_steps,
+            teacher_motor_ids=teacher_motor_ids,
+            teacher_motor_intensity=teacher_motor_intensity,
+        )
+        decoded_action = decoder.decode_spikes(up_count, down_count)
+        if teacher_action != 2:
+            alignment_steps += 1
+            if decoded_action == teacher_action:
+                alignment_matches += 1
+            if teacher_hebbian_delta > 0 and correct_ids is not None:
+                _hebbian_nudge(
+                    brain,
+                    relay_ids,
+                    correct_ids,
+                    wrong_ids,
+                    activation,
+                    delta=teacher_hebbian_delta,
+                )
+
+        last_correct_ids = correct_ids
+        last_wrong_ids = wrong_ids
+        outcome, _ = game.step(teacher_action)
+        _run_brain_steps(rb, inter_frame_settle_steps)
+        step_count += 1
+
+        if outcome in ("hit", "miss"):
+            if (hasattr(protocol, "active_motor_ids") and
+                    last_correct_ids is not None and
+                    last_wrong_ids is not None and
+                    last_activation is not None):
+                protocol.active_motor_ids = last_correct_ids
+                protocol.wrong_motor_ids = last_wrong_ids
+                protocol.active_relay_ids = relay_ids
+                protocol.last_activation = last_activation
+            if outcome == "hit":
+                protocol.deliver_hit(rb)
+            else:
+                protocol.deliver_miss(rb)
+            return {
+                "outcome": outcome,
+                "steps": step_count,
+                "teacher_aligned_steps": alignment_steps,
+                "teacher_match_rate": (
+                    alignment_matches / alignment_steps if alignment_steps else 0.0
+                ),
+            }
 
 
 class MotorDecoder:
@@ -392,7 +757,12 @@ class FreeEnergyProtocol:
                  structured_intensity: float = 50.0,
                  unstructured_intensity: float = 40.0,
                  ne_boost: float = 200.0,
-                 hebbian_delta: float = 0.8):
+                 hebbian_delta: float = 0.8,
+                 relay_ids: Optional[torch.Tensor] = None,
+                 structured_replay_scale: float = 0.0,
+                 unstructured_fraction: float = 0.30,
+                 miss_hebbian_scale: float = 0.0,
+                 miss_settle_steps: int = 0):
         self.cortex_ids = cortex_ids
         self.device = device
         self.n_cortex = len(cortex_ids)
@@ -402,6 +772,11 @@ class FreeEnergyProtocol:
         self.unstructured_intensity = unstructured_intensity
         self.ne_boost = ne_boost
         self.hebbian_delta = hebbian_delta
+        self.relay_ids = relay_ids
+        self.structured_replay_scale = structured_replay_scale
+        self.unstructured_fraction = min(1.0, max(0.01, unstructured_fraction))
+        self.miss_hebbian_scale = max(0.0, miss_hebbian_scale)
+        self.miss_settle_steps = max(0, int(miss_settle_steps))
         # Track which motor neurons fired (set by game loop)
         self.active_motor_ids: Optional[torch.Tensor] = None
         self.wrong_motor_ids: Optional[torch.Tensor] = None
@@ -419,10 +794,26 @@ class FreeEnergyProtocol:
         # NE boost — enhances STDP signal-to-noise during structured feedback
         brain.nt_conc[self.cortex_ids, NT_NE] += self.ne_boost
 
-        for s in range(self.structured_steps):
-            if s % 2 == 0:  # pulsed to avoid depolarization block
-                brain.external_current[self.cortex_ids] += self.structured_intensity
-            rb.step()
+        n_pairs = self.structured_steps // 2
+        for _ in range(n_pairs):
+            brain.external_current[self.cortex_ids] += self.structured_intensity
+            # Replay the successful sensory pattern to keep the feedback predictable
+            # and tied to the actual ball position that produced the hit.
+            if (self.relay_ids is not None and self.last_activation is not None and
+                    self.structured_replay_scale > 0):
+                brain.external_current[self.relay_ids] += (
+                    self.last_activation * self.structured_replay_scale
+                )
+            _run_brain_steps(rb, 2)
+
+        if self.structured_steps % 2:
+            brain.external_current[self.cortex_ids] += self.structured_intensity
+            if (self.relay_ids is not None and self.last_activation is not None and
+                    self.structured_replay_scale > 0):
+                brain.external_current[self.relay_ids] += (
+                    self.last_activation * self.structured_replay_scale
+                )
+            _run_brain_steps(rb, 1)
 
         # Direct Hebbian nudge on relay→motor pathway that produced the hit
         # This accelerates learning (STDP alone is slow at small scale)
@@ -443,14 +834,27 @@ class FreeEnergyProtocol:
         brain = rb.brain
 
         for s in range(self.unstructured_steps):
-            # Random 30% subset each step
-            mask = torch.rand(self.n_cortex, device=self.device) < 0.3
+            # Random subset each step
+            mask = torch.rand(self.n_cortex, device=self.device) < self.unstructured_fraction
             active_ids = self.cortex_ids[mask]
             if active_ids.numel() > 0:
                 random_intensity = torch.rand(active_ids.numel(),
                                               device=self.device) * self.unstructured_intensity
                 brain.external_current[active_ids] += random_intensity
-            rb.step()
+            _run_brain_steps(rb, 1)
+
+        if self.miss_settle_steps > 0:
+            _run_brain_steps(rb, self.miss_settle_steps)
+
+        # A weak corrective nudge on misses makes the feedback less destructive
+        # and more aligned with the action that should have been taken.
+        if (self.active_motor_ids is not None and
+                self.active_relay_ids is not None and
+                self.last_activation is not None and
+                self.miss_hebbian_scale > 0 and self.hebbian_delta > 0):
+            _hebbian_nudge(brain, self.active_relay_ids, self.active_motor_ids,
+                           self.wrong_motor_ids, self.last_activation,
+                           self.hebbian_delta * self.miss_hebbian_scale)
 
 
 class DARewardProtocol:
@@ -479,11 +883,11 @@ class DARewardProtocol:
             if s % 2 == 0:
                 # Mild structured feedback too (but weaker than FEP)
                 brain.external_current[self.cortex_ids] += 20.0
-            rb.step()
+            _run_brain_steps(rb, 1)
 
     def deliver_miss(self, rb: CUDARegionalBrain) -> None:
         """No reward — just let the network settle."""
-        rb.run(30)
+        _run_brain_steps(rb, 30)
 
 
 class RandomProtocol:
@@ -494,10 +898,10 @@ class RandomProtocol:
         self.device = device
 
     def deliver_hit(self, rb: CUDARegionalBrain) -> None:
-        rb.run(30)
+        _run_brain_steps(rb, 30)
 
     def deliver_miss(self, rb: CUDARegionalBrain) -> None:
-        rb.run(30)
+        _run_brain_steps(rb, 30)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -608,6 +1012,7 @@ def play_pong_rally(
     protocol,
     relay_ids: torch.Tensor,
     stim_steps: int = 30,
+    record_frames: Optional[List[np.ndarray]] = None,
 ) -> str:
     """Play one full Pong rally and deliver feedback.
 
@@ -615,27 +1020,26 @@ def play_pong_rally(
     """
     brain = rb.brain
     game.reset()
+    if hasattr(encoder, "retina"):
+        encoder.retina.reset()
     last_activation = None
     last_action = 2
+    if record_frames is not None:
+        record_frames.append(game.render_display_frame(action=last_action, outcome="play"))
 
     while True:
-        # 1. Encode ball position → relay neurons (Gaussian population code)
-        activation = encoder.encode(game.ball_y)
+        # 1. Encode ball position → relay neurons
+        activation = _encode_pong_state(encoder, game)
         last_activation = activation
 
         # 2. Present stimulus (pulsed), count L5 motor spikes
-        # GPU accumulators — avoid per-step .item() sync
-        up_acc = torch.zeros(1, device=brain.device)
-        down_acc = torch.zeros(1, device=brain.device)
-        for s in range(stim_steps):
-            if s % 2 == 0:  # pulsed to avoid depolarization block
-                brain.external_current[relay_ids] += activation
-            rb.step()
-            up_acc += brain.fired[decoder.up_ids].sum()
-            down_acc += brain.fired[decoder.down_ids].sum()
-        # Single GPU→CPU sync after loop
-        up_count = int(up_acc.item())
-        down_count = int(down_acc.item())
+        up_count, down_count = _present_pong_stimulus(
+            rb,
+            decoder,
+            relay_ids,
+            activation,
+            stim_steps=stim_steps,
+        )
 
         # 3. Decode action from spike counts
         action = decoder.decode_spikes(up_count, down_count)
@@ -643,9 +1047,11 @@ def play_pong_rally(
 
         # 4. Advance game
         outcome, _ = game.step(action)
+        if record_frames is not None:
+            record_frames.append(game.render_display_frame(action=action, outcome=outcome))
 
         # 5. Inter-frame gap (let activity settle)
-        rb.run(5)
+        _run_brain_steps(rb, 5)
 
         # 6. On hit/miss — set up Hebbian nudge info for protocol
         if outcome in ("hit", "miss"):
@@ -675,6 +1081,293 @@ def play_pong_rally(
             else:
                 protocol.deliver_miss(rb)
                 return "miss"
+
+
+def _build_pong_system(
+    scale: str,
+    device: str,
+    seed: int,
+    input_mode: str = "scalar",
+):
+    """Build a fresh Pong brain, encoder, and decoder."""
+    n_cols = SCALE_COLUMNS[scale]
+    rb = CUDARegionalBrain._build(n_columns=n_cols, n_per_layer=20,
+                                  device=device, seed=seed)
+    brain = rb.brain
+    dev = brain.device
+    _prepare_pong_brain(brain)
+
+    relay_ids = _get_region_ids(rb, "thalamus", "relay")
+    l5_ids = _get_cortex_l5_ids(rb)
+    cortex_ids = _get_all_cortex_ids(rb)
+    if input_mode == "scalar":
+        encoder = SensoryEncoder(relay_ids, sigma=0.15)
+    elif input_mode == "retina":
+        encoder = RetinalPongEncoder(
+            relay_ids,
+            resolution=(16, 16),
+            seed=seed,
+            include_paddle=False,
+        )
+    elif input_mode == "retina_body":
+        encoder = RetinalPongEncoder(
+            relay_ids,
+            resolution=(16, 16),
+            seed=seed,
+            include_paddle=True,
+        )
+    else:
+        raise ValueError(f"Unknown Pong input mode: {input_mode}")
+    decoder = MotorDecoder(l5_ids, threshold=0.1)
+    return rb, dev, relay_ids, l5_ids, cortex_ids, encoder, decoder
+
+
+def _make_pong_protocol(
+    condition: str,
+    relay_ids: torch.Tensor,
+    cortex_ids: torch.Tensor,
+    l5_ids: torch.Tensor,
+    device,
+):
+    """Construct a Pong training protocol by condition name."""
+    if condition == "free_energy":
+        return FreeEnergyProtocol(cortex_ids, device=device)
+    if condition == "free_energy_balanced":
+        return FreeEnergyProtocol(
+            cortex_ids,
+            device=device,
+            relay_ids=relay_ids,
+            structured_steps=40,
+            unstructured_steps=40,
+            structured_intensity=40.0,
+            unstructured_intensity=18.0,
+            ne_boost=150.0,
+            hebbian_delta=0.7,
+            unstructured_fraction=0.18,
+            miss_settle_steps=6,
+        )
+    if condition == "free_energy_replay":
+        return FreeEnergyProtocol(
+            cortex_ids,
+            device=device,
+            relay_ids=relay_ids,
+            structured_steps=40,
+            unstructured_steps=30,
+            structured_intensity=32.0,
+            unstructured_intensity=12.0,
+            ne_boost=120.0,
+            hebbian_delta=0.8,
+            structured_replay_scale=0.8,
+            unstructured_fraction=0.12,
+            miss_hebbian_scale=0.20,
+            miss_settle_steps=8,
+        )
+    if condition == "free_energy_corrective":
+        return FreeEnergyProtocol(
+            cortex_ids,
+            device=device,
+            relay_ids=relay_ids,
+            structured_steps=45,
+            unstructured_steps=25,
+            structured_intensity=35.0,
+            unstructured_intensity=10.0,
+            ne_boost=100.0,
+            hebbian_delta=0.9,
+            structured_replay_scale=1.0,
+            unstructured_fraction=0.08,
+            miss_hebbian_scale=0.35,
+            miss_settle_steps=10,
+        )
+    if condition == "da_reward":
+        return DARewardProtocol(cortex_ids, l5_ids, device=device)
+    if condition == "random":
+        return RandomProtocol(cortex_ids, device=device)
+    raise ValueError(f"Unknown Pong protocol: {condition}")
+
+
+def _heldout_pong_eval(
+    scale: str,
+    device: str,
+    seed: int,
+    condition: str,
+    n_train_rallies: int,
+    n_test_rallies: int,
+    input_mode: str = "scalar",
+    pretrain_rallies: int = 0,
+    teacher_motor_intensity: float = 28.0,
+    teacher_hebbian_delta: float = 0.9,
+    teacher_deadband: float = 0.02,
+) -> Dict[str, Any]:
+    """Train on one seed and evaluate on a held-out rally stream."""
+    rb, dev, relay_ids, l5_ids, cortex_ids, encoder, decoder = _build_pong_system(
+        scale, device, seed, input_mode=input_mode
+    )
+    protocol = _make_pong_protocol(condition, relay_ids, cortex_ids, l5_ids, dev)
+    train_game = SimplePong(seed=seed)
+    _warmup_pong(rb, n_steps=300)
+
+    pretrain_metrics = None
+    if pretrain_rallies > 0:
+        teacher_game = SimplePong(seed=seed + 5000)
+        pretrain_runs = []
+        for _ in range(pretrain_rallies):
+            result = _teacher_forced_pong_rally(
+                rb,
+                teacher_game,
+                encoder,
+                decoder,
+                protocol,
+                relay_ids,
+                stim_steps=30,
+                teacher_motor_intensity=teacher_motor_intensity,
+                teacher_hebbian_delta=teacher_hebbian_delta,
+                teacher_deadband=teacher_deadband,
+            )
+            pretrain_runs.append(result)
+        pretrain_hits = sum(1 for run in pretrain_runs if run["outcome"] == "hit")
+        mean_match = sum(run["teacher_match_rate"] for run in pretrain_runs) / len(pretrain_runs)
+        mean_steps = sum(run["steps"] for run in pretrain_runs) / len(pretrain_runs)
+        pretrain_metrics = {
+            "rallies": pretrain_rallies,
+            "hit_rate": pretrain_hits / pretrain_rallies,
+            "teacher_match_rate": mean_match,
+            "mean_steps": mean_steps,
+            "outcomes": [run["outcome"] for run in pretrain_runs],
+        }
+
+    train_outcomes = []
+    for _ in range(n_train_rallies):
+        result = play_pong_rally(rb, train_game, encoder, decoder, protocol,
+                                 relay_ids, stim_steps=30)
+        train_outcomes.append(1 if result == "hit" else 0)
+
+    # Evaluate without further feedback so we measure the learned policy itself.
+    test_game = SimplePong(seed=seed + 1000)
+    test_protocol = RandomProtocol(cortex_ids, device=dev)
+    test_outcomes = []
+    for _ in range(n_test_rallies):
+        result = play_pong_rally(rb, test_game, encoder, decoder, test_protocol,
+                                 relay_ids, stim_steps=30)
+        test_outcomes.append(1 if result == "hit" else 0)
+
+    return {
+        "input_mode": input_mode,
+        "pretrain": pretrain_metrics,
+        "train_total": sum(train_outcomes),
+        "train_rate": sum(train_outcomes) / len(train_outcomes),
+        "train_last10": sum(train_outcomes[-10:]) / min(10, len(train_outcomes)),
+        "test_total": sum(test_outcomes),
+        "test_rate": sum(test_outcomes) / len(test_outcomes),
+        "test_last10": sum(test_outcomes[-10:]) / min(10, len(test_outcomes)),
+        "train_outcomes": train_outcomes,
+        "test_outcomes": test_outcomes,
+    }
+
+
+def _save_pong_recording(frames: List[np.ndarray], path: str, fps: int = 10) -> None:
+    """Save recorded Pong frames as a GIF or PNG sequence."""
+    if not frames:
+        print("    No Pong frames recorded")
+        return
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    if HAS_PIL and path.lower().endswith(".gif"):
+        images = [Image.fromarray(frame) for frame in frames]
+        duration_ms = max(20, int(round(1000 / max(1, fps))))
+        images[0].save(
+            path,
+            save_all=True,
+            append_images=images[1:],
+            duration=duration_ms,
+            loop=0,
+        )
+        print(f"    Saved Pong GIF: {path} ({len(frames)} frames)")
+        return
+
+    out_dir = path[:-4] if path.lower().endswith(".gif") else path
+    os.makedirs(out_dir, exist_ok=True)
+    if HAS_PIL:
+        for idx, frame in enumerate(frames):
+            Image.fromarray(frame).save(os.path.join(out_dir, f"frame_{idx:04d}.png"))
+    else:
+        for idx, frame in enumerate(frames):
+            np.save(os.path.join(out_dir, f"frame_{idx:04d}.npy"), frame)
+    print(f"    Saved Pong frames: {out_dir} ({len(frames)} frames)")
+
+
+def record_pong_policy_demo(
+    scale: str,
+    device: str,
+    seed: int,
+    condition: str,
+    input_mode: str,
+    train_rallies: int,
+    pretrain_rallies: int,
+    output_path: str,
+    n_record_rallies: int = 3,
+) -> Dict[str, Any]:
+    """Train a Pong policy, then record held-out play as a GIF/PNG sequence."""
+    rb, dev, relay_ids, l5_ids, cortex_ids, encoder, decoder = _build_pong_system(
+        scale, device, seed, input_mode=input_mode
+    )
+    protocol = _make_pong_protocol(condition, relay_ids, cortex_ids, l5_ids, dev)
+    _warmup_pong(rb, n_steps=300)
+
+    if pretrain_rallies > 0:
+        teacher_game = SimplePong(seed=seed + 5000)
+        for _ in range(pretrain_rallies):
+            _teacher_forced_pong_rally(
+                rb,
+                teacher_game,
+                encoder,
+                decoder,
+                protocol,
+                relay_ids,
+                stim_steps=30,
+            )
+
+    train_game = SimplePong(seed=seed)
+    for _ in range(train_rallies):
+        play_pong_rally(
+            rb,
+            train_game,
+            encoder,
+            decoder,
+            protocol,
+            relay_ids,
+            stim_steps=30,
+        )
+
+    eval_game = SimplePong(seed=seed + 1000)
+    eval_protocol = RandomProtocol(cortex_ids, device=dev)
+    frames: List[np.ndarray] = []
+    outcomes = []
+    for _ in range(n_record_rallies):
+        outcome = play_pong_rally(
+            rb,
+            eval_game,
+            encoder,
+            decoder,
+            eval_protocol,
+            relay_ids,
+            stim_steps=30,
+            record_frames=frames,
+        )
+        outcomes.append(outcome)
+        if frames:
+            frames.extend([frames[-1].copy() for _ in range(4)])
+
+    _save_pong_recording(frames, output_path, fps=10)
+    hit_rate = sum(1 for outcome in outcomes if outcome == "hit") / max(1, len(outcomes))
+    return {
+        "condition": condition,
+        "input_mode": input_mode,
+        "pretrain_rallies": pretrain_rallies,
+        "train_rallies": train_rallies,
+        "recorded_rallies": n_record_rallies,
+        "outcomes": outcomes,
+        "hit_rate": hit_rate,
+        "output_path": output_path,
+    }
 
 
 def play_arena_episode(
@@ -767,8 +1460,7 @@ def exp_pong_replication(
                                    device=device, seed=seed)
     brain = rb.brain
     dev = brain.device
-    if dev.type == 'cuda':
-        brain.compile()
+    _prepare_pong_brain(brain)
     print(f"    Brain: {rb.n_neurons} neurons, {rb.n_synapses} synapses on {dev}")
 
     # Get region IDs
@@ -791,7 +1483,7 @@ def exp_pong_replication(
     game = SimplePong(seed=seed)
 
     # Warmup
-    _warmup(rb, n_steps=300)
+    _warmup_pong(rb, n_steps=300)
     print(f"    Warmup complete")
 
     # Play rallies
@@ -837,6 +1529,8 @@ def exp_pong_replication(
         "last_10": last_10,
         "total_hitrate": total_hitrate,
         "outcomes": outcomes,
+        "benchmark_mode": PONG_BENCHMARK_MODE,
+        "no_interval_biology": PONG_BENCHMARK_MODE,
     }
 
 
@@ -867,8 +1561,7 @@ def exp_learning_speed(
                                        device=device, seed=seed)
         brain = rb.brain
         dev = brain.device
-        if dev.type == 'cuda':
-            brain.compile()
+        _prepare_pong_brain(brain)
 
         relay_ids = _get_region_ids(rb, "thalamus", "relay")
         l5_ids = _get_cortex_l5_ids(rb)
@@ -886,7 +1579,7 @@ def exp_learning_speed(
         else:
             protocol = RandomProtocol(cortex_ids, device=dev)
 
-        _warmup(rb, n_steps=300)
+        _warmup_pong(rb, n_steps=300)
 
         outcomes = []
         for r in range(n_rallies):
@@ -926,6 +1619,196 @@ def exp_learning_speed(
     }
 
 
+def exp_pong_signal_optimization(
+    scale: str = "small",
+    device: str = "auto",
+    seed: int = 42,
+    n_rallies: int = 60,
+    input_mode: str = "scalar",
+    pretrain_rallies: int = 0,
+) -> Dict[str, Any]:
+    """Compare multiple Pong feedback signals using held-out evaluation."""
+    _header(
+        "Exp 6: Pong Signal Optimization",
+        f"Held-out comparison of Free Energy variants vs DA reward vs random "
+        f"({input_mode}, pretrain={pretrain_rallies})"
+    )
+    t0 = time.perf_counter()
+
+    n_test_rallies = max(20, n_rallies // 3)
+    conditions = [
+        "free_energy",
+        "free_energy_balanced",
+        "free_energy_replay",
+        "free_energy_corrective",
+        "da_reward",
+        "random",
+    ]
+    results = {}
+
+    for condition in conditions:
+        metrics = _heldout_pong_eval(
+            scale=scale,
+            device=device,
+            seed=seed,
+            condition=condition,
+            n_train_rallies=n_rallies,
+            n_test_rallies=n_test_rallies,
+            input_mode=input_mode,
+            pretrain_rallies=pretrain_rallies,
+        )
+        results[condition] = metrics
+        pretrain_note = ""
+        if metrics["pretrain"] is not None:
+            pretrain_note = (
+                f" | pretrain {metrics['pretrain']['hit_rate']:.0%}"
+                f" match {metrics['pretrain']['teacher_match_rate']:.0%}"
+            )
+        print(
+            f"    {condition:22s}: "
+            f"train {metrics['train_rate']:.0%} (last10 {metrics['train_last10']:.0%}) | "
+            f"test {metrics['test_rate']:.0%} ({metrics['test_total']}/{n_test_rallies})"
+            f"{pretrain_note}"
+        )
+
+    elapsed = time.perf_counter() - t0
+    best_name = max(results, key=lambda name: (
+        results[name]["test_rate"],
+        results[name]["train_rate"],
+    ))
+    best = results[best_name]
+    base = results["free_energy"]
+    rand = results["random"]
+    passed = best["test_rate"] > max(base["test_rate"], rand["test_rate"])
+
+    print(f"\n    Best signal:       {best_name}")
+    print(f"    Best held-out:     {best['test_rate']:.0%} ({best['test_total']}/{n_test_rallies})")
+    print(f"    Base free energy:  {base['test_rate']:.0%}")
+    print(f"    Random control:    {rand['test_rate']:.0%}")
+    print(f"    {'PASS' if passed else 'FAIL'} in {elapsed:.1f}s")
+
+    return {
+        "passed": passed,
+        "time": elapsed,
+        "input_mode": input_mode,
+        "pretrain_rallies": pretrain_rallies,
+        "train_rallies": n_rallies,
+        "test_rallies": n_test_rallies,
+        "best_signal": best_name,
+        "results": results,
+    }
+
+
+def exp_pong_retina_pretraining(
+    scale: str = "small",
+    device: str = "auto",
+    seed: int = 42,
+    n_rallies: int = 40,
+    input_mode: str = "retina_body",
+    pretrain_rallies: int = 8,
+) -> Dict[str, Any]:
+    """Compare scalar baseline vs retinal policies with teacher-forced warmup.
+
+    The default uses ``retina_body`` instead of ball-only retina because
+    teacher labels depend on both ball and paddle position.
+    """
+    _header(
+        "Exp 7: Pong Retina Teacher Pretraining",
+        f"Teacher-force retinal input before free play ({input_mode}, pretrain={pretrain_rallies})"
+    )
+    t0 = time.perf_counter()
+
+    n_test_rallies = max(20, n_rallies // 2)
+    candidates = [
+        {
+            "name": "scalar_free_energy",
+            "condition": "free_energy",
+            "input_mode": "scalar",
+            "pretrain_rallies": 0,
+        },
+        {
+            "name": f"{input_mode}_free_energy_replay",
+            "condition": "free_energy_replay",
+            "input_mode": input_mode,
+            "pretrain_rallies": 0,
+        },
+        {
+            "name": f"{input_mode}_teacher_free_energy",
+            "condition": "free_energy",
+            "input_mode": input_mode,
+            "pretrain_rallies": pretrain_rallies,
+        },
+        {
+            "name": f"{input_mode}_teacher_free_energy_replay",
+            "condition": "free_energy_replay",
+            "input_mode": input_mode,
+            "pretrain_rallies": pretrain_rallies,
+        },
+    ]
+    results = {}
+
+    for candidate in candidates:
+        metrics = _heldout_pong_eval(
+            scale=scale,
+            device=device,
+            seed=seed,
+            condition=candidate["condition"],
+            n_train_rallies=n_rallies,
+            n_test_rallies=n_test_rallies,
+            input_mode=candidate["input_mode"],
+            pretrain_rallies=candidate["pretrain_rallies"],
+        )
+        results[candidate["name"]] = metrics
+        pretrain = metrics["pretrain"]
+        pretrain_note = "no pretrain"
+        if pretrain is not None:
+            pretrain_note = (
+                f"pretrain hit {pretrain['hit_rate']:.0%}, "
+                f"match {pretrain['teacher_match_rate']:.0%}"
+            )
+        print(
+            f"    {candidate['name']:32s}: "
+            f"train {metrics['train_rate']:.0%} | "
+            f"test {metrics['test_rate']:.0%} ({metrics['test_total']}/{n_test_rallies}) | "
+            f"{pretrain_note}"
+        )
+
+    elapsed = time.perf_counter() - t0
+    best_name = max(results, key=lambda name: (
+        results[name]["test_rate"],
+        results[name]["train_rate"],
+    ))
+    best = results[best_name]
+    scalar_base = results["scalar_free_energy"]
+    retinal_base = results[f"{input_mode}_free_energy_replay"]
+    teacher_candidates = [
+        results[f"{input_mode}_teacher_free_energy"],
+        results[f"{input_mode}_teacher_free_energy_replay"],
+    ]
+    best_teacher = max(teacher_candidates, key=lambda item: (item["test_rate"], item["train_rate"]))
+    passed = (
+        best_teacher["test_rate"] > scalar_base["test_rate"] and
+        best_teacher["test_rate"] > retinal_base["test_rate"]
+    )
+
+    print(f"\n    Best candidate:    {best_name}")
+    print(f"    Best held-out:     {best['test_rate']:.0%} ({best['test_total']}/{n_test_rallies})")
+    print(f"    Scalar baseline:   {scalar_base['test_rate']:.0%}")
+    print(f"    Retinal baseline:  {retinal_base['test_rate']:.0%}")
+    print(f"    {'PASS' if passed else 'FAIL'} in {elapsed:.1f}s")
+
+    return {
+        "passed": passed,
+        "time": elapsed,
+        "retina_input_mode": input_mode,
+        "train_rallies": n_rallies,
+        "pretrain_rallies": pretrain_rallies,
+        "test_rallies": n_test_rallies,
+        "best_candidate": best_name,
+        "results": results,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Experiment 3: Pharmacological Effects
 # ═══════════════════════════════════════════════════════════════════════════
@@ -959,8 +1842,7 @@ def exp_pharmacology(
                                        device=device, seed=seed)
         brain = rb.brain
         dev = brain.device
-        if dev.type == 'cuda':
-            brain.compile()
+        _prepare_pong_brain(brain)
 
         relay_ids = _get_region_ids(rb, "thalamus", "relay")
         l5_ids = _get_cortex_l5_ids(rb)
@@ -971,7 +1853,7 @@ def exp_pharmacology(
         protocol = FreeEnergyProtocol(cortex_ids, device=dev)
         game = SimplePong(seed=seed)
 
-        _warmup(rb, n_steps=300)
+        _warmup_pong(rb, n_steps=300)
 
         # Train
         for r in range(n_train_rallies):
@@ -1075,7 +1957,7 @@ def exp_arena_navigation(
     # Smaller grid (7x7) = easier task for small networks
     arena = SimpleArena(grid_size=7, max_steps=40, seed=seed)
 
-    _warmup(rb, n_steps=300)
+    _warmup_pong(rb, n_steps=300)
 
     # Train
     steps_per_episode = []
@@ -1165,8 +2047,7 @@ def exp_scale_invariance(
                                        device=device, seed=seed)
         brain = rb.brain
         dev = brain.device
-        if dev.type == 'cuda':
-            brain.compile()
+        _prepare_pong_brain(brain)
         print(f"    Brain: {rb.n_neurons} neurons, {rb.n_synapses} synapses")
 
         relay_ids = _get_region_ids(rb, "thalamus", "relay")
@@ -1187,7 +2068,7 @@ def exp_scale_invariance(
         protocol = FreeEnergyProtocol(cortex_ids, device=dev, hebbian_delta=delta)
         game = SimplePong(seed=seed)
 
-        _warmup(rb, n_steps=300)
+        _warmup_pong(rb, n_steps=300)
 
         outcomes = []
         for r in range(tier_rallies):
@@ -1238,6 +2119,8 @@ def exp_scale_invariance(
 ALL_EXPERIMENTS = {
     1: ("DishBrain Pong Replication", exp_pong_replication),
     2: ("Learning Speed Comparison", exp_learning_speed),
+    6: ("Pong Signal Optimization", exp_pong_signal_optimization),
+    7: ("Pong Retina Teacher Pretraining", exp_pong_retina_pretraining),
     3: ("Pharmacological Effects", exp_pharmacology),
     4: ("Arena Navigation", exp_arena_navigation),
     5: ("Scale Invariance", exp_scale_invariance),
@@ -1298,8 +2181,13 @@ def _run_single(args, seed: int) -> Dict[str, Any]:
 
         try:
             kwargs = {"scale": args.scale, "device": args.device, "seed": seed}
-            if args.rallies and exp_id in (1, 2, 5):
+            if args.rallies and exp_id in (1, 2, 5, 6, 7):
                 kwargs["n_rallies"] = args.rallies
+            if exp_id in (6, 7):
+                if args.input_mode is not None:
+                    kwargs["input_mode"] = args.input_mode
+                if args.pretrain_rallies is not None:
+                    kwargs["pretrain_rallies"] = args.pretrain_rallies
             result = func(**kwargs)
             results[exp_id] = result
         except Exception as e:
@@ -1316,7 +2204,7 @@ def main():
         description="DishBrain Replication — dONN Game Learning via Free Energy Principle"
     )
     parser.add_argument("--exp", type=int, nargs="*", default=None,
-                        help="Which experiments to run (1-5). Default: all")
+                        help="Which experiments to run (1-7). Default: all")
     parser.add_argument("--scale", default="small",
                         choices=list(SCALE_COLUMNS.keys()),
                         help="Network scale (default: small)")
@@ -1325,6 +2213,11 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--rallies", type=int, default=None,
                         help="Override number of rallies for Pong experiments")
+    parser.add_argument("--input-mode", default=None,
+                        choices=["scalar", "retina", "retina_body"],
+                        help="Pong sensory input mode for experiments 6 and 7")
+    parser.add_argument("--pretrain-rallies", type=int, default=None,
+                        help="Teacher-forced retinal pretraining rallies for experiments 6 and 7")
     parser.add_argument("--json", type=str, default=None, metavar="PATH",
                         help="Write structured JSON results to file")
     parser.add_argument("--runs", type=int, default=1,
@@ -1333,15 +2226,25 @@ def main():
     parser.add_argument("--gpu-tiers", action="store_true",
                         help="In Exp 5, expand scale tiers to 1K/5K/25K/100K "
                              "(for CUDA GPUs with sufficient VRAM)")
+    parser.add_argument(
+        "--benchmark-mode", "--no-interval-biology",
+        dest="benchmark_mode",
+        action="store_true",
+        help="Pong benchmark fast path: disable interval biology and use reduced-overhead CUDA stepping",
+    )
     args = parser.parse_args()
 
     # Set global flag for GPU tiers
     if args.gpu_tiers:
         os.environ["DISHBRAIN_GPU_TIERS"] = "1"
+    global PONG_BENCHMARK_MODE
+    PONG_BENCHMARK_MODE = bool(args.benchmark_mode)
 
     print("=" * 76)
     print("  DISHBRAIN REPLICATION — dONN GAME LEARNING (FREE ENERGY PRINCIPLE)")
     print(f"  Backend: {detect_backend()} | Scale: {args.scale} | Device: {args.device}")
+    if PONG_BENCHMARK_MODE:
+        print("  Pong benchmark mode: enabled (interval biology disabled)")
     if args.runs > 1:
         print(f"  Multi-seed: {args.runs} runs (seeds {args.seed}..{args.seed + args.runs - 1})")
     print(f"  Replicating Kagan et al. (2022) Neuron")
@@ -1416,6 +2319,8 @@ def main():
             "device": args.device,
             "n_runs": args.runs,
             "base_seed": args.seed,
+            "benchmark_mode": PONG_BENCHMARK_MODE,
+            "no_interval_biology": PONG_BENCHMARK_MODE,
             "total_time_s": round(total, 2),
             "system": _system_info(),
             "runs": [],

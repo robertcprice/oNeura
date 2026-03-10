@@ -1,0 +1,84 @@
+{
+  "runs": [
+    {
+      "label": "mac",
+      "scale": "large",
+      "requested_device": "metal",
+      "backend": "rust-metal",
+      "gpu": "Apple Metal",
+      "wall_time_s": 115.097269,
+      "bio_time_ms": 3995.00006,
+      "realtime_factor": 0.03471,
+      "slower_than_real_time": 28.81033,
+      "neural_steps_per_s": 347.097722,
+      "rallies": 80,
+      "hits": 33,
+      "misses": 47,
+      "process_peak_memory_gb": 1.2419449016451836,
+      "note": "full 80-rally Rust/Metal no-interval run"
+    },
+    {
+      "label": "a100",
+      "scale": "large",
+      "requested_device": "cuda",
+      "backend": "cuda",
+      "gpu": "NVIDIA A100-PCIE-40GB",
+      "wall_time_s": 127.198762,
+      "bio_time_ms": 3985.0,
+      "realtime_factor": 0.031329,
+      "slower_than_real_time": 31.919388,
+      "neural_steps_per_s": 313.289213,
+      "rallies": 80,
+      "hits": 35,
+      "misses": 45,
+      "process_peak_memory_gb": null,
+      "note": "full 80-rally run with sampled nvidia-smi telemetry",
+      "gpu_util_avg_pct": 70.59767441860465,
+      "gpu_util_max_pct": 88.0,
+      "gpu_mem_used_max_mb": 1265.0,
+      "gpu_mem_used_delta_mb": 1264.0,
+      "gpu_power_avg_w": 134.12732558139535,
+      "gpu_temp_avg_c": 43.25581395348837,
+      "gpu_samples": 430
+    },
+    {
+      "label": "h200",
+      "scale": "large",
+      "requested_device": "cuda",
+      "backend": "cuda",
+      "gpu": "NVIDIA H200",
+      "wall_time_s": 69.642485,
+      "bio_time_ms": 3985.0,
+      "realtime_factor": 0.057221,
+      "slower_than_real_time": 17.476157,
+      "neural_steps_per_s": 572.208186,
+      "rallies": 80,
+      "hits": 35,
+      "misses": 45,
+      "process_peak_memory_gb": null,
+      "note": "full 80-rally run with sampled nvidia-smi telemetry",
+      "gpu_util_avg_pct": 67.07114624505928,
+      "gpu_util_max_pct": 85.0,
+      "gpu_mem_used_max_mb": 1385.0,
+      "gpu_mem_used_delta_mb": 1385.0,
+      "gpu_power_avg_w": 232.08482213438734,
+      "gpu_temp_avg_c": 43.96442687747036,
+      "gpu_samples": 253
+    }
+  ],
+  "table": "run   gpu                    wall_s   bio_ms  rt_factor  slowdown  steps_s  gpu_util_avg  vram_max_mb  vram_delta_mb  proc_peak_gb\n----  ---------------------  -------  ------  ---------  --------  -------  ------------  -----------  -------------  ------------\nmac   Apple Metal            115.097  3995.0  0.034710   28.8      347.1    -             -            -              1.24        \na100  NVIDIA A100-PCIE-40GB  127.199  3985.0  0.031329   31.9      313.3    70.6          1265         1264           -           \nh200  NVIDIA H200            69.642   3985.0  0.057221   17.5      572.2    67.1          1385         1385           -           ",
+  "comparison": {
+    "h200_vs_a100": {
+      "wall_speedup": 1.8264535218695888,
+      "realtime_factor_ratio": 1.826454722461617
+    },
+    "a100_vs_mac": {
+      "wall_speedup": 0.9048615504606876,
+      "realtime_factor_ratio": 0.9025929127052724
+    },
+    "h200_vs_mac": {
+      "wall_speedup": 1.6526875656432995,
+      "realtime_factor_ratio": 1.6485450878709307
+    }
+  }
+}

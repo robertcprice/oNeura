@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>oNeuro 3D - Particle Swarm</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 20px; left: 20px;
+            color: #0f0; font-family: 'Courier New', monospace;
+            background: rgba(0,0,0,0.8); padding: 20px;
+            border: 1px solid #0f0; border-radius: 8px;
+        }
+        #ui h1 { margin: 0 0 10px 0; font-size: 24px; }
+        #ui p { margin: 5px 0; font-size: 14px; }
+        .stat { color: #0a0; }
+        .value { color: #0f0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>🧬 oNeuro Particle Swarm</h1>
+        <p>Particles: <span class="value" id="count">0</span></p>
+        <p>Brain Steps: <span class="value" id="brain">0</span></p>
+        <p>FPS: <span class="value" id="fps">0</span></p>
+        <p style="color:#666;margin-top:10px;">Each particle = 1 neuron</p>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // ============================================================
+        // PARTICLE SWARM - Each particle is a NEURON
+        // ============================================================
+
+        const canvas = document.getElementById('canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000510, 0.002);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 20, 60);
+
+        // ============================================================
+        // NEURON PARTICLES (20000 neurons!)
+        // ============================================================
+        const N_NEURONS = 20000;
+
+        // Position and velocity arrays
+        const positions = new Float32Array(N_NEURONS * 3);
+        const velocities = new Float32Array(N_NEURONS * 3);
+        const colors = new Float32Array(N_NEURONS * 3);
+        const neuronState = new Float32Array(N_NEURONS); // Membrane potential
+
+        // Initialize particles in brain-like shape (ellipsoid)
+        for (let i = 0; i < N_NEURONS; i++) {
+            // Brain shape: ellipsoid
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const r = Math.pow(Math.random(), 0.33) * 20;
+
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta) * 1.5; // x
+            positions[i * 3 + 1] = r * Math.cos(phi) * 2.0 + 10; // y (brain position)
+            positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta); // z
+
+            // Initial velocity (slight drift)
+            velocities[i * 3] = (Math.random() - 0.5) * 0.1;
+            velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
+            velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
+
+            // Initial state (resting potential)
+            neuronState[i] = -70 + Math.random() * 10;
+
+            // Color: neural green glow
+            colors[i * 3] = 0.1;
+            colors[i * 3 + 1] = 0.8;
+            colors[i * 3 + 2] = 0.2;
+        }
+
+        // Create particle system
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.5,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
+        });
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // ============================================================
+        // SYNAPTIC CONNECTIONS (Neural network visualization)
+        // ============================================================
+        const SYNAPSE_COUNT = 5000;
+        const synapseGeometry = new THREE.BufferGeometry();
+        const synapsePositions = new Float32Array(SYNAPSE_COUNT * 6); // 2 points per line
+        const synapseColors = new Float32Array(SYNAPSE_COUNT * 6);
+
+        // Pre-compute synapses
+        const synapses = [];
+        for (let i = 0; i < SYNAPSE_COUNT; i++) {
+            const pre = Math.floor(Math.random() * N_NEURONS);
+            const post = Math.floor(Math.random() * N_NEURONS);
+            if (pre !== post) {
+                synapses.push({ pre, post, weight: Math.random() });
+            }
+        }
+
+        // ============================================================
+        // ENVIRONMENT - Fruit/Food sources (odor sources)
+        // ============================================================
+        const foods = [];
+        const foodGeometry = new THREE.SphereGeometry(1, 16, 16);
+        const foodMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff4400,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        for (let i = 0; i < 5; i++) {
+            const food = new THREE.Mesh(foodGeometry, foodMaterial.clone());
+            food.position.set(
+                (Math.random() - 0.5) * 80,
+                0,
+                (Math.random() - 0.5) * 80
+            );
+            food.userData.nutrition = 100;
+            scene.add(food);
+            foods.push(food);
+        }
+
+        // ============================================================
+        // LIGHTING
+        // ============================================================
+        scene.add(new THREE.AmbientLight(0x222233, 0.5));
+
+        const sunLight = new THREE.DirectionalLight(0xffaa66, 1);
+        sunLight.position.set(50, 100, 50);
+        scene.add(sunLight);
+
+        // ============================================================
+        // SIMULATION STATE
+        // ============================================================
+        let brainSteps = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        // Hodgkin-Huxley-like dynamics
+        function updateNeurons(dt) {
+            const time = performance.now() * 0.001;
+
+            for (let i = 0; i < N_NEURONS; i++) {
+                // Get position
+                let x = positions[i * 3];
+                let y = positions[i * 3 + 1];
+                let z = positions[i * 3 + 2];
+
+                // Find nearest food (for odor attraction)
+                let nearestFood = null;
+                let nearestDist = Infinity;
+                for (const food of foods) {
+                    const dx = food.position.x - x;
+                    const dy = food.position.y - y;
+                    const dz = food.position.z - z;
+                    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearestFood = food;
+                    }
+                }
+
+                // Olfactory gradient (attraction to food)
+                let ax = 0, ay = 0, az = 0;
+                if (nearestFood && nearestDist < 50) {
+                    const dx = nearestFood.position.x - x;
+                    const dy = nearestFood.position.y - y;
+                    const dz = nearestFood.position.z - z;
+                    const strength = nearestFood.userData.nutrition / 100 * 0.5 / (nearestDist + 1);
+                    ax = dx * strength;
+                    ay = dy * strength;
+                    az = dz * strength;
+                }
+
+                // Neural noise (stochastic dynamics)
+                const noise = (Math.random() - 0.5) * 0.3;
+
+                // Update velocity
+                velocities[i * 3] += (ax + noise) * dt;
+                velocities[i * 3 + 1] += (ay - 0.1) * dt; // slight gravity
+                velocities[i * 3 + 2] += (az + noise) * dt;
+
+                // Damping
+                velocities[i * 3] *= 0.98;
+                velocities[i * 3 + 1] *= 0.98;
+                velocities[i * 3 + 2] *= 0.98;
+
+                // Update position
+                positions[i * 3] += velocities[i * 3];
+                positions[i * 3 + 1] += velocities[i * 3 + 1];
+                positions[i * 3 + 2] += velocities[i * 3 + 2];
+
+                // Boundary (brain sphere)
+                const dx = positions[i * 3] - 0;
+                const dy = positions[i * 3 + 1] - 10;
+                const dz = positions[i * 3 + 2] - 0;
+                const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                if (dist > 20) {
+                    // Push back toward brain center
+                    const push = (dist - 20) * 0.1;
+                    positions[i * 3] -= dx * push * 0.1;
+                    positions[i * 3 + 1] -= dy * push * 0.1;
+                    positions[i * 3 + 2] -= dz * push * 0.1;
+                    velocities[i * 3] *= 0.5;
+                    velocities[i * 3 + 1] *= 0.5;
+                    velocities[i * 3 + 2] *= 0.5;
+                }
+
+                // Floor constraint
+                if (positions[i * 3 + 1] < 0.5) {
+                    positions[i * 3 + 1] = 0.5;
+                    velocities[i * 3 + 1] = Math.abs(velocities[i * 3 + 1]) * 0.5;
+                }
+
+                // Update color based on activity (membrane potential)
+                // More active = brighter green + some yellow
+                const activity = Math.abs(neuronState[i] + 70) / 70;
+                colors[i * 3] = 0.1 + activity * 0.5; // R
+                colors[i * 3 + 1] = 0.6 + activity * 0.4; // G
+                colors[i * 3 + 2] = 0.1 + activity * 0.3; // B
+
+                // Spike!
+                neuronState[i] += (Math.random() - 0.5) * 20 * dt;
+                neuronState[i] *= 0.95; // decay
+
+                // Fire spike periodically
+                if (neuronState[i] > 20) {
+                    neuronState[i] = -90; // hyperpolarization
+                    // Spike color flash
+                    colors[i * 3] = 1.0;
+                    colors[i * 3 + 1] = 1.0;
+                    colors[i * 3 + 2] = 0.5;
+                }
+            }
+
+            brainSteps++;
+        }
+
+        function updateSynapses() {
+            let idx = 0;
+            for (const syn of synapses) {
+                if (idx >= SYNAPSE_COUNT * 6) break;
+
+                const pre = syn.pre;
+                const post = syn.post;
+
+                // Get positions
+                synapsePositions[idx] = positions[pre * 3];
+                synapsePositions[idx + 1] = positions[pre * 3 + 1];
+                synapsePositions[idx + 2] = positions[pre * 3 + 2];
+                synapsePositions[idx + 3] = positions[post * 3];
+                synapsePositions[idx + 4] = positions[post * 3 + 1];
+                synapsePositions[idx + 5] = positions[post * 3 + 2];
+
+                // Color based on activity difference
+                const activity = Math.abs(neuronState[pre] - neuronState[post]) / 100;
+                synapseColors[idx] = 0.2 + activity;
+                synapseColors[idx + 1] = 0.8 + activity * 0.2;
+                synapseColors[idx + 2] = 0.2;
+                synapseColors[idx + 3] = 0.2 + activity;
+                synapseColors[idx + 4] = 0.8 + activity * 0.2;
+                synapseColors[idx + 5] = 0.2;
+
+                idx += 6;
+            }
+
+            synapseGeometry.setAttribute('position', new THREE.BufferAttribute(synapsePositions, 3));
+            synapseGeometry.setAttribute('color', new THREE.BufferAttribute(synapseColors, 3));
+        }
+
+        // Create synapse lines
+        const synapseMaterial = new THREE.LineBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending
+        });
+        const synapseLines = new THREE.LineSegments(synapseGeometry, synapseMaterial);
+        scene.add(synapseLines);
+
+        // ============================================================
+        // ANIMATION LOOP
+        // ============================================================
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const now = performance.now();
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            // FPS counter
+            frameCount++;
+            if (frameCount % 60 === 0) {
+                fps = Math.round(1 / dt);
+                document.getElementById('fps').textContent = fps;
+            }
+
+            // Camera orbit
+            const time = now * 0.0001;
+            camera.position.x = Math.sin(time) * 60;
+            camera.position.z = Math.cos(time) * 60;
+            camera.lookAt(0, 10, 0);
+
+            // Update neurons (Hodgkin-Huxley-like dynamics)
+            updateNeurons(dt);
+
+            // Update synapses
+            updateSynapses();
+
+            // Update buffers
+            geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.color.needsUpdate = true;
+
+            // Update food pulse
+            for (let i = 0; i < foods.length; i++) {
+                const scale = 1 + Math.sin(now * 0.003 + i) * 0.2;
+                foods[i].scale.setScalar(scale);
+            }
+
+            // Update UI
+            document.getElementById('count').textContent = N_NEURONS.toLocaleString();
+            document.getElementById('brain').textContent = brainSteps.toLocaleString();
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

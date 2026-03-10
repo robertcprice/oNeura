@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>oNeuro - GPU Molecular Simulation</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #ui {
+            position: absolute; top: 20px; left: 20px;
+            color: #0f0; font-family: 'Courier New', monospace;
+            background: rgba(0,0,0,0.9); padding: 15px;
+            border: 2px solid #0f0; border-radius: 8px;
+            font-size: 11px; min-width: 280px;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 14px; color: #0f0; }
+        .stat { display: flex; justify-content: space-between; }
+        .val { color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>GPU Molecular World</h1>
+        <div class="stat"><span>Molecules:</span><span class="val" id="count">0</span></div>
+        <div class="stat"><span>FPS:</span><span class="val" id="fps">0</span></div>
+        <div class="stat"><span>State:</span><span class="val" id="state">-</span></div>
+        <div class="stat"><span>Fly odor:</span><span class="val" id="odor">0</span></div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+    </script>
+
+    <script type="module">
+    import * as THREE from 'three';
+
+    // ============================================================
+    // GPU COMPUTE SHADERS
+    // ============================================================
+
+    // Position update shader - handles physics
+    const positionShader = `
+        uniform float uTime;
+        uniform float uDelta;
+        uniform vec3 uFoodPos;
+        uniform float uFoodStrength;
+        uniform vec3 uFlyPos;
+
+        // Pseudo-random
+        float rand(vec2 co) {
+            return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 pos = texture2D(uPositionTexture, uv);
+            vec4 vel = texture2D(uVelocityTexture, uv);
+            float type = texture2D(uTypeTexture, uv).r;
+
+            vec3 p = pos.xyz;
+            vec3 v = vel.xyz;
+            float mass = vel.w;
+
+            // Brownian motion - random thermal kicks
+            float temp = 0.3;
+            v.x += (rand(uv + uTime) - 0.5) * temp / mass;
+            v.y += (rand(uv + uTime + 1.0) - 0.5) * temp / mass;
+            v.z += (rand(uv + uTime + 2.0) - 0.5) * temp / mass;
+
+            // Slight gravity
+            v.y -= 0.001;
+
+            // Food emits odor molecules (type 1 = ethyl acetate, 2 = vinegar)
+            if (type > 0.5 && type < 1.5) {
+                // Near food - emit outward and up
+                float dist = distance(p.xz, uFoodPos.xz);
+                if (dist < 3.0) {
+                    vec3 toFood = normalize(p - uFoodPos);
+                    v += toFood * 0.1;
+                    v.y += 0.15;
+                }
+            }
+
+            // Damping
+            v *= 0.99;
+
+            // Update position
+            p += v * uDelta * 60.0;
+
+            // Bounds (bounce)
+            if (p.x < -15.0 || p.x > 15.0) v.x *= -0.8;
+            if (p.y < 0.0) { p.y = 0.0; v.y *= -0.8; }
+            if (p.y > 20.0) v.y *= -0.8;
+            if (p.z < -15.0 || p.z > 15.0) v.z *= -0.8;
+
+            p.x = clamp(p.x, -15.0, 15.0);
+            p.z = clamp(p.z, -15.0, 15.0);
+            p.y = clamp(p.y, 0.0, 20.0);
+
+            gl_FragColor = vec4(p, 1.0);
+        }
+    `;
+
+    // Velocity update shader
+    const velocityShader = `
+        uniform float uTime;
+
+        float rand(vec2 co) {
+            return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 vel = texture2D(uVelocityTexture, uv);
+            float type = texture2D(uTypeTexture, uv).r;
+
+            // Random initial velocity based on type
+            if (uTime < 0.01) {
+                vel.x = (rand(uv) - 0.5) * 0.5;
+                vel.y = (rand(uv + 1.0) - 0.5) * 0.5;
+                vel.z = (rand(uv + 2.0) - 0.5) * 0.5;
+
+                // Mass based on type: air=28, odor=88
+                vel.w = type < 0.5 ? 28.0 : 88.0;
+            }
+
+            gl_FragColor = vel;
+        }
+    `;
+
+    // ============================================================
+    // MAIN SETUP
+    // ============================================================
+
+    const PARTICLE_COUNT = 100000; // 100K molecules!
+    const SIZE = Math.ceil(Math.sqrt(PARTICLE_COUNT));
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050510);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.set(0, 15, 25);
+
+    // ============================================================
+    // GPGPU SETUP
+    // ============================================================
+
+    // Create render targets for ping-pong
+    function createRenderTarget() {
+        return new THREE.WebGLRenderTarget(SIZE, SIZE, {
+            minFilter: THREE.NearestFilter,
+            magFilter: THREE.NearestFilter,
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType
+        });
+    }
+
+    const positionRT1 = createRenderTarget();
+    const positionRT2 = createRenderTarget();
+    const velocityRT1 = createRenderTarget();
+    const velocityRT2 = createRenderTarget();
+    const typeRT = createRenderTarget();
+
+    // GPGPU scene and camera
+    const gpuCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const gpuScene = new THREE.Scene();
+    const gpuQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+    gpuScene.add(gpuQuad);
+
+    // Position shader material
+    const positionMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uPositionTexture: { value: null },
+            uVelocityTexture: { value: null },
+            uTypeTexture: { value: null },
+            uTime: { value: 0 },
+            uDelta: { value: 0 },
+            uFoodPos: { value: new THREE.Vector3(8, 0, 0) },
+            uFoodStrength: { value: 1.0 },
+            uFlyPos: { value: new THREE.Vector3(-8, 3, 0) },
+            resolution: { value: new THREE.Vector2(SIZE, SIZE) }
+        },
+        vertexShader: `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: positionShader
+    });
+
+    // Velocity shader material
+    const velocityMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uVelocityTexture: { value: null },
+            uTypeTexture: { value: null },
+            uTime: { value: 0 },
+            resolution: { value: new THREE.Vector2(SIZE, SIZE) }
+        },
+        vertexShader: `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: velocityShader
+    });
+
+    // ============================================================
+    // INITIALIZE PARTICLES
+    // ============================================================
+
+    const positionData = new Float32Array(SIZE * SIZE * 4);
+    const velocityData = new Float32Array(SIZE * SIZE * 4);
+    const typeData = new Float32Array(SIZE * SIZE * 4);
+
+    const FOOD_POS = { x: 8, z: 0 };
+
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        // Position: scattered in world
+        positionData[i * 4 + 0] = (Math.random() - 0.5) * 30;
+        positionData[i * 4 + 1] = Math.random() * 15 + 0.5;
+        positionData[i * 4 + 2] = (Math.random() - 0.5) * 30;
+        positionData[i * 4 + 3] = 1;
+
+        // Velocity: random direction
+        velocityData[i * 4 + 0] = (Math.random() - 0.5) * 0.5;
+        velocityData[i * 4 + 1] = (Math.random() - 0.5) * 0.5;
+        velocityData[i * 4 + 2] = (Math.random() - 0.5) * 0.5;
+        velocityData[i * 4 + 3] = 28; // mass
+
+        // Type: 0 = air, 1 = ethyl acetate, 2 = vinegar
+        if (i < PARTICLE_COUNT * 0.8) {
+            // 80% air
+            typeData[i * 4] = 0;
+        } else if (i < PARTICLE_COUNT * 0.9) {
+            // 10% ethyl acetate (near food)
+            const dx = positionData[i*4] - FOOD_POS.x;
+            const dz = positionData[i*4+2] - FOOD_POS.z;
+            if (Math.sqrt(dx*dx + dz*dz) < 5) {
+                typeData[i * 4] = 1; // ethyl acetate
+            } else {
+                typeData[i * 4] = 0;
+            }
+        } else {
+            typeData[i * 4] = 0;
+        }
+    }
+
+    // Create data textures
+    const positionTexture = new THREE.DataTexture(positionData, SIZE, SIZE, THREE.RGBAFormat, THREE.FloatType);
+    positionTexture.needsUpdate = true;
+
+    const velocityTexture = new THREE.DataTexture(velocityData, SIZE, SIZE, THREE.RGBAFormat, THREE.FloatType);
+    velocityTexture.needsUpdate = true;
+
+    const typeTexture = new THREE.DataTexture(typeData, SIZE, SIZE, THREE.RGBAFormat, THREE.FloatType);
+    typeTexture.needsUpdate = true;
+
+    // Initialize render targets with data
+    renderer.setRenderTarget(positionRT1);
+    gpuQuad.material = new THREE.MeshBasicMaterial({ map: positionTexture });
+    renderer.render(gpuScene, gpuCamera);
+    renderer.setRenderTarget(positionRT2);
+    renderer.render(gpuScene, gpuCamera);
+
+    renderer.setRenderTarget(velocityRT1);
+    gpuQuad.material = new THREE.MeshBasicMaterial({ map: velocityTexture });
+    renderer.render(gpuScene, gpuCamera);
+    renderer.setRenderTarget(velocityRT2);
+    renderer.render(gpuScene, gpuCamera);
+
+    renderer.setRenderTarget(null);
+
+    // ============================================================
+    // VISUALIZE PARTICLES
+    // ============================================================
+
+    // Create geometry with UVs to sample from texture
+    const particleGeo = new THREE.BufferGeometry();
+    const uvs = new Float32Array(PARTICLE_COUNT * 2);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const x = (i % SIZE) / SIZE;
+        const y = Math.floor(i / SIZE) / SIZE;
+        uvs[i * 2] = x + 0.5 / SIZE;
+        uvs[i * 2 + 1] = y + 0.5 / SIZE;
+    }
+    particleGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+    const particleMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uPositionTexture: { value: null },
+            uTypeTexture: { value: typeTexture }
+        },
+        vertexShader: `
+            uniform sampler2D uPositionTexture;
+            uniform sampler2D uTypeTexture;
+            attribute vec2 uv;
+            varying vec3 vColor;
+            varying float vType;
+
+            void main() {
+                vec4 pos = texture2D(uPositionTexture, uv);
+                vec4 type = texture2D(uTypeTexture, uv);
+
+                vType = type.r;
+
+                // Color by type: air=white, ethyl acetate=green, vinegar=purple
+                if (type.r < 0.1) {
+                    vColor = vec3(0.8, 0.8, 0.9); // air
+                } else if (type.r < 1.5) {
+                    vColor = vec3(0.2, 1.0, 0.2); // ethyl acetate
+                } else {
+                    vColor = vec3(1.0, 0.2, 1.0); // vinegar
+                }
+
+                vec4 mvPosition = modelViewMatrix * vec4(pos.xyz, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+                gl_PointSize = 2.0;
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+            void main() {
+                gl_FragColor = vec4(vColor, 0.7);
+            }
+        `,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    const particles = new THREE.Points(particleGeo, particleMat);
+    scene.add(particles);
+
+    // ============================================================
+    // FOOD VISUALIZATION
+    // ============================================================
+    const foodGeo = new THREE.SphereGeometry(1, 16, 16);
+    const foodMat = new THREE.MeshStandardMaterial({
+        color: 0xff8800,
+        emissive: 0xff4400,
+        emissiveIntensity: 0.5
+    });
+    const foodMesh = new THREE.Mesh(foodGeo, foodMat);
+    foodMesh.position.set(FOOD_POS.x, 0.5, FOOD_POS.z);
+    scene.add(foodMesh);
+
+    // ============================================================
+    // FLY
+    // ============================================================
+    let flyPos = { x: -10, y: 3, z: 0 };
+    let flyAngle = 0;
+    let flyState = 'searching';
+    let flyOdor = 0;
+
+    const flyGeo = new THREE.SphereGeometry(0.3, 8, 8);
+    const flyMat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+    const flyMesh = new THREE.Mesh(flyGeo, flyMat);
+    scene.add(flyMesh);
+
+    // ============================================================
+    // LIGHTS
+    // ============================================================
+    scene.add(new THREE.AmbientLight(0x404040, 1));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
+
+    // ============================================================
+    // INPUT
+    // ============================================================
+    const keys = {};
+    let camYaw = 0, camPitch = 0.3, camDist = 25;
+
+    document.addEventListener('keydown', e => keys[e.code] = true);
+    document.addEventListener('keyup', e => keys[e.code] = false);
+
+    let dragging = false, lx = 0, ly = 0;
+    renderer.domElement.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
+    renderer.domElement.addEventListener('mouseup', () => dragging = false);
+    renderer.domElement.addEventListener('mousemove', e => {
+        if (dragging) {
+            camYaw += (e.clientX - lx) * 0.01;
+            camPitch += (e.clientY - ly) * 0.01;
+            camPitch = Math.max(-1, Math.min(1.5, camPitch));
+            lx = e.clientX; ly = e.clientY;
+        }
+    });
+    renderer.domElement.addEventListener('wheel', e => {
+        camDist += e.deltaY * 0.05;
+        camDist = Math.max(5, Math.min(50, camDist));
+    });
+
+    // ============================================================
+    // LOOP
+    // ============================================================
+    let lastTime = 0;
+    let frame = 0;
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+
+        const t = time * 0.001;
+        const dt = Math.min((time - lastTime) * 0.001, 0.05);
+        lastTime = time;
+
+        if (++frame % 30 === 0) {
+            document.getElementById('fps').textContent = Math.round(1 / dt);
+            document.getElementById('count').textContent = PARTICLE_COUNT.toLocaleString();
+        }
+
+        // ===== GPGPU PHYSICS =====
+        // Update velocity
+        velocityMaterial.uniforms.uVelocityTexture.value = velocityRT1.texture;
+        velocityMaterial.uniforms.uTypeTexture.value = typeTexture;
+        velocityMaterial.uniforms.uTime.value = t;
+        gpuQuad.material = velocityMaterial;
+        renderer.setRenderTarget(velocityRT2);
+        renderer.render(gpuScene, gpuCamera);
+
+        // Swap velocity
+        [velocityRT1, velocityRT2] = [velocityRT2, velocityRT1];
+
+        // Update position
+        positionMaterial.uniforms.uPositionTexture.value = positionRT1.texture;
+        positionMaterial.uniforms.uVelocityTexture.value = velocityRT1.texture;
+        positionMaterial.uniforms.uTypeTexture.value = typeTexture;
+        positionMaterial.uniforms.uTime.value = t;
+        positionMaterial.uniforms.uDelta.value = dt;
+        positionMaterial.uniforms.uFoodPos.value.set(FOOD_POS.x, 0, FOOD_POS.z);
+        positionMaterial.uniforms.uFlyPos.value.set(flyPos.x, flyPos.y, flyPos.z);
+        gpuQuad.material = positionMaterial;
+        renderer.setRenderTarget(positionRT2);
+        renderer.render(gpuScene, gpuCamera);
+
+        // Swap position
+        [positionRT1, positionRT2] = [positionRT2, positionRT1];
+
+        // ===== UPDATE FLY =====
+        // Sample odor from particles (simplified - just check distance to food)
+        const dx = FOOD_POS.x - flyPos.x;
+        const dz = FOOD_POS.z - flyPos.z;
+        const dist = Math.sqrt(dx*dx + dz*dz);
+        flyOdor = Math.max(0, 1 - dist / 20);
+
+        if (flyOdor > 0.15) {
+            flyState = 'tracking';
+            // Move toward food
+            flyAngle = Math.atan2(dz, dx);
+            flyPos.x += Math.cos(flyAngle) * 0.15;
+            flyPos.z += Math.sin(flyAngle) * 0.15;
+        } else {
+            flyState = 'searching';
+            // Spiral search
+            flyAngle += 0.1;
+            flyPos.x += Math.cos(flyAngle) * 0.05;
+            flyPos.z += Math.sin(flyAngle) * 0.05;
+        }
+
+        // Bounds
+        flyPos.x = Math.max(-14, Math.min(14, flyPos.x));
+        flyPos.z = Math.max(-14, Math.min(14, flyPos.z));
+
+        flyMesh.position.set(flyPos.x, flyPos.y, flyPos.z);
+        flyMat.color.setHex(flyState === 'tracking' ? 0xff0000 : 0xffff00);
+
+        // ===== RENDER =====
+        renderer.setRenderTarget(null);
+
+        // Camera
+        if (keys['KeyW']) camDist -= 0.5;
+        if (keys['KeyS']) camDist += 0.5;
+        if (keys['KeyA']) camYaw -= 0.03;
+        if (keys['KeyD']) camYaw += 0.03;
+
+        camera.position.x = Math.sin(camYaw) * Math.cos(camPitch) * camDist;
+        camera.position.y = Math.sin(camPitch) * camDist + 2;
+        camera.position.z = Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+        camera.lookAt(0, 5, 0);
+
+        // Update particle material
+        particleMat.uniforms.uPositionTexture.value = positionRT1.texture;
+
+        renderer.render(scene, camera);
+
+        // UI
+        document.getElementById('state').textContent = flyState.toUpperCase();
+        document.getElementById('odor').textContent = flyOdor.toFixed(2);
+    }
+
+    animate(0);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    </script>
+</body>
+</html>

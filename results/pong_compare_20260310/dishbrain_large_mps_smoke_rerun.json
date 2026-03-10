@@ -1,0 +1,34 @@
+{
+  "experiment": "dishbrain_replication",
+  "scale": "large",
+  "device": "mps",
+  "n_runs": 1,
+  "base_seed": 42,
+  "total_time_s": 257.04,
+  "system": {
+    "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+    "python": "3.13.12",
+    "torch": "2.9.1",
+    "backend": "metal",
+    "gpu": "Apple Silicon (MPS)"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "experiments": {
+        "1": {
+          "passed": false,
+          "time": 257.021646,
+          "first_10": 0.1,
+          "last_10": 0.1,
+          "total_hitrate": 0.5,
+          "outcomes": [
+            1,
+            0
+          ],
+          "name": "DishBrain Pong Replication"
+        }
+      }
+    }
+  ]
+}

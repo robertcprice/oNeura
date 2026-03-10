@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>oNeuro 3D World - Real Simulation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #111;
+            color: #0f0;
+            overflow: hidden;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #sidebar {
+            width: 320px;
+            background: #0a0a0a;
+            border-right: 2px solid #0f0;
+            padding: 15px;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        #3d-view {
+            flex: 1;
+            position: relative;
+        }
+
+        h1 {
+            font-size: 16px;
+            color: #0f0;
+            border-bottom: 1px solid #0f0;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        h2 {
+            font-size: 12px;
+            color: #0a0;
+            margin: 15px 0 8px 0;
+            text-transform: uppercase;
+        }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin: 5px 0;
+        }
+
+        .stat-label { color: #0a0; }
+        .stat-value { color: #0f0; font-weight: bold; }
+
+        .danger { color: #f00 !important; }
+        .warning { color: #fa0 !important; }
+        .good { color: #0f0 !important; }
+
+        button {
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 8px 12px;
+            margin: 5px 0;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #0f0;
+            color: #000;
+        }
+
+        button:disabled {
+            border-color: #333;
+            color: #333;
+            cursor: not-allowed;
+        }
+
+        .fly-card {
+            background: #050505;
+            border: 1px solid #030;
+            padding: 10px;
+            margin: 8px 0;
+        }
+
+        .fly-card.player {
+            border-color: #0f0;
+        }
+
+        .fly-card.dead {
+            border-color: #f00;
+            opacity: 0.5;
+        }
+
+        #legend {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border: 1px solid #0f0;
+            font-size: 10px;
+            z-index: 100;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 3px 0;
+        }
+
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            margin-right: 8px;
+            border: 1px solid #fff;
+        }
+
+        #messages {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            max-width: 300px;
+            z-index: 100;
+        }
+
+        .message {
+            background: rgba(0,0,0,0.8);
+            border: 1px solid #0f0;
+            padding: 8px;
+            margin: 5px 0;
+            font-size: 11px;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #0f0;
+            z-index: 200;
+        }
+
+        .controls {
+            font-size: 10px;
+            color: #060;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">CONNECTING TO oNEURO WORLD...</div>
+
+    <div id="container">
+        <div id="sidebar">
+            <h1>🪰 oNEURO WORLD</h1>
+
+            <h2>World Status</h2>
+            <div class="stat">
+                <span class="stat-label">Time:</span>
+                <span class="stat-value" id="time">--:--</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Day Phase:</span>
+                <span class="stat-value" id="day-phase">--</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Temperature:</span>
+                <span class="stat-value" id="temperature">--°C</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Flies:</span>
+                <span class="stat-value" id="fly-count">0</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Fruits:</span>
+                <span class="stat-value" id="fruit-count">0</span>
+            </div>
+
+            <h2>Controls</h2>
+            <button id="btn-start">▶ START SIMULATION</button>
+            <button id="btn-stop">⏹ STOP</button>
+            <button id="btn-add-fly">+ ADD FLY</button>
+            <button id="btn-spawn-fruit">+ SPAWN FRUIT</button>
+
+            <div class="controls">
+                WASD: Move camera | Mouse: Rotate | Scroll: Zoom
+            </div>
+
+            <h2>Flies</h2>
+            <div id="flies-list"></div>
+        </div>
+
+        <div id="3d-view"></div>
+    </div>
+
+    <div id="legend">
+        <div class="legend-item"><div class="legend-color" style="background:green"></div>Grass</div>
+        <div class="legend-item"><div class="legend-color" style="background:brown"></div>Dirt</div>
+        <div class="legend-item"><div class="legend-color" style="background:red;border-radius:50%"></div>Fly</div>
+        <div class="legend-item"><div class="legend-color" style="background:orange;border-radius:50%"></div>Fruit</div>
+    </div>
+
+    <div id="messages"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+
+    <script>
+        // ========================================
+        // THREE.JS SETUP
+        // ========================================
+        const container = document.getElementById('3d-view');
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 80);
+
+        const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(30, 30, 30);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffffcc, 1);
+        sunLight.position.set(30, 50, 30);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        // Ground
+        const groundGeo = new THREE.PlaneGeometry(100, 100);
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Grid
+        const gridHelper = new THREE.GridHelper(100, 50, 0x004400, 0x002200);
+        scene.add(gridHelper);
+
+        // World objects
+        const fruits = {};
+        const flies = {};
+
+        // Materials
+        const fruitMaterial = new THREE.MeshPhongMaterial({
+            color: 0xff6600,
+            emissive: 0x331100
+        });
+
+        const flyBodyMaterial = new THREE.MeshPhongMaterial({ color: 0x222222 });
+        const flyWingMaterial = new THREE.MeshPhongMaterial({
+            color: 0x88ccff,
+            transparent: true,
+            opacity: 0.6
+        });
+
+        // ========================================
+        // SOCKET CONNECTION
+        // ========================================
+        const socket = io();
+
+        socket.on('connect', () => {
+            document.getElementById('loading').style.display = 'none';
+            addMessage('Connected to oNeuro World!');
+        });
+
+        socket.on('disconnect', () => {
+            addMessage('Disconnected from server');
+        });
+
+        socket.on('welcome', (data) => {
+            addMessage(data.message);
+        });
+
+        socket.on('world_state', (state) => {
+            updateWorld(state);
+        });
+
+        socket.on('simulation_started', () => {
+            document.getElementById('btn-start').disabled = true;
+            document.getElementById('btn-stop').disabled = false;
+            addMessage('Simulation started!');
+        });
+
+        socket.on('simulation_stopped', () => {
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-stop').disabled = true;
+            addMessage('Simulation stopped');
+        });
+
+        socket.on('fly_added', (data) => {
+            addMessage(`Fly ${data.fly_id} added!`);
+        });
+
+        socket.on('fruit_spawned', (data) => {
+            addMessage(`Fruit spawned! Total: ${data.count}`);
+        });
+
+        // ========================================
+        // UI UPDATES
+        // ========================================
+        function updateWorld(state) {
+            // Update world stats
+            const hours = Math.floor(state.world.time_of_day * 24);
+            document.getElementById('time').textContent =
+                `${String(hours).padStart(2,'0')}:${String(Math.floor((state.world.time_of_day * 24 % 1) * 60)).padStart(2,'0')}`;
+
+            const phase = state.world.time_of_day < 0.25 ? 'Night' :
+                         state.world.time_of_day < 0.5 ? 'Morning' :
+                         state.world.time_of_day < 0.75 ? 'Day' : 'Evening';
+            document.getElementById('day-phase').textContent = phase;
+
+            // Update sky color based on time
+            const intensity = Math.sin(state.world.time_of_day * Math.PI);
+            scene.background.setRGB(
+                0.53 * intensity + 0.07 * (1-intensity),
+                0.81 * intensity + 0.07 * (1-intensity),
+                0.92 * intensity + 0.15 * (1-intensity)
+            );
+
+            document.getElementById('temperature').textContent =
+                `${state.world.temperature.toFixed(1)}°C`;
+            document.getElementById('fly-count').textContent = state.flies.length;
+            document.getElementById('fruit-count').textContent = state.fruits.length;
+
+            // Update flies list
+            updateFliesList(state.flies);
+
+            // Update fruits
+            updateFruits(state.fruits);
+
+            // Update flies 3D
+            updateFlies3D(state.flies);
+        }
+
+        function updateFliesList(fliesData) {
+            const list = document.getElementById('flies-list');
+            list.innerHTML = '';
+
+            fliesData.forEach(fly => {
+                const card = document.createElement('div');
+                card.className = `fly-card ${fly.alive ? '' : 'dead'}`;
+
+                const energyClass = fly.energy > 50 ? 'good' : fly.energy > 20 ? 'warning' : 'danger';
+
+                card.innerHTML = `
+                    <div class="stat">
+                        <span class="stat-label">Fly ${fly.id}</span>
+                        <span class="stat-value">${fly.alive ? 'ALIVE' : 'DEAD'}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Position:</span>
+                        <span class="stat-value">(${fly.position[0].toFixed(1)}, ${fly.position[1].toFixed(1)}, ${fly.position[2].toFixed(1)})</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Energy:</span>
+                        <span class="stat-value ${energyClass}">${fly.energy.toFixed(0)}%</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Age:</span>
+                        <span class="stat-value">${fly.age.toFixed(1)}s</span>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function updateFruits(fruitsData) {
+            // Remove old fruits
+            Object.keys(fruits).forEach(id => {
+                if (!fruitsData.find(f => f.id == id)) {
+                    scene.remove(fruits[id]);
+                    delete fruits[id];
+                }
+            });
+
+            // Add/update fruits
+            fruitsData.forEach(fruit => {
+                if (!fruits[fruit.id]) {
+                    // Create new fruit
+                    const geo = new THREE.SphereGeometry(0.5, 16, 16);
+                    const mesh = new THREE.Mesh(geo, fruitMaterial);
+                    mesh.position.set(fruit.position[0], fruit.position[1], fruit.position[2]);
+                    mesh.castShadow = true;
+                    scene.add(mesh);
+                    fruits[fruit.id] = mesh;
+                }
+
+                // Update position and scale based on nutrition
+                const mesh = fruits[fruit.id];
+                mesh.position.set(fruit.position[0], fruit.position[1], fruit.position[2]);
+                const scale = 0.3 + (fruit.nutrition / 100) * 0.7;
+                mesh.scale.set(scale, scale, scale);
+
+                // Hide depleted fruits
+                mesh.visible = fruit.nutrition > 0;
+            });
+        }
+
+        function updateFlies3D(fliesData) {
+            // Remove dead flies
+            Object.keys(flies).forEach(id => {
+                if (!fliesData.find(f => f.id == id)) {
+                    scene.remove(flies[id].mesh);
+                    delete flies[id];
+                }
+            });
+
+            // Add/update flies
+            fliesData.forEach(fly => {
+                if (!flies[fly.id]) {
+                    // Create new fly
+                    const group = new THREE.Group();
+
+                    // Body
+                    const bodyGeo = new THREE.SphereGeometry(0.3, 16, 16);
+                    const body = new THREE.Mesh(bodyGeo, flyBodyMaterial);
+                    group.add(body);
+
+                    // Wings
+                    const wingGeo = new THREE.PlaneGeometry(0.5, 0.25);
+                    const leftWing = new THREE.Mesh(wingGeo, flyWingMaterial);
+                    leftWing.position.set(-0.2, 0.15, 0);
+                    leftWing.rotation.x = Math.PI / 4;
+                    group.add(leftWing);
+
+                    const rightWing = new THREE.Mesh(wingGeo, flyWingMaterial);
+                    rightWing.position.set(0.2, 0.15, 0);
+                    rightWing.rotation.x = Math.PI / 4;
+                    group.add(rightWing);
+
+                    group.castShadow = true;
+                    scene.add(group);
+                    flies[fly.id] = { mesh: group, wings: [leftWing, rightWing] };
+                }
+
+                const flyObj = flies[fly.id];
+                const mesh = flyObj.mesh;
+
+                // Update position
+                mesh.position.set(fly.position[0], fly.position[1], fly.position[2]);
+
+                // Update orientation
+                mesh.rotation.y = fly.orientation;
+
+                // Animate wings
+                const wingSpeed = fly.alive ? 0.3 : 0;
+                flyObj.wings.forEach((wing, i) => {
+                    wing.rotation.z = Math.sin(Date.now() * 0.01 + i * Math.PI) * wingSpeed;
+                });
+
+                // Visibility
+                mesh.visible = fly.alive;
+            });
+        }
+
+        function addMessage(text) {
+            const msg = document.createElement('div');
+            msg.className = 'message';
+            msg.textContent = text;
+            document.getElementById('messages').appendChild(msg);
+
+            setTimeout(() => {
+                msg.style.opacity = '0';
+                setTimeout(() => msg.remove(), 300);
+            }, 5000);
+        }
+
+        // Button handlers
+        document.getElementById('btn-start').onclick = () => socket.emit('start_simulation');
+        document.getElementById('btn-stop').onclick = () => socket.emit('stop_simulation');
+        document.getElementById('btn-add-fly').onclick = () => socket.emit('add_fly', {is_player: false});
+        document.getElementById('btn-spawn-fruit').onclick = () => socket.emit('spawn_fruit');
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Disable start initially
+        document.getElementById('btn-stop').disabled = true;
+    </script>
+</body>
+</html>

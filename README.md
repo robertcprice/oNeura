@@ -11,11 +11,43 @@
 
 </div>
 
+---
+
+## Project Status
+
+oNeuro is an **active working research project**. The repository is usable, but it is moving quickly:
+
+- APIs and demo entrypoints are still changing
+- benchmark numbers can change as the GPU backends improve
+- some subsystems are productionized, while others are still exploratory or draft-quality
+
+If you want the current measured performance rather than older paper text, start here:
+
+- 25K Pong latency/resource comparison: [`results/pong_compare_20260310/README.md`](results/pong_compare_20260310/README.md)
+- Documentation index: [`docs/README.md`](docs/README.md)
+- Repository guide: [`docs/repo_structure.md`](docs/repo_structure.md)
+- Rust/Metal backend: [`oneuro-metal/README.md`](oneuro-metal/README.md)
+
+This should be read as a **working project**, not a frozen release.
+
+## Special Thanks to Contributors
+
+This project exists because of the incredible people who contribute their time, ideas, and expertise:
+
+- **Eric Reid** (@ereid7) — Low-level capability benchmarks, corticostriatal mechanism assays, D1/D2 MSN pathways, hardened reward-modulated plasticity
+- **The oNeuro Community** — For pushing the boundaries of digital biology and neuromorphic computing
+
+*Want to contribute? PRs welcome!*
+
+---
+
 ## What Is oNeuro?
 
 oNeuro is a platform for simulating **complete digital organisms** — brains, bodies, and environments — at molecular resolution. Every neuron runs real Hodgkin-Huxley ion channel dynamics, communicates through 6 real neurotransmitters, learns through STDP, and responds to drugs via pharmacokinetic/pharmacodynamic models. Membrane potential **emerges from physics** — it is never a hand-set float.
 
 We build digital flies that smell, navigate, learn, and respond to drugs. We build digital neural cultures that learn to play Pong using the free energy principle. We build digital worlds with real molecular diffusion physics where odorant plumes flow in wind.
+
+`oNeuro` now also carries a native Rust/Metal whole-cell modeling track for minimal-cell-style digital cells. That work is explicitly anchored to Thornburg, Z. R., Maytin, A., Kwon, J., Solomon, K. V., et al., "Bringing the Genetically Minimal Cell to Life on a Computer in 4D," `Cell` (2026), DOI `10.1016/j.cell.2026.02.009`. The current native backend is moving toward a substrate-first architecture where local chemistry, structural order, microdomain placement, reaction activity, and higher-level CME/ODE/BD/geometry rates are driven by generic reaction, assembly, localization, local-state, and scalar process-rule layers rather than hard-coded whole-cell behaviors or hand-authored global process pools.
 
 **This is not a toy neural network simulator.** This is a molecular-resolution digital biology platform.
 
@@ -35,7 +67,7 @@ A dONN differs from a standard artificial neural network (ANN) in the same way a
 ```
 oNeuro/
 ├── src/oneuro/
-│   ├── molecular/              # 25-file molecular simulation engine
+│   ├── molecular/              # Molecular simulation engine + CUDA backend
 │   │   ├── cuda_backend.py     # GPU-accelerated HH brain (CUDAMolecularBrain)
 │   │   ├── retina.py           # 3-layer biophysical retina (rods/cones → bipolar → RGC)
 │   │   ├── network.py          # MolecularNeuralNetwork (pure Python)
@@ -53,9 +85,10 @@ oNeuro/
 │   │   └── molecular_world.py  # 2D/3D volumetric odorant diffusion, temperature, wind, buoyancy
 │   └── environments/           # Game/navigation environments
 │       └── doom_fps.py         # DDA raycasting FPS engine (278 FPS)
+├── oneuro-metal/               # Rust/Metal backend and native Pong / whole-cell work
 ├── demos/
-│   ├── demo_drosophila_ecosystem.py  # 6 experiments: olfaction, vision, drugs, circadian
-│   ├── demo_dishbrain_pong.py        # 5 experiments: FEP learning, Pong, drugs, scale
+│   ├── demo_drosophila_ecosystem.py  # Drosophila ecosystem and behavioral assays
+│   ├── demo_dishbrain_pong.py        # DishBrain Pong / arena / scale experiments
 │   ├── demo_doom_arena.py            # 3 experiments: spatial navigation, threat avoidance
 │   ├── demo_emergent_cuda.py         # 13 experiments: emergent behaviors (GPU)
 │   ├── demo_language_learning.py     # Language acquisition at 5K neurons
@@ -66,11 +99,18 @@ oNeuro/
 │   ├── dishbrain_replication_paper.md # DishBrain replication (draft, A100 data)
 │   └── data/                         # GPU experiment JSON results
 ├── scripts/
-│   └── vast_deploy.sh                # Vast.ai GPU deployment & benchmarking
-├── docs/tutorials/                   # 9 tutorial documents
+│   ├── vast_deploy.sh                # Vast.ai GPU deployment & benchmarking
+│   └── *_telemetry.py                # Profiling / telemetry capture helpers
+├── docs/                             # Docs index, repo guide, design notes, backend status
+├── results/                          # Measured benchmark artifacts and comparisons
+├── doom_videos/                      # Rendered gameplay/video artifacts
+├── tmp_demo_*/                       # Temporary generated demo artifacts
 ├── pyproject.toml
 └── LICENSE                           # CC BY-NC 4.0
 ```
+
+For a quicker orientation to what is canonical vs exploratory, use
+[`docs/repo_structure.md`](docs/repo_structure.md).
 
 
 ## What We've Built
@@ -116,20 +156,22 @@ oNeuro/
 
 ### CUDA Backend (GPU Scale)
 
-The entire HH simulation runs on GPU via PyTorch sparse tensors. Validated on Apple MPS and NVIDIA A100:
+The main HH simulation runs on GPU via PyTorch sparse tensors, with a native Rust/Metal track in `oneuro-metal/` for Apple hardware. For the current measured 25K Pong numbers, use [`results/pong_compare_20260310/README.md`](results/pong_compare_20260310/README.md) rather than relying on older paper snapshots.
 
 | Scale | Neurons | Synapses | Target Hardware |
 |-------|---------|----------|----------------|
 | tiny | 1K | ~14K | Any CPU |
 | small | 5K | ~350K | MPS / any GPU |
-| medium | 25K | ~8M | A100 / H100 |
-| large | 139K (full FlyWire) | ~54M | A100 80GB |
+| medium | 25K | ~7–8M | Apple Metal / A100 / H200 |
+| large | 139K (full FlyWire) | ~54M | Large-memory NVIDIA GPU |
 
 ## Validated Experiments
 
-### DishBrain Replication — 5/5 PASS
+### DishBrain Replication — Working Benchmark Track
 
 Replicates Cortical Labs' DishBrain (Kagan et al. 2022, *Neuron*) — the first demonstration that biological neurons learn to play Pong. Our dONN learns via the **Free Energy Principle**: structured feedback (low entropy) for correct actions, random noise (high entropy) for incorrect ones. No reward. No punishment. Just physics.
+
+This track is still under active optimization. The current live benchmark and utilization comparisons are documented in [`results/pong_compare_20260310/README.md`](results/pong_compare_20260310/README.md).
 
 | # | Experiment | What It Tests | Result |
 |---|-----------|--------------|--------|
@@ -197,19 +239,28 @@ BSP-generated dungeon environments with 8-directional movement, enemies, health 
 
 ### Education
 - **Digital dissection**: Explore brain regions, apply drugs, measure consciousness — no animals harmed
-- **Interactive neuroscience**: Students stimulate neurons and observe emergent behavior in real-time
+- **Interactive neuroscience**: Students can interact with live demos and closed-loop tasks, even though the 25K benchmark path is still slower than full biological real time
 - **Comparative neurobiology**: Compare C. elegans (302 neurons) to Drosophila (139K) to cortical tissue
 
 ## Quick Start
 
 ```bash
-pip install oNeuro
+git clone https://github.com/robertcprice/oNeuro.git
+cd oNeuro
+python3 -m venv .venv
+source .venv/bin/activate
 
-# With GPU acceleration
-pip install oNeuro[cuda]
+# Recommended for the current working repo
+pip install -e .
+pip install -e .[viz]
+```
 
-# With visualization
-pip install oNeuro[viz]
+For Apple Silicon native benchmarking, build the Rust/Metal backend separately:
+
+```bash
+cd oneuro-metal
+maturin develop --release
+cd ..
 ```
 
 ### Build a Fly Brain
@@ -294,7 +345,7 @@ bash scripts/vast_deploy.sh all <id> medium # run everything
 | Paper | Status | Experiments | File |
 |-------|--------|-------------|------|
 | **Beyond ANN** | Complete | 23/23 PASS | `papers/beyond_ann_white_paper.md` |
-| **DishBrain Replication** | Draft (A100 validated) | 5/5 PASS | `papers/dishbrain_replication_paper.md` |
+| **DishBrain Replication** | Working draft + live benchmark artifacts | 5/5 PASS baseline, actively optimized | `papers/dishbrain_replication_paper.md` |
 
 ## Basal Ganglia Learning Benchmark
 

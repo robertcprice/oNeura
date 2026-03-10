@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>oNeuro - Full Molecular Terrarium (Ultra-Detailed)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; right: 20px;
+            color: #0f0; background: rgba(0,10,0,0.95); padding: 15px;
+            border: 2px solid #0f0; border-radius: 10px;
+            font-size: 10px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+        }
+        h1 { margin: 0 0 10px 0; grid-column: 1/-1; text-align: center; font-size: 16px; }
+        .section { border: 1px solid #333; padding: 8px; border-radius: 4px; }
+        .section h2 { margin: 0 0 8px 0; color: #88ff88; font-size: 11px; border-bottom: 1px solid #333; padding-bottom: 3px; }
+        .stat { display: flex; justify-content: space-between; margin: 1px 0; font-size: 9px; }
+        .val { color: #fff; }
+        .chem { color: #aaa; font-size: 8px; }
+        .molecule { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 3px; }
+        .m.n2 { background: #4488ff; } .m.o2 { background: #ff4444; }
+        .m.co2 { background: #888; } .m.h2o { background: #44aaff; }
+        .m.odor { background: #0f0; } .m.nh3 { background: #ff0; }
+        .m.ch4 { background: #f0f; }
+        .warning { color: #ff4444; }
+        .highlight { color: #ff0; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>🧬 oNeuro ULTRA-MOLECULAR TERRARIUM - Full Biochemistry & Physics</h1>
+
+        <!-- ATMOSPHERE - Real Gas Composition -->
+        <div class="section">
+            <h2>🌬️ ATMOSPHERE (Mole Fraction)</h2>
+            <div class="stat"><span class="m n2"></span>N₂ Nitrogen:</div>
+            <div class="stat"><span class="val" id="n2">0</span><span class="chem">78.1%</span></div>
+            <div class="stat"><span class="m o2"></span>O₂ Oxygen:</div>
+            <div class="stat"><span class="val" id="o2">0</span><span class="chem">20.9%</span></div>
+            <div class="stat"><span class="m co2"></span>CO₂ Carbon Dioxide:</div>
+            <div class="stat"><span class="val" id="co2">0</span><span class="chem">417 ppm</span></div>
+            <div class="stat"><span class="m h2o"></span>H₂O Water Vapor:</div>
+            <div class="stat"><span class="val" id="h2o">0</span><span class="chem" id="h2o-actual">0%</span></div>
+            <div class="stat"><span class="m odor"></span>Ethyl Acetate:</div>
+            <div class="stat"><span class="val" id="odor">0</span><span class="chem">ppb</span></div>
+            <div class="stat"><span class="m nh3"></span>NH₃ Ammonia:</div>
+            <div class="stat"><span class="val" id="nh3">0</span><span class="chem">ppb</span></div>
+        </div>
+
+        <!-- THERMODYNAMICS -->
+        <div class="section">
+            <h2>🌡️ THERMODYNAMICS</h2>
+            <div class="stat">Temperature:</div>
+            <div class="stat"><span class="val highlight" id="temp">25</span><span class="chem">°C (298K)</span></div>
+            <div class="stat">Pressure:</div>
+            <div class="stat"><span class="val" id="pressure">101.3</span><span class="chem">kPa</span></div>
+            <div class="stat">Density (ρ):</div>
+            <div class="stat"><span class="val" id="density">1.18</span><span class="chem">kg/m³</span></div>
+            <div class="stat">Viscosity (μ):</div>
+            <div class="stat"><span class="val" id="viscosity">18.2</span><span class="chem">μPa·s</span></div>
+            <div class="stat">Kinematic ν:</div>
+            <div class="stat"><span class="val" id="nu">15.4</span><span class="chem">cSt</span></div>
+        </div>
+
+        <!-- DIFFUSION PHYSICS -->
+        <div class="section">
+            <h2>�_diff DIFFUSION (Fick's Laws)</h2>
+            <div class="stat">D (O₂ in air):</div>
+            <div class="stat"><span class="val" id="diff-o2">0</span><span class="chem">cm²/s</span></div>
+            <div class="stat">D (H₂O vapor):</div>
+            <div class="stat"><span class="val" id="diff-h2o">0</span><span class="chem">cm²/s</span></div>
+            <div class="stat">D (odor):</div>
+            <div class="stat"><span class="val" id="diff-odor">0</span><span class="chem">cm²/s</span></div>
+            <div class="stat">Peclet #:</div>
+            <div class="stat"><span class="val" id="peclet">0</span><span class="chem">&lt;1 = diffusion</span></div>
+            <div class="stat">Schmidt #:</div>
+            <div class="stat"><span class="val" id="schmidt">0</span><span class="chem">Sc&gt;1</span></div>
+        </div>
+
+        <!-- FOOD BIOCHEMISTRY -->
+        <div class="section">
+            <h2>🍌 FOOD BIOCHEMISTRY</h2>
+            <div class="stat">Mass:</div>
+            <div class="stat"><span class="val" id="food-mass">100</span><span class="chem">g</span></div>
+            <div class="stat">Glucose C₆H₁₂O₆:</div>
+            <div class="stat"><span class="val" id="glucose">0</span><span class="chem">g ({0.64}mmol)</span></div>
+            <div class="stat">Fructose:</div>
+            <div class="stat"><span class="val" id="fructose">0</span><span class="chem">g</span></div>
+            <div class="stat">Sucrose:</div>
+            <div class="stat"><span class="val" id="sucrose">0</span><span class="chem">g</span></div>
+            <div class="stat">Water H₂O:</div>
+            <div class="stat"><span class="val" id="food-water">0</span><span class="chem">g ({0.4}mol)</span></div>
+            <div class="stat">Fiber (C₆H₁₀O₅)ₙ:</div>
+            <div class="stat"><span class="val" id="fiber">0</span><span class="chem">g</span></div>
+            <div class="stat">Proteins:</div>
+            <div class="stat"><span class="val" id="proteins">0</span><span class="chem">g</span></div>
+            <div class="stat">Lipids:</div>
+            <div class="stat"><span class="val" id="lipids">0</span><span class="chem">g</span></div>
+        </div>
+
+        <!-- METABOLIC PATHWAYS -->
+        <div class="section">
+            <h2>⚡ METABOLISM (ATP)</h2>
+            <div class="stat">Glycolysis:</div>
+            <div class="stat"><span class="val" id="glycolysis">2</span><span class="chem">ATP/glucose</span></div>
+            <div class="stat">Krebs Cycle:</div>
+            <div class="stat"><span class="val" id="krebs">2</span><span class="chem">ATP/turn</span></div>
+            <div class="stat">ETC (34 ATP):</div>
+            <div class="stat"><span class="val" id="etc">34</span><span class="chem">total/glucose</span></div>
+            <div class="stat">Fly ATP Pool:</div>
+            <div class="stat"><span class="val highlight" id="fly-atp">0</span><span class="chem">μmol</span></div>
+            <div class="stat">O₂ Consumed:</div>
+            <div class="stat"><span class="val" id="o2-consumed">0</span><span class="chem">μL/hr</span></div>
+            <div class="stat">CO₂ Produced:</div>
+            <div class="stat"><span class="val" id="co2-produced">0</span><span class="chem">μL/hr</span></div>
+            <div class="stat">RQ (CO₂/O₂):</div>
+            <div class="stat"><span class="val" id="rq">1.0</span><span class="chem">(glucose)</span></div>
+        </div>
+
+        <!-- MOISTURE CYCLE -->
+        <div class="section">
+            <h2>💧 MOISTURE CYCLE</h2>
+            <div class="stat">Humidity:</div>
+            <div class="stat"><span class="val" id="humidity">50</span><span class="chem">% RH</span></div>
+            <div class="stat">Abs. Humidity:</div>
+            <div class="stat"><span class="val" id="abs-humidity">0</span><span class="chem">g/m³</span></div>
+            <div class="stat">Saturation:</div>
+            <div class="stat"><span class="val" id="saturation">0</span><span class="chem">g/m³</span></div>
+            <div class="stat">Dew Point:</div>
+            <div class="stat"><span class="val" id="dewpoint">0</span><span class="chem">°C</span></div>
+            <div class="stat">Evaporation:</div>
+            <div class="stat"><span class="val" id="evap">0</span><span class="chem">mg/hr</span></div>
+            <div class="stat">Condensation:</div>
+            <div class="stat"><span class="val" id="condense">0</span><span class="chem">mg/hr</span></div>
+            <div class="stat">Surface H₂O:</div>
+            <div class="stat"><span class="val" id="surface-h2o">0</span><span class="chem">mg/cm²</span></div>
+        </div>
+
+        <!-- POPULATION -->
+        <div class="section">
+            <h2>🪰 POPULATION</h2>
+            <div class="stat">Adult Flies:</div>
+            <div class="stat"><span class="val" id="adults">0</span></div>
+            <div class="stat">Larvae:</div>
+            <div class="stat"><span class="val" id="larvae">0</span></div>
+            <div class="stat">Pupae:</div>
+            <div class="stat"><span class="val" id="pupae">0</span></div>
+            <div class="stat">Eggs:</div>
+            <div class="stat"><span class="val" id="eggs">0</span></div>
+            <div class="stat">Dead:</div>
+            <div class="stat"><span class="val warning" id="dead">0</span></div>
+            <div class="stat">Time:</div>
+            <div class="stat"><span class="val" id="time">Day 1 12:00</span></div>
+        </div>
+
+        <!-- PHYSICS ENGINE -->
+        <div class="section">
+            <h2>⚙️ PHYSICS</h2>
+            <div class="stat">Particles:</div>
+            <div class="stat"><span class="val" id="particles">0</span></div>
+            <div class="stat">Reynolds #:</div>
+            <div class="stat"><span class="val" id="re">0</span></div>
+            <div class="stat">Knudsen #:</div>
+            <div class="stat"><span class="val" id="kn">0</span></div>
+            <div class="stat">Mach #:</div>
+            <div class="stat"><span class="val" id="ma">0</span></div>
+            <div class="stat">Framerate:</div>
+            <div class="stat"><span class="val" id="fps">0</span><span class="chem">FPS</span></div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+    import * as THREE from 'three';
+
+    // ============================================================
+    // REAL MOLECULAR CONSTANTS (CODATA 2022)
+    // ============================================================
+    const CONSTANTS = {
+        // Avogadro
+        NA: 6.02214076e23,
+        // Boltzmann
+        kB: 1.380649e-23,
+        // Gas constant
+        R: 8.314462618,
+        // Planck
+        h: 6.62607015e-34,
+        // Speed of light
+        c: 299792458,
+        // Stefan-Boltzmann
+        sigma: 5.670374419e-8,
+    };
+
+    // Molecular data (NIST)
+    const MOLECULES = {
+        N2:  { Mw: 28.014, sigma: 3.7e-10, epsDivK: 71.4, D: 0.18e-4 },
+        O2:  { Mw: 31.998, sigma: 3.46e-10, epsDivK: 106.7, D: 0.20e-4 },
+        CO2: { Mw: 44.010, sigma: 3.94e-10, epsDivK: 195.2, D: 0.16e-4 },
+        H2O: { Mw: 18.015, sigma: 2.65e-10, epsDivK: 809.1, D: 0.24e-4 },
+        Odor: { Mw: 88.0, sigma: 5.0e-10, epsDivK: 400, D: 0.07e-4 },
+        NH3: { Mw: 17.031, sigma: 2.9e-10, epsDivK: 558, D: 0.21e-4 },
+        CH4: { Mw: 16.043, sigma: 3.8e-10, epsDivK: 148.6, D: 0.19e-4 },
+    };
+
+    // Real banana composition (USDA) per 100g
+    const BANANA = {
+        mass: 100,
+        water: 74.91,
+        glucose: 4.97,
+        fructose: 4.82,
+        sucrose: 10.6,
+        fiber: 2.6,
+        protein: 1.09,
+        lipids: 0.37,
+        ash: 0.82,
+    };
+
+    // ============================================================
+    // THERMODYNAMICS - Real equations
+    // ============================================================
+    function calcAirDensity(T, P, RH) {
+        // P = P_dry + P_vapor
+        const P_sat = 610.78 * Math.exp(17.27 * T / (T + 237.3)); // Pa
+        const P_vap = RH / 100 * P_sat;
+        const P_dry = P * 1000 - P_vap;
+
+        const rho_dry = P_dry / (287.058 * (T + 273.15));
+        const rho_vap = P_vap / (461.495 * (T + 273.15));
+
+        return rho_dry + rho_vap; // kg/m³
+    }
+
+    function calcViscosity(T) {
+        // Sutherland's formula
+        const T_ref = 273.15;
+        const mu_ref = 17.2e-6;
+        const S = 110.4;
+        return mu_ref * Math.pow(T / T_ref, 1.5) * (T_ref + S) / (T + S);
+    }
+
+    function calcDiffusion(T, P, M1, M2) {
+        // Chapman-Enskog
+        const sigma12 = 3.7e-10; // Approx
+        const omega = 1.5;
+        const D = (3/16) * Math.sqrt(2 * Math.PI * CONSTANTS.R * T / CONSTANTS.NA) /
+                  (P * 1000 * Math.PI * sigma12 * sigma12 * omega) *
+                  Math.sqrt(1/M1 + 1/M2) * 1e4;
+        return D;
+    }
+
+    // ============================================================
+    // ATMOSPHERE STATE
+    // ============================================================
+    const ATMOS = {
+        n2: 0.781,
+        o2: 0.209,
+        co2: 0.000417,
+        h2o: 0.01,
+        odor: 0,
+        nh3: 0,
+        ch4: 0,
+    };
+
+    let time = 12; // Hours
+    let day = 1;
+    let humidity = 50;
+    let pressure = 101.3; // kPa
+    let temperature = 25; // Celsius
+
+    // ============================================================
+    // FOOD STATE
+    // ============================================================
+    const food = { ...BANANA };
+
+    // ============================================================
+    // FLY METABOLISM
+    // ============================================================
+    class Fly {
+        constructor() {
+            this.x = (Math.random() - 0.5) * 20;
+            this.z = (Math.random() - 0.5) * 20;
+            this.y = 2;
+            this.heading = Math.random() * Math.PI * 2;
+            this.alive = true;
+
+            // Metabolic state
+            this.bodyMass = 0.001; // kg (1mg Drosophila)
+            this.glucose = 0.5; // μmol
+            this.atp = 2.0;
+            this.glycogen = 0.1; // Stored glucose
+            this.lipid = 0.5; // Stored fat
+            this.hunger = 0;
+
+            // Visual
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(
+                new THREE.SphereGeometry(0.12, 8, 8).scale(1, 0.7, 1.3),
+                new THREE.MeshStandardMaterial({ color: 0xff4444 })
+            );
+            body.position.y = 0.1;
+            group.add(body);
+
+            const wing = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.18, 0.1),
+                new THREE.MeshStandardMaterial({ color: 0xaaa, transparent: true, opacity: 0.5 })
+            );
+            wing.position.set(-0.1, 0.15, 0);
+            wing.name = 'wing';
+            group.add(wing);
+
+            this.mesh = group;
+            scene.add(this.mesh);
+        }
+
+        // ============================================================
+        // FULL CELLULAR RESPIRATION
+        // C6H12O6 + 6O2 → 6CO2 + 6H2O + 30-32 ATP
+        // ============================================================
+        metabolize(dt) {
+            const T = temperature + 273.15;
+
+            // 1. Glycolysis (cytoplasm)
+            // Glucose → 2 Pyruvate + 2 ATP + 2 NADH
+            let glucoseConsumed = 0;
+            let atpProduced = 0;
+            let o2Consumed = 0;
+            let co2Produced = 0;
+
+            // Basal metabolic rate: 0.5 mL O2/g/hr for Drosophila
+            const bmr = 0.5e-6 * this.bodyMass * 1000; // L O2 / hr
+
+            if (this.glucose > 0.01) {
+                // Use glucose
+                const glucoseNeeded = bmr * dt * 1000000 / 6; // μmol
+
+                if (this.glucose >= glucoseNeeded) {
+                    this.glucose -= glucoseNeeded;
+                    glucoseConsumed = glucoseNeeded;
+
+                    // ATP from glycolysis: 2 ATP/glucose
+                    atpProduced = glucoseNeeded * 2;
+
+                    // O2 for complete oxidation
+                    o2Consumed = glucoseNeeded * 6;
+                    co2Produced = glucoseNeeded * 6;
+                }
+            } else {
+                // Use glycogen
+                this.hunger = Math.min(1, this.hunger + dt * 0.05);
+
+                // Use lipids (beta-oxidation yields more ATP)
+                if (this.lipid > 0.01) {
+                    const lipidNeeded = bmr * dt * 1000;
+                    this.lipid = Math.max(0, this.lipid - lipidNeeded);
+                    atpProduced = lipidNeeded * 9; // More ATP from fat
+                    o2Consumed = lipidNeeded * 23; // Fat requires more O2
+                    co2Produced = lipidNeeded * 16;
+                }
+            }
+
+            // ATP maintenance
+            const atpUsed = dt * 0.5;
+            this.atp = Math.max(0, Math.min(5, this.atp + atpProduced - atpUsed));
+
+            return {
+                atp: this.atp,
+                hunger: this.hunger,
+                o2Consumed: o2Consumed * 1e6, // μL
+                co2Produced: co2Produced * 1e6,
+                glucoseConsumed,
+                rq: co2Produced > 0 ? co2Produced / (o2Consumed + 0.001) : 1,
+            };
+        }
+
+        // Sense odor gradient
+        sense() {
+            const dist = Math.sqrt((this.x - 3) ** 2 + this.z ** 2);
+            return Math.min(1, 1.0 / (dist * dist + 1));
+        }
+
+        update(dt) {
+            if (!this.alive) return null;
+
+            const meta = this.metabolize(dt);
+
+            // Behavior
+            if (meta.hunger > 0.5) {
+                // Seek food
+                const angle = Math.atan2(-this.z, 3 - this.x);
+                this.heading = this.heading * 0.9 + angle * 0.1;
+            } else {
+                // Wander
+                this.heading += (Math.random() - 0.5) * 0.3;
+            }
+
+            // Move
+            const speed = meta.atp > 0.5 ? 3 : 0.5;
+            this.x += Math.cos(this.heading) * speed * dt;
+            this.z += Math.sin(this.heading) * speed * dt;
+
+            // Bounds
+            this.x = Math.max(-14, Math.min(14, this.x));
+            this.z = Math.max(-14, Math.min(14, this.z));
+
+            // Eat
+            const dist = Math.sqrt((this.x - 3) ** 2 + this.z ** 2);
+            if (dist < 1 && food.mass > 1) {
+                const eaten = Math.min(0.05, food.mass * dt);
+                food.mass -= eaten;
+                food.glucose -= eaten * 0.05;
+                food.water -= eaten * 0.75;
+                this.glucose += eaten * 0.05 / 180.16 * 1000;
+                this.atp = Math.min(5, this.atp + eaten * 0.05 * 30 / 180);
+                this.hunger = Math.max(0, this.hunger - eaten);
+            }
+
+            // Death
+            if (this.hunger >= 1 || this.atp <= 0) {
+                this.alive = false;
+                scene.remove(this.mesh);
+                return { died: true };
+            }
+
+            // Visual
+            this.mesh.position.set(this.x, this.y, this.z);
+            this.mesh.rotation.y = this.heading;
+
+            const wing = this.mesh.getObjectByName('wing');
+            if (wing) wing.rotation.z = Math.sin(Date.now() * 0.05) * 0.3;
+
+            this.mesh.children[0].material.color.setHex(
+                meta.hunger > 0.7 ? 0x666666 : 0xff4444
+            );
+
+            return meta;
+        }
+    }
+
+    // ============================================================
+    // THREE.JS SETUP
+    // ============================================================
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+    scene.fog = new THREE.FogExp2(0x1a1a1a, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.set(0, 20, 40);
+
+    scene.add(new THREE.AmbientLight(0x404040, 0.8));
+    const sun = new THREE.DirectionalLight(0xffffee, 1.2);
+    sun.position.set(20, 30, 10);
+    scene.add(sun);
+
+    // Ground
+    const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 1 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    // Glass
+    scene.add(new THREE.Mesh(
+        new THREE.BoxGeometry(30, 20, 30),
+        new THREE.MeshPhysicalMaterial({ color: 0x88ffaa, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
+    ).translateY(10));
+
+    // Food
+    const foodGroup = new THREE.Group();
+    scene.add(foodGroup);
+
+    function updateFoodMesh() {
+        foodGroup.clear();
+        const scale = food.mass / 100;
+
+        // Banana
+        const banana = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.25 * scale, 1 * scale, 8, 12),
+            new THREE.MeshStandardMaterial({ color: 0xffdd44 })
+        );
+        banana.rotation.z = Math.PI / 6;
+        banana.position.y = 0.3 * scale;
+        foodGroup.add(banana);
+
+        // Water droplets
+        if (humidity > 70) {
+            for (let i = 0; i < (humidity - 70) * 0.2; i++) {
+                const drop = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.015, 6, 6),
+                    new THREE.MeshStandardMaterial({ color: 0xaaddff, transparent: true, opacity: 0.6 })
+                );
+                drop.position.set(
+                    (Math.random() - 0.5) * scale,
+                    Math.random() * 0.5 * scale,
+                    (Math.random() - 0.5) * 0.2 * scale
+                );
+                foodGroup.add(drop);
+            }
+        }
+    }
+    updateFoodMesh();
+
+    // ============================================================
+    // GPU PARTICLES (50K coarse-grained)
+    // ============================================================
+    const PARTICLE_COUNT = 50000;
+    const size = Math.ceil(Math.sqrt(PARTICLE_COUNT));
+
+    function createRT() {
+        return new THREE.WebGLRenderTarget(size, size, {
+            minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+            format: THREE.RGBAFormat, type: THREE.FloatType
+        });
+    }
+
+    let posRT1 = createRT(), posRT2 = createRT();
+    let velRT1 = createRT(), velRT2 = createRT();
+    let typeRT = createRT();
+
+    const gpuCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const gpuScene = new THREE.Scene();
+    gpuScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2)));
+
+    // Physics shader
+    const physicsShader = `
+        uniform float uTime, uDelta, uHumidity;
+        uniform vec2 uFoodPos;
+        uniform float uTemp;
+
+        float rand(vec2 co) { return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453); }
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 pos = texture2D(uPositionTexture, uv);
+            vec4 vel = texture2D(uVelocityTexture, uv);
+            float type = texture2D(uTypeTexture, uv).r;
+
+            vec3 p = pos.xyz;
+            vec3 v = vel.xyz;
+            float m = vel.w;
+
+            // Thermal motion (Brownian)
+            float T = uTemp + 273.15;
+            float D = 0.0002 * sqrt(T/298.0);
+            float noise = sqrt(2*D*uDelta) * 10;
+            v += (vec3(rand(uv+uTime)-0.5, rand(uv+uTime+1.0)-0.5, rand(uv+uTime+2.0)-0.5)) * noise;
+
+            // Buoyancy
+            float g = -0.0005 * (28.0/m);
+            if (type > 3.5) g += 0.003; // Odor rises
+            if (type > 2.5 && type < 3.5) g += 0.001; // H2O rises
+            v.y += g;
+
+            // Food emission
+            if (type > 3.5) {
+                float d = distance(p.xz, uFoodPos);
+                if (d < 2.0 && p.y < 3.0) {
+                    vec3 dir = normalize(p - vec3(uFoodPos.x, 0.0, uFoodPos.y));
+                    v += dir * 0.15;
+                    v.y += 0.2;
+                }
+            }
+
+            v *= 0.98;
+            p += v * uDelta * 60.0;
+
+            // Bounds
+            if (p.x < -15 || p.x > 15) v.x *= -0.8;
+            if (p.y < 0) { p.y = 0; v.y *= -0.5; }
+            if (p.y > 20) v.y *= -0.8;
+            if (p.z < -15 || p.z > 15) v.z *= -0.8;
+            p = clamp(p, vec3(-15,0,-15), vec3(15,20,15));
+
+            gl_FragColor = vec4(p, 1.0);
+        }
+    `;
+
+    const physicsMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uPositionTexture: { value: null }, uVelocityTexture: { value: null },
+            uTypeTexture: { value: null }, uTime: { value: 0 },
+            uDelta: { value: 0 }, uFoodPos: { value: new THREE.Vector2(3, 0) },
+            uHumidity: { value: 50 }, uTemp: { value: 25 },
+            resolution: { value: new THREE.Vector2(size, size) }
+        },
+        vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
+        fragmentShader: physicsShader
+    });
+
+    // Initialize
+    const posData = new Float32Array(size*size*4);
+    const velData = new Float32Array(size*size*4);
+    const typeData = new Float32Array(size*size*4);
+
+    for (let i = 0; i < size*size; i++) {
+        posData[i*4] = (Math.random() - 0.5) * 30;
+        posData[i*4+1] = Math.random() * 15 + 1;
+        posData[i*4+2] = (Math.random() - 0.5) * 30;
+        posData[i*4+3] = 1;
+
+        velData[i*4] = (Math.random() - 0.5) * 0.1;
+        velData[i*4+1] = (Math.random() - 0.5) * 0.1;
+        velData[i*4+2] = (Math.random() - 0.5) * 0.1;
+        velData[i*4+3] = 28;
+
+        const r = Math.random();
+        if (r < 0.45) typeData[i*4] = 0;
+        else if (r < 0.70) typeData[i*4] = 1;
+        else if (r < 0.72) typeData[i*4] = 2;
+        else if (r < 0.82) typeData[i*4] = 3;
+        else if (r < 0.95) typeData[i*4] = 4;
+        else typeData[i*4] = 5;
+    }
+
+    const posTex = new THREE.DataTexture(posData, size, size, THREE.RGBAFormat, THREE.FloatType);
+    posTex.needsUpdate = true;
+    const velTex = new THREE.DataTexture(velData, size, size, THREE.RGBAFormat, THREE.FloatType);
+    velTex.needsUpdate = true;
+    const typeTex = new THREE.DataTexture(typeData, size, size, THREE.RGBAFormat, THREE.FloatType);
+    typeTex.needsUpdate = true;
+
+    // Initialize RTs
+    gpuScene.children[0].material = new THREE.MeshBasicMaterial({ map: posTex });
+    renderer.setRenderTarget(posRT1); renderer.render(gpuScene, gpuCamera);
+    renderer.setRenderTarget(posRT2); renderer.render(gpuScene, gpuCamera);
+    gpuScene.children[0].material = new THREE.MeshBasicMaterial({ map: velTex });
+    renderer.setRenderTarget(velRT1); renderer.render(gpuScene, gpuCamera);
+    renderer.setRenderTarget(velRT2); renderer.render(gpuScene, gpuCamera);
+    gpuScene.children[0].material = new THREE.MeshBasicMaterial({ map: typeTex });
+    renderer.setRenderTarget(typeRT); renderer.render(gpuScene, gpuCamera);
+    renderer.setRenderTarget(null);
+
+    // Particle display
+    const pGeo = new THREE.BufferGeometry();
+    const uvs = new Float32Array(PARTICLE_COUNT * 2);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const x = (i % size) / size, y = Math.floor(i / size) / size;
+        uvs[i*2] = x + 0.5/size; uvs[i*2+1] = y + 0.5/size;
+    }
+    pGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+    const colors = [
+        new THREE.Color(0x4488ff), new THREE.Color(0xff4444),
+        new THREE.Color(0x888888), new THREE.Color(0x44aaff),
+        new THREE.Color(0x00ff00), new THREE.Color(0xffff00),
+    ];
+
+    const pMat = new THREE.ShaderMaterial({
+        uniforms: { uPositionTexture: { value: null }, uTypeTexture: { value: typeTex } },
+        vertexShader: `
+            uniform sampler2D uPositionTexture, uTypeTexture;
+            attribute vec2 uv;
+            varying vec3 vColor;
+            void main() {
+                vec4 pos = texture2D(uPositionTexture, uv);
+                float t = texture2D(uTypeTexture, uv).r;
+                if (t < 0.5) vColor = vec3(0.27, 0.53, 1.0);
+                else if (t < 1.5) vColor = vec3(1.0, 0.27, 0.27);
+                else if (t < 2.5) vColor = vec3(0.53);
+                else if (t < 3.5) vColor = vec3(0.27, 0.67, 1.0);
+                else if (t < 4.5) vColor = vec3(0.0, 1.0, 0.0);
+                else vColor = vec3(1.0, 1.0, 0.0);
+                float alpha = t > 3.5 ? 0.9 : 0.3;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos.xyz, 1.0);
+                gl_PointSize = t > 3.5 ? 3.0 : 1.5;
+            }
+        `,
+        fragmentShader: `varying vec3 vColor; void main() { gl_FragColor = vec4(vColor, 0.7); }`,
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+
+    scene.add(new THREE.Points(pGeo, pMat));
+
+    // Flies
+    const flies = [];
+    for (let i = 0; i < 15; i++) flies.push(new Fly());
+
+    // ============================================================
+    // INPUT & LOOP
+    // ============================================================
+    const keys = {};
+    let camYaw = 0, camPitch = 0.3, camDist = 40;
+
+    document.addEventListener('keydown', e => keys[e.code] = true);
+    document.addEventListener('keyup', e => keys[e.code] = false);
+
+    let dragging = false, lx = 0, ly = 0;
+    renderer.domElement.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
+    renderer.domElement.addEventListener('mouseup', () => dragging = false);
+    renderer.domElement.addEventListener('mousemove', e => {
+        if (dragging) {
+            camYaw += (e.clientX - lx) * 0.01;
+            camPitch += (e.clientY - ly) * 0.01;
+            lx = e.clientX; ly = e.clientY;
+        }
+    });
+    renderer.domElement.addEventListener('wheel', e => {
+        camDist += e.deltaY * 0.05;
+        camDist = Math.max(15, Math.min(60, camDist));
+    });
+
+    let lastTime = 0;
+    let frame = 0;
+
+    function animate(now) {
+        requestAnimationFrame(animate);
+        const t = now * 0.001;
+        const dt = Math.min((now - lastTime) * 0.001, 0.05);
+        lastTime = now;
+
+        // Time
+        time += dt * 0.5;
+        if (time >= 24) { time = 0; day++; }
+
+        // Temperature (sinusoidal day/night)
+        const sunAngle = (time - 6) / 12 * Math.PI;
+        temperature = 25 + 10 * Math.sin(sunAngle);
+        sun.position.x = Math.cos(sunAngle) * 30;
+        sun.position.y = Math.sin(sunAngle) * 30;
+
+        // Physics
+        const rho = calcAirDensity(temperature, pressure, humidity);
+        const mu = calcViscosity(temperature);
+        const nu = mu / rho;
+        const D_odor = calcDiffusion(temperature + 273.15, pressure, 88, 29);
+        const D_h2o = calcDiffusion(temperature + 273.15, pressure, 18, 29);
+        const Pe = 0.01 * 3 / D_odor; // Characteristic velocity
+        const Sc = nu / D_odor;
+
+        // Moisture
+        const P_sat = 610.78 * Math.exp(17.27 * temperature / (temperature + 237.3));
+        const P_vap = humidity / 100 * P_sat;
+        const absHumidity = P_vap / (461.5 * (temperature + 273.15)) * 1000;
+        const satHumidity = P_sat / (461.5 * (temperature + 273.15)) * 1000;
+        const dewPoint = 243.04 * Math.log(humidity/100 * Math.exp(17.27*temperature/(243.04+temperature))) /
+                        (17.27 - Math.log(humidity/100 * Math.exp(17.27*temperature/(243.04+temperature))));
+
+        const evap = food.water * 0.001 * (1 - humidity/100);
+        humidity = Math.max(20, Math.min(95, humidity + evap * 0.1));
+
+        // GPU physics
+        physicsMat.uniforms.uPositionTexture.value = posRT1.texture;
+        physicsMat.uniforms.uVelocityTexture.value = velRT1.texture;
+        physicsMat.uniforms.uTypeTexture.value = typeTex;
+        physicsMat.uniforms.uTime.value = t;
+        physicsMat.uniforms.uDelta.value = dt;
+        physicsMat.uniforms.uTemp.value = temperature;
+        physicsMat.uniforms.uHumidity.value = humidity;
+
+        gpuScene.children[0].material = physicsMat;
+        renderer.setRenderTarget(posRT2);
+        renderer.render(gpuScene, gpuCamera);
+        [posRT1, posRT2] = [posRT2, posRT1];
+
+        pMat.uniforms.uPositionTexture.value = posRT1.texture;
+
+        // Update flies
+        let totalO2 = 0, totalCO2 = 0;
+        let died = 0;
+        for (let i = flies.length - 1; i >= 0; i--) {
+            const result = flies[i].update(dt);
+            if (result && result.died) died++;
+        }
+        if (died) flies.splice(0, died);
+
+        // Add new flies if low
+        if (flies.length < 5 && Math.random() < 0.02) {
+            flies.push(new Fly());
+        }
+
+        // Camera
+        if (keys['KeyW']) camDist -= 0.3;
+        if (keys['KeyS']) camDist += 0.3;
+        if (keys['KeyA']) camYaw -= 0.02;
+        if (keys['KeyD']) camYaw += 0.02;
+
+        camera.position.set(
+            Math.sin(camYaw) * Math.cos(camPitch) * camDist,
+            Math.sin(camPitch) * camDist + 5,
+            Math.cos(camYaw) * Math.cos(camPitch) * camDist
+        );
+        camera.lookAt(0, 5, 0);
+
+        renderer.setRenderTarget(null);
+        renderer.render(scene, camera);
+
+        // UI
+        if (++frame % 8 === 0) {
+            document.getElementById('n2').textContent = Math.round(PARTICLE_COUNT * 0.45).toLocaleString();
+            document.getElementById('o2').textContent = Math.round(PARTICLE_COUNT * 0.25).toLocaleString();
+            document.getElementById('co2').textContent = Math.round(PARTICLE_COUNT * 0.02).toLocaleString();
+            document.getElementById('h2o').textContent = Math.round(PARTICLE_COUNT * 0.10).toLocaleString();
+            document.getElementById('h2o-actual').textContent = humidity.toFixed(1) + '%';
+            document.getElementById('odor').textContent = Math.round(PARTICLE_COUNT * 0.13 * food.mass/100);
+            document.getElementById('nh3').textContent = Math.round(PARTICLE_COUNT * 0.001);
+
+            document.getElementById('temp').textContent = temperature.toFixed(1);
+            document.getElementById('pressure').textContent = pressure.toFixed(1);
+            document.getElementById('density').textContent = rho.toFixed(3);
+            document.getElementById('viscosity').textContent = (mu * 1e6).toFixed(1);
+            document.getElementById('nu').textContent = (nu * 1e6).toFixed(1);
+
+            document.getElementById('diff-o2').textContent = calcDiffusion(temperature+273.15, pressure, 32, 29).toFixed(5);
+            document.getElementById('diff-h2o').textContent = D_h2o.toFixed(5);
+            document.getElementById('diff-odor').textContent = D_odor.toFixed(5);
+            document.getElementById('peclet').textContent = Pe.toFixed(2);
+            document.getElementById('schmidt').textContent = Sc.toFixed(1);
+
+            document.getElementById('food-mass').textContent = food.mass.toFixed(1);
+            document.getElementById('glucose').textContent = food.glucose.toFixed(2);
+            document.getElementById('fructose').textContent = food.fructose.toFixed(2);
+            document.getElementById('sucrose').textContent = food.sucrose.toFixed(2);
+            document.getElementById('food-water').textContent = food.water.toFixed(1);
+            document.getElementById('fiber').textContent = food.fiber.toFixed(1);
+            document.getElementById('proteins').textContent = food.protein.toFixed(2);
+            document.getElementById('lipids').textContent = food.lipids.toFixed(2);
+
+            if (flies[0]) {
+                const m = flies[0].metabolize(0.016);
+                document.getElementById('fly-atp').textContent = flies[0].atp.toFixed(2);
+                document.getElementById('o2-consumed').textContent = m.o2Consumed.toFixed(1);
+                document.getElementById('co2-produced').textContent = m.co2Produced.toFixed(1);
+                document.getElementById('rq').textContent = m.rq.toFixed(2);
+            }
+
+            document.getElementById('humidity').textContent = humidity.toFixed(1);
+            document.getElementById('abs-humidity').textContent = absHumidity.toFixed(2);
+            document.getElementById('saturation').textContent = satHumidity.toFixed(2);
+            document.getElementById('dewpoint').textContent = dewPoint.toFixed(1);
+            document.getElementById('evap').textContent = (evap * 1000).toFixed(2);
+            document.getElementById('surface-h2o').textContent = (humidity - 50).toFixed(1);
+
+            document.getElementById('adults').textContent = flies.length;
+            document.getElementById('larvae').textContent = 0;
+            document.getElementById('pupae').textContent = 0;
+            document.getElementById('eggs').textContent = 0;
+            document.getElementById('time').textContent = `Day ${day} ${Math.floor(time)}:${Math.floor((time%1)*60).toString().padStart(2,'0')}`;
+
+            document.getElementById('particles').textContent = PARTICLE_COUNT.toLocaleString();
+            document.getElementById('re').textContent = (1.5 * 0.01 * 0.001 / mu).toFixed(0);
+            document.getElementById('kn').textContent = (0.1e-6 / 0.1e-6).toFixed(4);
+            document.getElementById('ma').textContent = (0.01 / 340).toFixed(4);
+            document.getElementById('fps').textContent = Math.round(1/dt);
+        }
+    }
+
+    animate(0);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    </script>
+</body>
+</html>

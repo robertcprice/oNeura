@@ -1,0 +1,48 @@
+============================================================================
+  DISHBRAIN REPLICATION — dONN GAME LEARNING (FREE ENERGY PRINCIPLE)
+  Backend: metal | Scale: large | Device: mps
+  Replicating Kagan et al. (2022) Neuron
+============================================================================
+
+============================================================================
+  Exp 1: DishBrain Pong Replication
+  Free energy principle — structured vs unstructured feedback, NO reward
+============================================================================
+    Brain: 25250 neurons, 6969757 synapses on mps
+    Warmup complete
+
+    Results:
+    First 10 rallies:  10% hit rate
+    Last 10 rallies:   10% hit rate
+    Total:             50% (1/2)
+    Random baseline:   30%
+    Improvement:       +0%
+    FAIL in 253.6s
+
+============================================================================
+  DISHBRAIN REPLICATION — SUMMARY
+============================================================================
+    1. DishBrain Pong Replication          [FAIL]  253.6s
+
+  Total: 0/1 passed in 253.6s
+============================================================================
+
+  JSON results written to: /tmp/dishbrain_large_mps_smoke_timed.json
+      264.01 real       158.60 user        45.54 sys
+          1379729408  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2151124  page reclaims
+                1005  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+               53758  voluntary context switches
+             1763629  involuntary context switches
+        621811019690  instructions retired
+        565938695147  cycles elapsed
+         10334593840  peak memory footprint

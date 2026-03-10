@@ -197,6 +197,9 @@ class DrosophilaBrain:
         self._wire_connectome()
         self._cache_tensors()
 
+        # Initialize BoB-inspired navigation state
+        self._init_navigation_state()
+
     # ------------------------------------------------------------------
     # Region construction
     # ------------------------------------------------------------------
@@ -825,6 +828,32 @@ class DrosophilaBrain:
         self._mbon_t = self._tensors.get("MBON", torch.zeros(0, dtype=torch.int64, device=dev))
         self._all_t = torch.arange(self.n_total, dtype=torch.int64, device=dev)
 
+        # Lateralized CX (central complex = descending neuron source)
+        cx_ids = self._region_ids("CX")
+        cx_mid = len(cx_ids) // 2
+        self._cx_left_t = torch.tensor(cx_ids[:cx_mid], dtype=torch.int64, device=dev)
+        self._cx_right_t = torch.tensor(cx_ids[cx_mid:], dtype=torch.int64, device=dev)
+        # DN = descending neurons, originate from CX in Drosophila
+        self._dn_left_t = self._cx_left_t
+        self._dn_right_t = self._cx_right_t
+        self._dn_t = self._cx_t
+
+        # Lateralized motor (VNC halves for left/right body)
+        motor_ids = self._region_ids("VNC")
+        motor_mid = len(motor_ids) // 2
+        self._motor_left_t = torch.tensor(motor_ids[:motor_mid], dtype=torch.int64, device=dev)
+        self._motor_right_t = torch.tensor(motor_ids[motor_mid:], dtype=torch.int64, device=dev)
+
+        # Lateralized KC and MBON
+        kc_ids = self._region_ids("MB_KC")
+        kc_mid = len(kc_ids) // 2
+        self._kc_left_t = torch.tensor(kc_ids[:kc_mid], dtype=torch.int64, device=dev)
+        self._kc_right_t = torch.tensor(kc_ids[kc_mid:], dtype=torch.int64, device=dev)
+        mbon_ids = self._region_ids("MBON")
+        mbon_mid = len(mbon_ids) // 2
+        self._mbon_left_t = torch.tensor(mbon_ids[:mbon_mid], dtype=torch.int64, device=dev)
+        self._mbon_right_t = torch.tensor(mbon_ids[mbon_mid:], dtype=torch.int64, device=dev)
+
         # Motor subgroup tensors for readout
         vnc_ids = self._region_ids("VNC")
         n_vnc = len(vnc_ids)
@@ -1137,6 +1166,202 @@ class DrosophilaBrain:
             "feed": feed_signal,
             "climb": float(climb_signal),
         }
+
+    # ============================================================================
+    # BoB-Inspired Navigation Enhancements (Nature 2024)
+    # ============================================================================
+
+    def _init_navigation_state(self):
+        """Initialize navigation state variables for BoB-inspired heading and path integration."""
+        self._heading = 0.0  # Current heading in radians
+        self._ring_attractor_state = None  # Ring attractor activity
+        self._path_integration_x = 0.0  # Integrated X position
+        self._path_integration_y = 0.0  # Integrated Y position
+        self._home_x = 0.0  # Home position for homing
+        self._home_y = 0.0
+        self._landmark_memories = {}  # {landmark_id: (x, y, visual_features)}
+        self._sun_heading = None  # Compass heading (if available)
+        self._velocity_history = []  # For path integration smoothing
+
+    def update_heading_ring_attractor(self, angular_velocity: float, dt: float = 0.1):
+        """Update heading via ring attractor dynamics.
+
+        This implements a continuous attractor network for heading representation,
+        similar to the compass neurons in the Drosophila central complex (CX).
+
+        Args:
+            angular_velocity: Angular velocity in radians/sec (from optomotor response)
+            dt: Timestep for integration
+        """
+        n_neurons = self._region_size("CX")
+        if n_neurons < 8:
+            return  # Need at least 8 neurons for ring attractor
+
+        # Initialize ring attractor if needed
+        if self._ring_attractor_state is None:
+            n_ring = min(16, n_neurons // 4)
+            self._ring_attractor_state = torch.zeros(n_ring, device=self.dev)
+            # Gaussian initialization around current heading
+            for i in range(n_ring):
+                angle = (2 * np.pi * i) / n_ring
+                self._ring_attractor_state[i] = np.exp(-((angle - self._heading) ** 2) / 0.5)
+
+        n_ring = self._ring_attractor_state.shape[0]
+
+        # Ring attractor dynamics
+        # Lateral excitation between neighboring neurons
+        new_state = self._ring_attractor_state.clone()
+
+        for i in range(n_ring):
+            # Get neighboring activity (wrap around)
+            prev_i = (i - 1) % n_ring
+            next_i = (i + 1) % n_ring
+
+            # Lateral excitation + self-excitation - inhibition
+            neighbor_avg = (self._ring_attractor_state[prev_i] +
+                          self._ring_attractor_state[next_i]) / 2
+
+            # Angular velocity shifts activity bump
+            shift = angular_velocity * dt
+            target_i = int((i + shift * n_ring / (2 * np.pi)) % n_ring)
+
+            # Update dynamics
+            new_state[i] = (
+                0.9 * self._ring_attractor_state[i] +
+                0.05 * neighbor_avg +
+                0.05 * self._ring_attractor_state[target_i]
+            )
+            new_state[i] = max(0.0, new_state[i])  # Non-negativity
+
+        # Normalize
+        total = new_state.sum()
+        if total > 0:
+            new_state = new_state / total
+
+        self._ring_attractor_state = new_state
+
+        # Decode heading from peak activity
+        peak_idx = torch.argmax(self._ring_attractor_state).item()
+        self._heading = (2 * np.pi * peak_idx) / n_ring
+
+        # Apply to CX neurons
+        cx_tensor = self._tensors.get("CX")
+        if cx_tensor is not None and cx_tensor.shape[0] > 0:
+            # Stimulate CX based on heading alignment
+            cx_size = min(cx_tensor.shape[0], n_ring)
+            for i in range(cx_size):
+                activity = self._ring_attractor_state[i].item()
+                if activity > 0.1:
+                    self.brain.external_current[cx_tensor[i]] += activity * 10.0
+
+    def update_path_integration(self, velocity_x: float, velocity_y: float,
+                               dt: float = 0.1):
+        """Update position estimate via path integration (dead reckoning).
+
+        Integrates velocity over time to maintain internal position estimate,
+        similar to the Drosophila heading system (Steinbeck et al. 2020).
+
+        Args:
+            velocity_x: Forward velocity in m/s
+            velocity_y: Lateral velocity in m/s
+            dt: Timestep
+        """
+        # Update velocity history for smoothing
+        self._velocity_history.append((velocity_x, velocity_y))
+        if len(self._velocity_history) > 10:
+            self._velocity_history.pop(0)
+
+        # Compute smoothed velocity
+        if self._velocity_history:
+            avg_vx = sum(v[0] for v in self._velocity_history) / len(self._velocity_history)
+            avg_vy = sum(v[1] for v in self._velocity_history) / len(self._velocity_history)
+        else:
+            avg_vx, avg_vy = velocity_x, velocity_y
+
+        # Integrate using current heading
+        dx = avg_vx * np.cos(self._heading) - avg_vy * np.sin(self._heading)
+        dy = avg_vx * np.sin(self._heading) + avg_vy * np.cos(self._heading)
+
+        self._path_integration_x += dx * dt
+        self._path_integration_y += dy * dt
+
+    def set_home_position(self, x: float, y: float):
+        """Set current position as home (for homing behavior)."""
+        self._home_x = x
+        self._home_y = y
+
+    def compute_homing_vector(self, current_x: float, current_y: float) -> tuple:
+        """Compute direction to home position.
+
+        Returns:
+            (angle, distance): Angle in radians, distance in meters
+        """
+        dx = self._home_x - current_x
+        dy = self._home_y - current_y
+        distance = np.sqrt(dx**2 + dy**2)
+        angle = np.arctan2(dy, dx)
+        return angle, distance
+
+    def add_landmark(self, landmark_id: str, x: float, y: float,
+                    visual_features: np.ndarray):
+        """Add a landmark to memory.
+
+        Args:
+            landmark_id: Unique identifier for landmark
+            x, y: World position
+            visual_features: Feature vector from visual processing
+        """
+        self._landmark_memories[landmark_id] = (x, y, visual_features)
+
+    def match_landmarks(self, observed_features: np.ndarray,
+                        max_distance: float = 5.0) -> tuple:
+        """Match observed visual features against landmark memories.
+
+        Args:
+            observed_features: Feature vector from current visual input
+            max_distance: Maximum recognition distance in meters
+
+        Returns:
+            (landmark_id, dx, dy): Matched landmark and offset, or None
+        """
+        if not self._landmark_memories:
+            return None
+
+        best_match = None
+        best_similarity = -float('inf')
+
+        for lm_id, (lm_x, lm_y, lm_features) in self._landmark_memories.items():
+            # Compute cosine similarity
+            dot = np.dot(observed_features, lm_features)
+            norm_obs = np.linalg.norm(observed_features)
+            norm_lm = np.linalg.norm(lm_features)
+
+            if norm_obs > 0 and norm_lm > 0:
+                similarity = dot / (norm_obs * norm_lm)
+
+                if similarity > best_similarity and similarity > 0.7:
+                    best_similarity = similarity
+                    best_match = (lm_id, lm_x, lm_y)
+
+        if best_match is None:
+            return None
+
+        lm_id, lm_x, lm_y = best_match
+        return (lm_id, lm_x, lm_y)
+
+    def get_compass_heading(self, sun_angle: float = None) -> float:
+        """Get heading based on compass (sun/landmark-based).
+
+        Args:
+            sun_angle: Sun position in radians (if available from sky polarization)
+
+        Returns:
+            Heading in radians
+        """
+        if sun_angle is not None:
+            self._sun_heading = sun_angle
+            return sun_angle
+        return self._heading
 
     def apply_reward(self, valence: float) -> None:
         """Apply reward/punishment signal via dopamine to mushroom body.
@@ -1958,6 +2183,170 @@ class Drosophila:
             "energy": self.body.energy,
             "motor": motor,
         }
+
+    # ============================================================================
+    # BoB-Inspired Navigation Behaviors
+    # ============================================================================
+
+    def set_home_here(self):
+        """Set current position as home for homing behavior."""
+        self.brain.set_home_position(self.body.x, self.body.y)
+
+    def head_toward_home(self) -> float:
+        """Compute turn bias to head toward home position.
+
+        Returns:
+            Turn bias: positive = left, negative = right
+        """
+        angle, distance = self.brain.compute_homing_vector(
+            self.body.x, self.body.y
+        )
+
+        # Compute heading error
+        heading_error = angle - self.body.heading
+        # Normalize to [-pi, pi]
+        while heading_error > np.pi:
+            heading_error -= 2 * np.pi
+        while heading_error < -np.pi:
+            heading_error += 2 * np.pi
+
+        # Turn toward home
+        turn_bias = heading_error / (np.pi / 4)  # Scale to [-1, 1]
+        return max(-1.0, min(1.0, turn_bias))
+
+    def head_toward_compass(self, target_angle: float) -> float:
+        """Turn toward a compass heading (e.g., sun-based navigation).
+
+        Args:
+            target_angle: Target heading in radians
+
+        Returns:
+            Turn bias: positive = left, negative = right
+        """
+        heading_error = target_angle - self.body.heading
+        while heading_error > np.pi:
+            heading_error -= 2 * np.pi
+        while heading_error < -np.pi:
+            heading_error += 2 * np.pi
+
+        turn_bias = heading_error / (np.pi / 4)
+        return max(-1.0, min(1.0, turn_bias))
+
+    def avoid_obstacle(self, obstacle_x: float, obstacle_y: float,
+                      avoidance_angle: float = None) -> float:
+        """Compute turn to avoid an obstacle.
+
+        Args:
+            obstacle_x, obstacle_y: Obstacle position
+            avoidance_angle: Preferred avoidance direction (if None, turn away)
+
+        Returns:
+            Turn bias to avoid obstacle
+        """
+        dx = obstacle_x - self.body.x
+        dy = obstacle_y - self.body.y
+        distance = np.sqrt(dx**2 + dy**2)
+
+        if distance < 0.001:
+            return 0.0
+
+        # Direction to obstacle
+        obstacle_angle = np.arctan2(dy, dx)
+
+        if avoidance_angle is None:
+            # Turn directly away from obstacle
+            avoidance_angle = obstacle_angle + np.pi
+
+        # Turn toward avoidance direction
+        heading_error = avoidance_angle - self.body.heading
+        while heading_error > np.pi:
+            heading_error -= 2 * np.pi
+        while heading_error < -np.pi:
+            heading_error += 2 * np.pi
+
+        # Stronger turn when closer to obstacle
+        strength = min(1.0, 2.0 / max(distance, 0.1))
+        turn_bias = (heading_error / (np.pi / 4)) * strength
+
+        return max(-1.0, min(1.0, turn_bias))
+
+    def follow_wall(self, wall_angle: float, distance: float,
+                   target_distance: float = 5.0) -> float:
+        """Follow a wall at a target distance.
+
+        Args:
+            wall_angle: Angle of wall in radians
+            distance: Current distance to wall
+            target_distance: Desired distance from wall
+
+        Returns:
+            Turn bias to maintain target distance
+        """
+        # If too close, turn away; if too far, turn toward
+        error = distance - target_distance
+
+        # Parallel to wall = move along it
+        if abs(error) < 1.0:
+            return 0.0
+
+        # Turn toward or away from wall
+        turn_bias = np.sign(error) * 0.5
+        return turn_bias
+
+    def update_navigation_from_movement(self, dt: float = 0.1):
+        """Update internal navigation state from movement.
+
+        Args:
+            dt: Time step in seconds
+        """
+        # Compute velocity from position change
+        prev_x = getattr(self, '_prev_x', self.body.x)
+        prev_y = getattr(self, '_prev_y', self.body.y)
+
+        vx = (self.body.x - prev_x) / dt if dt > 0 else 0
+        vy = (self.body.y - prev_y) / dt if dt > 0 else 0
+
+        self._prev_x = self.body.x
+        self._prev_y = self.body.y
+
+        # Update path integration
+        self.brain.update_path_integration(vx, vy, dt)
+
+        # Update heading from ring attractor (using angular velocity from turn)
+        # Angular velocity approximation from heading change
+        prev_heading = getattr(self, '_prev_heading', self.body.heading)
+        angular_vel = (self.body.heading - prev_heading) / dt if dt > 0 else 0
+        self._prev_heading = self.body.heading
+
+        self.brain.update_heading_ring_attractor(angular_vel, dt)
+
+    def set_sun_heading(self, sun_angle: float):
+        """Set compass heading from sun position.
+
+        Args:
+            sun_angle: Sun azimuth in radians
+        """
+        self.brain.get_compass_heading(sun_angle)
+
+    def learn_landmark(self, landmark_id: str, visual_features: np.ndarray):
+        """Learn a landmark at current position.
+
+        Args:
+            landmark_id: Unique identifier for landmark
+            visual_features: Feature vector from visual input
+        """
+        self.brain.add_landmark(landmark_id, self.body.x, self.body.y, visual_features)
+
+    def recognize_landmark(self, visual_features: np.ndarray) -> tuple:
+        """Try to recognize a landmark from visual features.
+
+        Args:
+            visual_features: Feature vector from current visual input
+
+        Returns:
+            (landmark_id, dx, dy) or None if no match
+        """
+        return self.brain.match_landmarks(visual_features)
 
 
 # ==========================================================================

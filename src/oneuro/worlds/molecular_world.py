@@ -23,12 +23,18 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from numpy.typing import NDArray
+
+try:
+    from oneuro_metal import step_molecular_atmosphere as RustStepMolecularAtmosphere
+except ImportError:  # pragma: no cover - optional native extension
+    RustStepMolecularAtmosphere = None
 
 # ---------------------------------------------------------------------------
 # Physical Constants (real values, SI units unless noted)
@@ -295,7 +301,9 @@ class MolecularWorld:
             raise ValueError(f"size must be (H, W) or (D, H, W), got {size}")
 
         self.cell_size_mm = cell_size_mm
+        self.seed = 0 if seed is None else int(seed)
         self.rng = np.random.default_rng(seed)
+        self._rust_world_rng_state = ((self.seed & ((1 << 64) - 1)) ^ 0x9E3779B97F4A7C15) & ((1 << 64) - 1)
         self.time: float = 0.0  # elapsed seconds
 
         # -- Atmosphere --
@@ -375,6 +383,10 @@ class MolecularWorld:
         self.fruit_sources: List[FruitSource] = []
         self.plant_sources: List[PlantSource] = []
         self.water_sources: List[WaterSource] = []
+        self.world_backend: str = "rust" if RustStepMolecularAtmosphere is not None else "python"
+        self.world_step_time_ms: float = 0.0
+        self.atmosphere_backend: str = "rust" if RustStepMolecularAtmosphere is not None else "python"
+        self.atmosphere_step_time_ms: float = 0.0
 
     # ---- Source management ----
 
@@ -527,26 +539,43 @@ class MolecularWorld:
           6. Soil decomposition
           7. Gentle wind perturbation
         """
-        # 1 --- sources
-        self._step_sources(dt)
-
-        # 2 --- emit
-        self._emit_odorants(dt)
-
-        # 3 --- diffuse + advect odorants
-        self._diffuse_odorants(dt)
-
-        # 4 --- temperature
-        self._step_temperature(dt)
-
-        # 5 --- humidity
-        self._step_humidity(dt)
+        if RustStepMolecularAtmosphere is not None:
+            t0 = time.perf_counter()
+            try:
+                RustStepMolecularAtmosphere(self, float(dt))
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                self.world_backend = "rust"
+                self.world_step_time_ms = elapsed_ms
+                self.atmosphere_backend = "rust"
+                self.atmosphere_step_time_ms = elapsed_ms
+            except Exception:
+                self._step_sources(dt)
+                self._emit_odorants(dt)
+                self._diffuse_odorants(dt)
+                self._step_temperature(dt)
+                self._step_humidity(dt)
+                self._perturb_wind(dt)
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                self.world_backend = "python"
+                self.world_step_time_ms = elapsed_ms
+                self.atmosphere_backend = "python"
+                self.atmosphere_step_time_ms = elapsed_ms
+        else:
+            t0 = time.perf_counter()
+            self._step_sources(dt)
+            self._emit_odorants(dt)
+            self._diffuse_odorants(dt)
+            self._step_temperature(dt)
+            self._step_humidity(dt)
+            self._perturb_wind(dt)
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            self.world_backend = "python"
+            self.world_step_time_ms = elapsed_ms
+            self.atmosphere_backend = "python"
+            self.atmosphere_step_time_ms = elapsed_ms
 
         # 6 --- soil
         self.soil.step(dt)
-
-        # 7 --- wind
-        self._perturb_wind(dt)
 
         # tick clock
         self.time += dt
@@ -892,6 +921,9 @@ class MolecularWorld:
             "shape": (self.D, self.H, self.W),
             "temperature": self.temperature.copy(),
             "humidity": self.humidity.copy(),
+            "world_backend": self.world_backend,
+            "world_step_time_ms": self.world_step_time_ms,
+            "atmosphere_backend": self.atmosphere_backend,
             "wind_vx": self.wind_vx.copy(),
             "wind_vy": self.wind_vy.copy(),
             "wind_vz": self.wind_vz.copy(),

@@ -36,8 +36,17 @@ Thumbs.db
 # Temporary
 /tmp/
 *.tmp
+tmp_demo_artifacts/
+tmp_demo_bundle/
+tmp_demo_mc4d/
+doom_videos/
 
 # Benchmark outputs
 /tmp/*.json
 /experiments/results/*.json
 /.local/
+
+# Native build outputs
+target/
+oneuro-metal/target/
+oneuro-3d/target/

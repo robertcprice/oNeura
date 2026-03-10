@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>oNeuro Fly World - Minecraft Style</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Courier New', monospace; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+        }
+        #legend {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+        }
+        .key-item { display: flex; align-items: center; margin: 5px 0; }
+        .key-color { width: 20px; height: 20px; margin-right: 10px; border: 1px solid white; }
+        #stats {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            text-align: right;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 18px; }
+        h2 { margin: 0 0 10px 0; font-size: 14px; color: #4CAF50; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h1>🪰 oNeuro Fly World</h1>
+        <p>Click to rotate | Scroll to zoom</p>
+        <p>WASD to move | Q/E up/down</p>
+    </div>
+
+    <div id="legend">
+        <h2>🗺️ Legend</h2>
+        <div class="key-item"><div class="key-color" style="background: #4CAF50;"></div>Grass Block</div>
+        <div class="key-item"><div class="key-color" style="background: #8B4513;"></div>Dirt Block</div>
+        <div class="key-item"><div class="key-color" style="background: #808080;"></div>Stone Block</div>
+        <div class="key-item"><div class="key-color" style="background: #228B22;"></div>Leaves</div>
+        <div class="key-item"><div class="key-color" style="background: #FF6B6B; border-radius: 50%;"></div>Fruit</div>
+        <div class="key-item"><div class="key-color" style="background: #FF0000; border-radius: 50%;"></div>Fly</div>
+    </div>
+
+    <div id="stats">
+        <h2>📊 Live Stats</h2>
+        <div id="fly-pos">Fly: (0, 0, 0)</div>
+        <div id="flies-count">Flies: 0</div>
+        <div id="time">Time: 0</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', function() {
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Sky blue
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 15, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffffcc, 1);
+        sunLight.position.set(30, 50, 30);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        // Block materials
+        const materials = {
+            grass: new THREE.MeshLambertMaterial({ color: 0x4CAF50 }),
+            dirt: new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
+            stone: new THREE.MeshLambertMaterial({ color: 0x808080 }),
+            leaves: new THREE.MeshLambertMaterial({ color: 0x228B22, transparent: true, opacity: 0.9 }),
+            fruit: new THREE.MeshPhongMaterial({ color: 0xFF6B6B, emissive: 0x330000 }),
+            fly: new THREE.MeshPhongMaterial({ color: 0xFF0000, emissive: 0x330000 }),
+            flyWing: new THREE.MeshPhongMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.7 }),
+        };
+
+        // World parameters
+        const WORLD_SIZE = 20;
+        const blocks = [];
+        const flies = [];
+
+        // Generate terrain
+        function generateWorld() {
+            for (let x = 0; x < WORLD_SIZE; x++) {
+                for (let y = 0; y < WORLD_SIZE; y++) {
+                    // Simple height map
+                    const height = Math.floor(3 + Math.sin(x/3) * 1.5 + Math.cos(y/4) * 1.5);
+
+                    for (let z = 0; z <= height; z++) {
+                        let material;
+                        if (z === height) {
+                            material = materials.grass;
+                        } else if (z > height - 3) {
+                            material = materials.dirt;
+                        } else {
+                            material = materials.stone;
+                        }
+
+                        createBlock(x, y, z, material);
+
+                        // Add fruit occasionally
+                        if (z === height && Math.random() < 0.08) {
+                            createFruit(x, y, z + 1);
+                        }
+
+                        // Add trees
+                        if (z === height && Math.random() < 0.03) {
+                            createTree(x, y, z + 1);
+                        }
+                    }
+                }
+            }
+        }
+
+        function createBlock(x, y, z, material) {
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const block = new THREE.Mesh(geometry, material);
+            block.position.set(x, z, y);
+            block.castShadow = true;
+            block.receiveShadow = true;
+            scene.add(block);
+            blocks.push(block);
+        }
+
+        function createFruit(x, y, z) {
+            const geometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const fruit = new THREE.Mesh(geometry, materials.fruit);
+            fruit.position.set(x, z, y);
+            scene.add(fruit);
+        }
+
+        function createTree(x, y, z) {
+            // Trunk
+            for (let i = 0; i < 4; i++) {
+                createBlock(x, y, z + i, materials.dirt);
+            }
+
+            // Leaves (simple sphere)
+            const leafGeo = new THREE.BoxGeometry(2, 2, 2);
+            const leaves = new THREE.Mesh(leafGeo, materials.leaves);
+            leaves.position.set(x, z + 3.5, y);
+            scene.add(leaves);
+        }
+
+        // Create flies
+        function createFly(x, y, z) {
+            const flyGroup = new THREE.Group();
+
+            // Body
+            const bodyGeo = new THREE.SphereGeometry(0.2, 16, 16);
+            const body = new THREE.Mesh(bodyGeo, materials.fly);
+            flyGroup.add(body);
+
+            // Wings
+            const wingGeo = new THREE.PlaneGeometry(0.3, 0.15);
+            const leftWing = new THREE.Mesh(wingGeo, materials.flyWing);
+            leftWing.position.set(-0.15, 0.1, 0);
+            leftWing.rotation.x = Math.PI / 4;
+            flyGroup.add(leftWing);
+
+            const rightWing = new THREE.Mesh(wingGeo, materials.flyWing);
+            rightWing.position.set(0.15, 0.1, 0);
+            rightWing.rotation.x = Math.PI / 4;
+            flyGroup.add(rightWing);
+
+            flyGroup.position.set(x, z, y);
+            scene.add(flyGroup);
+
+            return {
+                mesh: flyGroup,
+                pos: new THREE.Vector3(x, z, y),
+                vel: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.2,
+                    (Math.random() - 0.5) * 0.1,
+                    (Math.random() - 0.5) * 0.2
+                ),
+                wings: [leftWing, rightWing]
+            };
+        }
+
+        // Initialize
+        generateWorld();
+
+        // Create initial flies
+        for (let i = 0; i < 5; i++) {
+            flies.push(createFly(
+                Math.random() * WORLD_SIZE,
+                Math.random() * WORLD_SIZE,
+                8 + Math.random() * 5
+            ));
+        }
+
+        // Animation
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.016;
+
+            // Update flies
+            flies.forEach((fly, idx) => {
+                // Flapping wings
+                fly.wings.forEach((wing, widx) => {
+                    wing.rotation.z = Math.sin(time * 20 + widx * Math.PI) * 0.5;
+                });
+
+                // Random movement
+                fly.vel.x += (Math.random() - 0.5) * 0.02;
+                fly.vel.y += (Math.random() - 0.5) * 0.01;
+                fly.vel.z += (Math.random() - 0.5) * 0.02;
+
+                // Damping
+                fly.vel.multiplyScalar(0.98);
+
+                // Gravity and lift
+                fly.vel.y -= 0.005; // Gravity
+                if (fly.pos.y < 5) fly.vel.y += 0.02; // Lift when low
+
+                // Update position
+                fly.pos.add(fly.vel);
+
+                // Boundary
+                if (fly.pos.x < 0 || fly.pos.x > WORLD_SIZE) fly.vel.x *= -1;
+                if (fly.pos.z < 0 || fly.pos.z > WORLD_SIZE) fly.vel.z *= -1;
+                if (fly.pos.y < 1) { fly.pos.y = 1; fly.vel.y = Math.abs(fly.vel.y); }
+                if (fly.pos.y > WORLD_SIZE) fly.vel.y *= -1;
+
+                fly.mesh.position.copy(fly.pos);
+
+                // Face direction of movement
+                if (fly.vel.length() > 0.01) {
+                    fly.mesh.rotation.y = Math.atan2(fly.vel.x, fly.vel.z);
+                }
+            });
+
+            // Update stats
+            document.getElementById('fly-pos').textContent =
+                `Fly: (${flies[0].pos.x.toFixed(1)}, ${flies[0].pos.y.toFixed(1)}, ${flies[0].pos.z.toFixed(1)})`;
+            document.getElementById('flies-count').textContent = `Flies: ${flies.length}`;
+            document.getElementById('time').textContent = `Time: ${time.toFixed(1)}s`;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+        });
+    </script>
+</body>
+</html>
