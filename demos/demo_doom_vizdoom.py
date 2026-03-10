@@ -215,6 +215,7 @@ class DoomGame:
 
         self.scenario = scenario
         self.seed = seed
+        self._scenario = scenario  # Track for event handling
         self._game = vzd.DoomGame()
         self._setup(scenario, visible)
         self._prev_health = 100.0
@@ -289,7 +290,7 @@ class DoomGame:
 
         Returns:
             Tuple of (event, health_delta, done, frame, where event is one of
-            "health_gained", "damage_taken", "kill", "neutral", or "episode_end".
+            "health_gained", "damage_taken", "kill", "survived", "neutral", or "episode_end".
         """
         # Build one-hot action vector
         action = [0] * N_MOTOR_POPULATIONS
@@ -299,16 +300,17 @@ class DoomGame:
         self._episode_steps += 1
 
         if self._game.is_episode_finished():
+            # Episode ended - this is negative (death) in defend scenarios
             return "episode_end", 0.0, True, np.zeros(
                 (RETINA_HEIGHT, RETINA_WIDTH, 3), dtype=np.uint8)
 
-        # Track kills
+        # Track kills (positive event - killed enemy)
         current_kills = self._get_kills()
         kills_delta = current_kills - self._prev_kills
         event = None
         if kills_delta > 0:
             self._episode_kills += kills_delta
-            event = "kill"
+            event = "kill"  # POSITIVE: got a kill!
         self._prev_kills = current_kills
 
         # Track health
@@ -322,9 +324,13 @@ class DoomGame:
                 event = "health_gained"
             elif health_delta < 0:
                 self._episode_damage_taken += abs(health_delta)
-                event = "damage_taken"
+                event = "damage_taken"  # NEGATIVE: took damage
             else:
-                event = "neutral"
+                # Survival is positive in defend scenarios!
+                if self._scenario == "defend_the_center":
+                    event = "survived"  # POSITIVE: still alive
+                else:
+                    event = "neutral"
 
         frame = self._get_frame()
         return event, health_delta, False, frame
@@ -369,6 +375,16 @@ class DoomGame:
     def episode_health_gained(self) -> float:
         """Total health gained in the current episode."""
         return self._episode_health_gained
+
+    @property
+    def episode_kills(self) -> int:
+        """Total kills in the current episode."""
+        return self._episode_kills
+
+    @property
+    def episode_survived(self) -> bool:
+        """Whether the episode ended by survival (not death)."""
+        return self._episode_damage_taken < 100  # Didn't die
 
     @property
     def episode_damage_taken(self) -> float:
@@ -992,11 +1008,23 @@ def play_doom_episode(
             # HUGE dopamine for killing enemy!
             if hasattr(protocol, 'deliver_kill_reward'):
                 protocol.deliver_kill_reward(rb)
+            # Also deliver positive for the kill
+            protocol.deliver_positive(rb)
             total_positive += 5  # Big reward
+        elif event == "survived":
+            # Positive in defend scenarios - still alive!
+            # Small positive reinforcement for surviving
+            if hasattr(protocol, 'deliver_survival_reward'):
+                protocol.deliver_survival_reward(rb)
+            total_positive += 0.1  # Small reward
         elif event == "damage_taken":
             # Cortisol for damage!
             protocol.deliver_negative(rb)
             total_negative += 1
+        elif event == "episode_end":
+            # Died - big negative!
+            protocol.deliver_negative(rb)
+            total_negative += 10
         else:
             # Check for attack misses: if attack action but no kill
             if action == 5 and hasattr(protocol, 'deliver_miss_punishment'):
