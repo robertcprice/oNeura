@@ -120,15 +120,6 @@ fn normalize_aux(sample: vec4<f32>, view_id: f32) -> f32 {
     return clamp((sample.y - material.field_aux_min.y) * material.field_aux_inv.y, 0.0, 1.0);
 }
 
-fn sample_field(uv: vec2<f32>, view_id: f32) -> f32 {
-    if (view_id < 3.5) {
-        let sample = textureSample(field_main_image, field_main_sampler, uv);
-        return normalize_main(sample, view_id);
-    }
-    let aux = textureSample(field_aux_image, field_aux_sampler, uv);
-    return normalize_aux(aux, view_id);
-}
-
 fn point_strength(cell: vec2<f32>, point: vec4<f32>) -> f32 {
     let delta = abs(cell - point.xy);
     let chebyshev = max(delta.x, delta.y);
@@ -147,11 +138,35 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let view_id = clamp(material.tone.z, 0.0, 5.0);
     let time_phase = material.tone.w;
 
-    let field = sample_field(uv, view_id);
-    let north = sample_field(uv + vec2<f32>(0.0, -texel.y), view_id);
-    let south = sample_field(uv + vec2<f32>(0.0, texel.y), view_id);
-    let east = sample_field(uv + vec2<f32>(texel.x, 0.0), view_id);
-    let west = sample_field(uv + vec2<f32>(-texel.x, 0.0), view_id);
+    let main = textureSample(field_main_image, field_main_sampler, uv);
+    let main_north = textureSample(field_main_image, field_main_sampler, uv + vec2<f32>(0.0, -texel.y));
+    let main_south = textureSample(field_main_image, field_main_sampler, uv + vec2<f32>(0.0, texel.y));
+    let main_east = textureSample(field_main_image, field_main_sampler, uv + vec2<f32>(texel.x, 0.0));
+    let main_west = textureSample(field_main_image, field_main_sampler, uv + vec2<f32>(-texel.x, 0.0));
+    let aux = textureSample(field_aux_image, field_aux_sampler, uv);
+    let aux_north = textureSample(field_aux_image, field_aux_sampler, uv + vec2<f32>(0.0, -texel.y));
+    let aux_south = textureSample(field_aux_image, field_aux_sampler, uv + vec2<f32>(0.0, texel.y));
+    let aux_east = textureSample(field_aux_image, field_aux_sampler, uv + vec2<f32>(texel.x, 0.0));
+    let aux_west = textureSample(field_aux_image, field_aux_sampler, uv + vec2<f32>(-texel.x, 0.0));
+
+    var field = 0.0;
+    var north = 0.0;
+    var south = 0.0;
+    var east = 0.0;
+    var west = 0.0;
+    if (view_id < 3.5) {
+        field = normalize_main(main, view_id);
+        north = normalize_main(main_north, view_id);
+        south = normalize_main(main_south, view_id);
+        east = normalize_main(main_east, view_id);
+        west = normalize_main(main_west, view_id);
+    } else {
+        field = normalize_aux(aux, view_id);
+        north = normalize_aux(aux_north, view_id);
+        south = normalize_aux(aux_south, view_id);
+        east = normalize_aux(aux_east, view_id);
+        west = normalize_aux(aux_west, view_id);
+    }
     let edge = clamp((abs(east - west) + abs(north - south)) * 1.45, 0.0, 1.0);
 
     let food = clamp(material.bio.x, 0.0, 1.0);
