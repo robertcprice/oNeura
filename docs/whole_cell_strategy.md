@@ -120,6 +120,8 @@ Current native capabilities in `oneuro-metal`:
 - Local reaction activity and catalyst drive are now derived from resolved patch chemistry, local assembly state, and persistent subsystem state instead of snapshot-level subsystem counters like ribosome, DnaA, or FtsZ counts.
 - Native CME/ODE/BD/geometry stages now consume substrate-derived assembly inventories and process-capacity signals, with ribosome/RNAP/DnaA/FtsZ pool fields retained only as smoothed diagnostics for bindings and observability.
 - Those higher-level inventories and rates are now evaluated through a generic scalar process-rule IR, so the native scheduler is reading interpreted rule tables rather than bespoke arithmetic blocks.
+- Subsystem readiness reducers, coarse resource-to-signal mappings, and terrarium snapshot-exchange targets are now also evaluated through rule tables, which removes another layer of inline whole-cell heuristics from the stack.
+- Local chemistry crowding, derived patch signals, assembly context scaling, subsystem structural targets, and aggregate chemistry support are now evaluated through a generic affine reducer layer instead of bespoke local weighted sums.
 - The native intracellular lattice now starts from neutral bulk fields instead of injecting preset ATP hotspots at initialization; spatial structure must come from later dynamics or explicit perturbations.
 - Local depletion and byproduct pressure now feed back into subsystem scaling and effective metabolic load instead of remaining passive diagnostics.
 - Per-subsystem differences in chemistry and scaling are now expressed as profile data tables instead of branch-specific support formulas, which keeps the runtime closer to a substrate-first architecture.

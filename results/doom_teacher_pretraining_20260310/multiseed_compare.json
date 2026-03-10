@@ -1,0 +1,53 @@
+{
+  "scenario": "health_gathering",
+  "episodes": 4,
+  "teacher_pretrain_episodes": 2,
+  "structured_replay_scale": 0.8,
+  "results": [
+    {
+      "seed": 42,
+      "baseline_total": 8.0,
+      "teacher_total": 16.0,
+      "baseline_last_q": 0.0,
+      "teacher_last_q": 8.0,
+      "baseline_pretrain": 0,
+      "teacher_pretrain_avg_match": 0.35624999999999996
+    },
+    {
+      "seed": 43,
+      "baseline_total": 16.0,
+      "teacher_total": 0.0,
+      "baseline_last_q": 0.0,
+      "teacher_last_q": 0.0,
+      "baseline_pretrain": 0,
+      "teacher_pretrain_avg_match": 0.1625
+    },
+    {
+      "seed": 44,
+      "baseline_total": 0.0,
+      "teacher_total": 0.0,
+      "baseline_last_q": 0.0,
+      "teacher_last_q": 0.0,
+      "baseline_pretrain": 0,
+      "teacher_pretrain_avg_match": 0.2375
+    },
+    {
+      "seed": 45,
+      "baseline_total": 0.0,
+      "teacher_total": 0.0,
+      "baseline_last_q": 0.0,
+      "teacher_last_q": 0.0,
+      "baseline_pretrain": 0,
+      "teacher_pretrain_avg_match": 0.2875
+    },
+    {
+      "seed": 46,
+      "baseline_total": 8.0,
+      "teacher_total": 8.0,
+      "baseline_last_q": 8.0,
+      "teacher_last_q": 0.0,
+      "baseline_pretrain": 0,
+      "teacher_pretrain_avg_match": 0.34375
+    }
+  ]
+}

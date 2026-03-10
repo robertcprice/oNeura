@@ -1,0 +1,37 @@
+============================================================================
+  HYBRID PPO DOOM — DIGITAL BRAIN SUBSTRATE
+  Backend: mps | Scale: small | Device: cpu | Scenario: deadly_corridor
+============================================================================
+
+============================================================================
+  Hybrid PPO Doom (deadly_corridor)
+  PPO readout over digital-brain spike features with optional bio feedback
+============================================================================
+    Brain: 1010 neurons, 18154 synapses on cpu
+    Warmup complete
+    Policy: obs_dim=55, spike_dim=15, stim_groups=8, decoder_hidden=32, encoder_hidden=64
+    Ablations: spike=zero, stim=none, freeze_decoder=False, freeze_encoder=False, bio_feedback=True
+    Episode   4/24: survival 50%, return -6.59, damage -88.5, kills 0.75
+    Episode   8/24: survival 50%, return -10.34, damage -90.0, kills 0.00
+    Episode  12/24: survival 50%, return -9.80, damage -93.0, kills 0.00
+    Episode  16/24: survival 75%, return -7.60, damage -81.0, kills 0.00
+    Episode  20/24: survival 25%, return -13.98, damage -112.5, kills 0.00
+    Episode  24/24: survival 25%, return -11.67, damage -106.5, kills 0.25
+
+    Results:
+    First quarter avg survival: 0.50
+    Last quarter avg survival:  0.33
+    First quarter avg return:         -7.63
+    Last quarter avg return:          -11.86
+    Total kills:                      4
+    Avg damage / episode:             95.25
+    Last update losses:               pi=-0.1364, vf=10.3535, act_ent=1.7903, enc_ent=-0.6063
+    FAIL in 33.2s
+
+============================================================================
+  SUMMARY
+============================================================================
+    Hybrid PPO training [FAIL]  33.2s
+============================================================================
+
+  JSON results written to: results/hybrid_ppo_deadly_corridor_20260310/spike_zero_seed43.json

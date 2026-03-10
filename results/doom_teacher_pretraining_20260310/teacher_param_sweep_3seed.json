@@ -1,0 +1,542 @@
+[
+  {
+    "config": {
+      "teacher_motor_intensity": 60.0,
+      "teacher_hebbian_delta": 1.2,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 18.666666666666668,
+    "mean_match": 0.3458333333333334,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.425,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.25,
+        "total_metric": 24.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.3625,
+        "total_metric": 16.0,
+        "last_q": 16.0
+      }
+    ],
+    "elapsed_s": 40.24
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 30.0,
+      "teacher_hebbian_delta": 4.0,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 16.0,
+    "mean_match": 0.26666666666666666,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.33125000000000004,
+        "total_metric": 24.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.23125,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.2375,
+        "total_metric": 24.0,
+        "last_q": 24.0
+      }
+    ],
+    "elapsed_s": 42.91
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 90.0,
+      "teacher_hebbian_delta": 4.0,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 13.333333333333334,
+    "mean_match": 0.4270833333333333,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.5375,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.36875,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.375,
+        "total_metric": 24.0,
+        "last_q": 24.0
+      }
+    ],
+    "elapsed_s": 33.49
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 90.0,
+      "teacher_hebbian_delta": 4.0,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 13.333333333333334,
+    "mean_match": 0.4145833333333333,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.525,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.325,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.39375,
+        "total_metric": 24.0,
+        "last_q": 24.0
+      }
+    ],
+    "elapsed_s": 33.62
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 60.0,
+      "teacher_hebbian_delta": 4.0,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 13.333333333333334,
+    "mean_match": 0.36041666666666666,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.4625,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.2875,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.33125,
+        "total_metric": 24.0,
+        "last_q": 24.0
+      }
+    ],
+    "elapsed_s": 34.11
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 90.0,
+      "teacher_hebbian_delta": 1.2,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 10.666666666666666,
+    "mean_match": 0.4437499999999999,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.54375,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.40625,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.38125,
+        "total_metric": 16.0,
+        "last_q": 16.0
+      }
+    ],
+    "elapsed_s": 34.97
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 90.0,
+      "teacher_hebbian_delta": 2.5,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 10.666666666666666,
+    "mean_match": 0.43124999999999997,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.53125,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.34375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.41875,
+        "total_metric": 16.0,
+        "last_q": 16.0
+      }
+    ],
+    "elapsed_s": 34.78
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 60.0,
+      "teacher_hebbian_delta": 2.5,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 10.666666666666666,
+    "mean_match": 0.3666666666666667,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.4375,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.31875,
+        "total_metric": 16.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.34375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 37.07
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 90.0,
+      "teacher_hebbian_delta": 2.5,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 8.0,
+    "mean_match": 0.4604166666666667,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.59375,
+        "total_metric": 24.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.4125,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 34.59
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 90.0,
+      "teacher_hebbian_delta": 1.2,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.45,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.55625,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.41874999999999996,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 36.12
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 60.0,
+      "teacher_hebbian_delta": 2.5,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.37083333333333335,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.43125,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.30625,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 33.92
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 60.0,
+      "teacher_hebbian_delta": 4.0,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.3604166666666666,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.44375,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.28125,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.35624999999999996,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 33.64
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 60.0,
+      "teacher_hebbian_delta": 1.2,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.3499999999999999,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.44375,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.26249999999999996,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.34375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 33.91
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 30.0,
+      "teacher_hebbian_delta": 1.2,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.28125,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.35,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.25625,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.2375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 36.84
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 30.0,
+      "teacher_hebbian_delta": 2.5,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.27708333333333335,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.35,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.21875,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.2625,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 38.01
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 30.0,
+      "teacher_hebbian_delta": 1.2,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.26666666666666666,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.33125000000000004,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.2,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.26875000000000004,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 40.34
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 30.0,
+      "teacher_hebbian_delta": 2.5,
+      "structured_replay_scale": 0.0
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.26666666666666666,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.32499999999999996,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.2375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.2375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 36.8
+  },
+  {
+    "config": {
+      "teacher_motor_intensity": 30.0,
+      "teacher_hebbian_delta": 4.0,
+      "structured_replay_scale": 0.8
+    },
+    "mean_total": 5.333333333333333,
+    "mean_match": 0.25833333333333336,
+    "rows": [
+      {
+        "seed": 42,
+        "pretrain_match": 0.35,
+        "total_metric": 16.0,
+        "last_q": 8.0
+      },
+      {
+        "seed": 43,
+        "pretrain_match": 0.18125000000000002,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      },
+      {
+        "seed": 44,
+        "pretrain_match": 0.24375,
+        "total_metric": 0.0,
+        "last_q": 0.0
+      }
+    ],
+    "elapsed_s": 62.12
+  }
+]

@@ -1,0 +1,89 @@
+{
+  "scenario": "defend_the_center",
+  "scale": "large",
+  "n_episodes": 10,
+  "total_kills": 11,
+  "avg_kills": 1.1,
+  "episodes": [
+    {
+      "health_gained": 0.0,
+      "damage_taken": 88.0,
+      "kills": 2,
+      "shots_fired": 92,
+      "steps": 560,
+      "duration_s": 74.99680089950562
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 80.0,
+      "kills": 1,
+      "shots_fired": 78,
+      "steps": 538,
+      "duration_s": 71.47641921043396
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 76.0,
+      "kills": 1,
+      "shots_fired": 102,
+      "steps": 636,
+      "duration_s": 84.54322266578674
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 88.0,
+      "kills": 1,
+      "shots_fired": 137,
+      "steps": 684,
+      "duration_s": 92.28883075714111
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 90.0,
+      "kills": 1,
+      "shots_fired": 109,
+      "steps": 592,
+      "duration_s": 78.60027718544006
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 86.0,
+      "kills": 1,
+      "shots_fired": 94,
+      "steps": 592,
+      "duration_s": 78.47436594963074
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 88.0,
+      "kills": 1,
+      "shots_fired": 75,
+      "steps": 422,
+      "duration_s": 55.945616722106934
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 72.0,
+      "kills": 1,
+      "shots_fired": 79,
+      "steps": 510,
+      "duration_s": 67.66312599182129
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 90.0,
+      "kills": 1,
+      "shots_fired": 94,
+      "steps": 634,
+      "duration_s": 84.07332253456116
+    },
+    {
+      "health_gained": 0.0,
+      "damage_taken": 84.0,
+      "kills": 1,
+      "shots_fired": 114,
+      "steps": 706,
+      "duration_s": 93.5856523513794
+    }
+  ]
+}

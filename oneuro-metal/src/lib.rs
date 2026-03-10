@@ -133,8 +133,8 @@ pub use substrate_ir::{
 pub use terrarium::{BatchedAtomTerrarium, TerrariumBackend, TerrariumSnapshot, TerrariumSpecies};
 pub use terrarium_field::{FlySensorySample, TerrariumSensoryField};
 pub use terrarium_world::{
-    TerrariumFruitPatch, TerrariumPlant, TerrariumPlantGenome, TerrariumSeed, TerrariumWorld,
-    TerrariumTopdownView, TerrariumWorldConfig, TerrariumWorldSnapshot,
+    TerrariumFruitPatch, TerrariumPlant, TerrariumPlantGenome, TerrariumSeed, TerrariumTopdownView,
+    TerrariumWorld, TerrariumWorldConfig, TerrariumWorldSnapshot,
 };
 pub use types::*;
 pub use whole_cell::{

@@ -40,6 +40,7 @@ tmp_demo_artifacts/
 tmp_demo_bundle/
 tmp_demo_mc4d/
 doom_videos/
+_vizdoom.ini
 
 # Benchmark outputs
 /tmp/*.json

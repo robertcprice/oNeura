@@ -1,0 +1,82 @@
+{
+  "scenario": "defend_the_center",
+  "episodes": 6,
+  "results": [
+    {
+      "combat_teacher_shaping_delta": 0.0,
+      "mean_total_kills": 3.8,
+      "mean_last_q_kills": 0.8,
+      "mean_teacher_match_rate": 0.16916666666666666,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 4.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.15833333333333333
+        },
+        {
+          "seed": 43,
+          "total_kills": 3.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.16041666666666665
+        },
+        {
+          "seed": 44,
+          "total_kills": 4.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.18125
+        },
+        {
+          "seed": 45,
+          "total_kills": 4.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.16666666666666666
+        },
+        {
+          "seed": 46,
+          "total_kills": 4.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.17916666666666667
+        }
+      ]
+    },
+    {
+      "combat_teacher_shaping_delta": 0.3,
+      "mean_total_kills": 3.2,
+      "mean_last_q_kills": 0.2,
+      "mean_teacher_match_rate": 0.1675,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 4.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.15208333333333335
+        },
+        {
+          "seed": 43,
+          "total_kills": 4.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.13958333333333334
+        },
+        {
+          "seed": 44,
+          "total_kills": 3.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.19375
+        },
+        {
+          "seed": 45,
+          "total_kills": 2.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.18333333333333335
+        },
+        {
+          "seed": 46,
+          "total_kills": 3.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.16875
+        }
+      ]
+    }
+  ]
+}

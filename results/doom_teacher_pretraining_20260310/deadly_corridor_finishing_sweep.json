@@ -1,0 +1,207 @@
+{
+  "scenario": "deadly_corridor",
+  "episodes": 4,
+  "pretrain_episodes": 4,
+  "results": [
+    {
+      "name": "base",
+      "attack_window_delta": 0.0,
+      "attack_miss_delta": 0.0,
+      "mean_total_kills": 1.0,
+      "mean_last_q_kills": 0.3333333333333333,
+      "mean_survival": 0.5,
+      "mean_damage": 90.0,
+      "mean_attack_window_fire_rate": 0.06875,
+      "mean_blind_attack_shots": 9.416666666666666,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 2.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.5,
+          "mean_damage": 97.5,
+          "mean_attack_window_fire_rate": 0.09375,
+          "mean_blind_attack_shots": 10.25
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 82.5,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 7.75
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 90.0,
+          "mean_attack_window_fire_rate": 0.1125,
+          "mean_blind_attack_shots": 10.25
+        }
+      ]
+    },
+    {
+      "name": "window_025",
+      "attack_window_delta": 0.25,
+      "attack_miss_delta": 0.0,
+      "mean_total_kills": 0.6666666666666666,
+      "mean_last_q_kills": 0.0,
+      "mean_survival": 0.25,
+      "mean_damage": 100.5,
+      "mean_attack_window_fire_rate": 0.0,
+      "mean_blind_attack_shots": 10.25,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.0,
+          "mean_damage": 108.0,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 10
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 90.0,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 10.25
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 103.5,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 10.5
+        }
+      ]
+    },
+    {
+      "name": "window_05",
+      "attack_window_delta": 0.5,
+      "attack_miss_delta": 0.0,
+      "mean_total_kills": 0.6666666666666666,
+      "mean_last_q_kills": 0.6666666666666666,
+      "mean_survival": 0.3333333333333333,
+      "mean_damage": 98.0,
+      "mean_attack_window_fire_rate": 0.040027680652680656,
+      "mean_blind_attack_shots": 9.75,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 100.5,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 12.5
+        },
+        {
+          "seed": 43,
+          "total_kills": 1.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.5,
+          "mean_damage": 90.0,
+          "mean_attack_window_fire_rate": 0.019230769230769232,
+          "mean_blind_attack_shots": 9.25
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.25,
+          "mean_damage": 103.5,
+          "mean_attack_window_fire_rate": 0.10085227272727273,
+          "mean_blind_attack_shots": 7.5
+        }
+      ]
+    },
+    {
+      "name": "window_025_miss_005",
+      "attack_window_delta": 0.25,
+      "attack_miss_delta": 0.05,
+      "mean_total_kills": 0.3333333333333333,
+      "mean_last_q_kills": 0.0,
+      "mean_survival": 0.3333333333333333,
+      "mean_damage": 99.0,
+      "mean_attack_window_fire_rate": 0.07407120592246251,
+      "mean_blind_attack_shots": 9.75,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.0,
+          "mean_damage": 108.0,
+          "mean_attack_window_fire_rate": 0.0625,
+          "mean_blind_attack_shots": 10.75
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 91.5,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 12
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 97.5,
+          "mean_attack_window_fire_rate": 0.15971361776738752,
+          "mean_blind_attack_shots": 6.5
+        }
+      ]
+    },
+    {
+      "name": "window_05_miss_01",
+      "attack_window_delta": 0.5,
+      "attack_miss_delta": 0.1,
+      "mean_total_kills": 0.6666666666666666,
+      "mean_last_q_kills": 0.3333333333333333,
+      "mean_survival": 0.25,
+      "mean_damage": 102.0,
+      "mean_attack_window_fire_rate": 0.04482282492920791,
+      "mean_blind_attack_shots": 7.916666666666667,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.0,
+          "mean_damage": 108.0,
+          "mean_attack_window_fire_rate": 0.047619047619047616,
+          "mean_blind_attack_shots": 8.75
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 90.0,
+          "mean_attack_window_fire_rate": 0.0772340425531915,
+          "mean_blind_attack_shots": 6.5
+        },
+        {
+          "seed": 44,
+          "total_kills": 2.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.25,
+          "mean_damage": 108.0,
+          "mean_attack_window_fire_rate": 0.009615384615384616,
+          "mean_blind_attack_shots": 8.5
+        }
+      ]
+    }
+  ]
+}

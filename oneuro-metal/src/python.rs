@@ -2685,6 +2685,8 @@ impl PyPlantOrganism {
             canopy_competition,
             root_competition,
             soil_glucose,
+            1.0,
+            1.0,
             cell_photosynthetic_capacity,
             cell_maintenance_cost,
             cell_storage_exchange,

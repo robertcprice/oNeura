@@ -390,6 +390,39 @@ impl ScalarRule {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AffineRule<const N: usize> {
+    pub bias: f32,
+    pub weights: [f32; N],
+    pub min_value: f32,
+    pub max_value: f32,
+}
+
+impl<const N: usize> AffineRule<N> {
+    pub const fn new(bias: f32, weights: [f32; N], min_value: f32, max_value: f32) -> Self {
+        Self {
+            bias,
+            weights,
+            min_value,
+            max_value,
+        }
+    }
+
+    pub fn evaluate(self, context: ScalarContext<N>) -> f32 {
+        let mut value = self.bias;
+        for (idx, weight) in self.weights.iter().enumerate() {
+            value += *weight * context.signal(idx);
+        }
+        let min_value = self.min_value.min(self.max_value);
+        let max_value = self.max_value.max(self.min_value);
+        if value.is_finite() {
+            value.clamp(min_value, max_value)
+        } else {
+            min_value
+        }
+    }
+}
+
 fn channel_signal(
     substrate: &BatchedAtomTerrarium,
     x: usize,
@@ -688,6 +721,16 @@ mod tests {
         let expected =
             0.2 + 1.5 * (0.4 + 0.6 * 0.5) * (0.3 + 0.4 * 0.8) + 0.8 * 0.25 * (0.5 + 0.5 * 0.9);
         assert!((rule.evaluate(context) - expected).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn affine_rule_evaluates_high_fan_in_linear_context() {
+        let context = ScalarContext::<5> {
+            signals: [0.50, 0.25, 0.80, 0.10, 0.40],
+        };
+        let rule = AffineRule::new(0.20, [0.30, -0.10, 0.25, 0.00, 0.15], 0.0, 1.0);
+
+        assert!((rule.evaluate(context) - 0.585).abs() < 1.0e-6);
     }
 
     #[test]

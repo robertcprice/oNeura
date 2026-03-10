@@ -117,7 +117,7 @@ cargo run --bin terrarium_native
 cargo run --bin terrarium_viewer
 ```
 
-Run the GPU-backed viewer from `oneuro-3d/`:
+Run the shader-backed GPU viewer from `oneuro-3d/`. It now uploads a raw float field texture plus live overlay point data and does palette/contour shading directly in WGSL on the GPU:
 
 ```bash
 cargo run --manifest-path oneuro-3d/Cargo.toml --bin terrarium_gpu
@@ -162,6 +162,8 @@ The current runtime is a Rust `WholeCellSimulator` with:
 - a local activity/catalyst layer that drives reactions from resolved patch chemistry and assembly state instead of coarse snapshot counters for ribosomes, DnaA, or FtsZ
 - CME/ODE/BD/geometry stages that now read substrate-derived assembly inventories and process-capacity signals instead of treating ribosome/RNAP/DnaA/FtsZ pool counters as the source of truth
 - a generic scalar process-rule IR that now evaluates those inventory and stage-rate laws from rule tables instead of bespoke whole-cell arithmetic blocks
+- rule-driven subsystem readiness, coarse resource-signal reduction, and snapshot exchange targets so the chemistry bridge no longer depends on one-off transfer formulas
+- a generic affine reducer layer for local chemistry crowding, derived patch support/stress signals, assembly context scaling, subsystem structural targets, and aggregate chemistry support
 - an RDME lattice initialization path that no longer injects preset ATP hotspots, so spatial structure starts neutral unless processes or explicit perturbations create it
 - local depletion, demand satisfaction, and byproduct pressure that now feed back into subsystem scaling and effective metabolic load
 - data-driven subsystem coupling profiles so ATP-band, ribosome, replisome, and septum differences live in tables instead of branch-specific support formulas

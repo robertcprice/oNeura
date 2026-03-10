@@ -1,0 +1,31 @@
+{
+  "scenario": "deadly_corridor",
+  "episodes": 4,
+  "metric": "kills",
+  "results": [
+    {
+      "seed": 42,
+      "baseline_total_kills": 2.0,
+      "tuned_total_kills": 0.0,
+      "baseline_last_q_kills": 0.0,
+      "tuned_last_q_kills": 0.0,
+      "tuned_pretrain_avg_match": 0.46875
+    },
+    {
+      "seed": 43,
+      "baseline_total_kills": 2.0,
+      "tuned_total_kills": 2.0,
+      "baseline_last_q_kills": 1.0,
+      "tuned_last_q_kills": 0.0,
+      "tuned_pretrain_avg_match": 0.4625
+    },
+    {
+      "seed": 44,
+      "baseline_total_kills": 0.0,
+      "tuned_total_kills": 0.0,
+      "baseline_last_q_kills": 0.0,
+      "tuned_last_q_kills": 0.0,
+      "tuned_pretrain_avg_match": 0.47102272727272726
+    }
+  ]
+}

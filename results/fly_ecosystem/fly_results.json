@@ -1,0 +1,591 @@
+{
+  "experiment": "drosophila_ecosystem",
+  "scale": "large",
+  "n_neurons": 139000,
+  "device": "cuda",
+  "n_runs": 1,
+  "base_seed": 42,
+  "total_time_s": 18892.44,
+  "using_stubs": false,
+  "system": {
+    "platform": "Linux-5.15.0-171-generic-x86_64-with-glibc2.35",
+    "python": "3.11.10",
+    "torch": "2.5.1+cu124",
+    "backend": "cuda",
+    "gpu": "NVIDIA H200",
+    "gpu_memory_gb": 150.1
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "experiments": {
+        "1": {
+          "passed": false,
+          "time": 351.886464,
+          "mean_csplus": -3129.33175,
+          "mean_csminus": -3128.816183,
+          "csplus_responses": [
+            -3149.952877,
+            -3080.642521,
+            -3102.824184,
+            -3135.591553,
+            -3083.785622,
+            -3249.719841,
+            -3180.628841,
+            -3073.166569,
+            -3086.32132,
+            -3150.684177
+          ],
+          "csminus_responses": [
+            -3133.981583,
+            -3096.196175,
+            -3127.561199,
+            -3129.357136,
+            -3089.602139,
+            -3159.18742,
+            -3214.351624,
+            -3105.2397,
+            -3098.358234,
+            -3134.326622
+          ],
+          "name": "Olfactory Learning (Mushroom Body)"
+        },
+        "2": {
+          "passed": false,
+          "error": "CUDA out of memory. Tried to allocate 3.28 GiB. GPU 0 has a total capacity of 139.80 GiB of which 2.03 GiB is free. Including non-PyTorch memory, this process has 137.77 GiB memory in use. Of the allocated memory 114.58 GiB is allocated by PyTorch, and 22.59 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)",
+          "name": "Phototaxis"
+        },
+        "3": {
+          "passed": false,
+          "error": "CUDA out of memory. Tried to allocate 3.28 GiB. GPU 0 has a total capacity of 139.80 GiB of which 2.08 GiB is free. Including non-PyTorch memory, this process has 137.71 GiB memory in use. Of the allocated memory 114.58 GiB is allocated by PyTorch, and 22.53 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)",
+          "name": "Thermotaxis"
+        },
+        "4": {
+          "passed": false,
+          "time": 6559.989506,
+          "success_rate": 0.05,
+          "food_found": 1,
+          "total_episodes": 20,
+          "mean_food_time": 3.65,
+          "mean_distance": 100.0,
+          "food_times": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            73,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "name": "Foraging Behavior"
+        },
+        "5": {
+          "passed": false,
+          "error": "CUDA out of memory. Tried to allocate 3.28 GiB. GPU 0 has a total capacity of 139.80 GiB of which 2.10 GiB is free. Including non-PyTorch memory, this process has 137.69 GiB memory in use. Of the allocated memory 114.58 GiB is allocated by PyTorch, and 22.52 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)",
+          "name": "Drug Effects on Foraging"
+        },
+        "6": {
+          "passed": true,
+          "time": 1207.869845,
+          "day_rate": 0.05,
+          "night_rate": 0.027737,
+          "day_night_ratio": 1.802646,
+          "total_distance": 384.0,
+          "n_day_steps": 900,
+          "n_night_steps": 1020,
+          "hourly_activity": [
+            {
+              "hour": 1,
+              "distance": 2.6,
+              "is_day": true
+            },
+            {
+              "hour": 2,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 3,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 4,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 5,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 6,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 7,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 8,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 9,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 10,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 11,
+              "distance": 4.0,
+              "is_day": true
+            },
+            {
+              "hour": 12,
+              "distance": 3.2,
+              "is_day": false
+            },
+            {
+              "hour": 13,
+              "distance": 4.0,
+              "is_day": false
+            },
+            {
+              "hour": 14,
+              "distance": 4.0,
+              "is_day": false
+            },
+            {
+              "hour": 15,
+              "distance": 4.0,
+              "is_day": false
+            },
+            {
+              "hour": 16,
+              "distance": 4.0,
+              "is_day": false
+            },
+            {
+              "hour": 17,
+              "distance": 2.93399,
+              "is_day": false
+            },
+            {
+              "hour": 18,
+              "distance": 2.55184,
+              "is_day": false
+            },
+            {
+              "hour": 19,
+              "distance": 2.539864,
+              "is_day": false
+            },
+            {
+              "hour": 20,
+              "distance": 1.066047,
+              "is_day": false
+            },
+            {
+              "hour": 21,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 22,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 23,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 24,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 25,
+              "distance": 1.4,
+              "is_day": true
+            },
+            {
+              "hour": 26,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 27,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 28,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 29,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 30,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 31,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 32,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 33,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 34,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 35,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 36,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 37,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 38,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 39,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 40,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 41,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 42,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 43,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 44,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 45,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 46,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 47,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 48,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 49,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 50,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 51,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 52,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 53,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 54,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 55,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 56,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 57,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 58,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 59,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 60,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 61,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 62,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 63,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 64,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 65,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 66,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 67,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 68,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 69,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 70,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 71,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 72,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 73,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 74,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 75,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 76,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 77,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 78,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 79,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 80,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 81,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 82,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 83,
+              "distance": 0.0,
+              "is_day": true
+            },
+            {
+              "hour": 84,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 85,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 86,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 87,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 88,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 89,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 90,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 91,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 92,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 93,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 94,
+              "distance": 0.0,
+              "is_day": false
+            },
+            {
+              "hour": 95,
+              "distance": 0.0,
+              "is_day": false
+            }
+          ],
+          "name": "Day/Night Cycle"
+        }
+      }
+    }
+  ]
+}

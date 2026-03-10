@@ -1,0 +1,53 @@
+{
+  "scenario": "defend_the_center",
+  "episodes": 6,
+  "metric": "kills",
+  "tuned": {
+    "pretrain_episodes": 2,
+    "teacher_motor_intensity": 60.0,
+    "teacher_hebbian_delta": 1.2,
+    "structured_replay_scale": 0.0
+  },
+  "results": [
+    {
+      "seed": 42,
+      "baseline_total_kills": 2.0,
+      "tuned_total_kills": 3.0,
+      "baseline_last_q_kills": 0.0,
+      "tuned_last_q_kills": 1.0,
+      "tuned_pretrain_avg_match": 0.3875
+    },
+    {
+      "seed": 43,
+      "baseline_total_kills": 3.0,
+      "tuned_total_kills": 1.0,
+      "baseline_last_q_kills": 0.0,
+      "tuned_last_q_kills": 1.0,
+      "tuned_pretrain_avg_match": 0.43125
+    },
+    {
+      "seed": 44,
+      "baseline_total_kills": 3.0,
+      "tuned_total_kills": 2.0,
+      "baseline_last_q_kills": 1.0,
+      "tuned_last_q_kills": 1.0,
+      "tuned_pretrain_avg_match": 0.36875
+    },
+    {
+      "seed": 45,
+      "baseline_total_kills": 3.0,
+      "tuned_total_kills": 1.0,
+      "baseline_last_q_kills": 1.0,
+      "tuned_last_q_kills": 1.0,
+      "tuned_pretrain_avg_match": 0.41874999999999996
+    },
+    {
+      "seed": 46,
+      "baseline_total_kills": 2.0,
+      "tuned_total_kills": 3.0,
+      "baseline_last_q_kills": 0.0,
+      "tuned_last_q_kills": 1.0,
+      "tuned_pretrain_avg_match": 0.42500000000000004
+    }
+  ]
+}

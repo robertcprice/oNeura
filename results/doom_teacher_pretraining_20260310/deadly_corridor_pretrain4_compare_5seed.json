@@ -1,0 +1,94 @@
+{
+  "scenario": "deadly_corridor",
+  "episodes": 4,
+  "results": [
+    {
+      "pretrain_episodes": 0,
+      "mean_total_kills": 1.0,
+      "mean_last_q_kills": 0.2,
+      "mean_survival": 0.4,
+      "mean_damage": 101.4,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.75,
+          "mean_damage": 88.5
+        },
+        {
+          "seed": 43,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 97.5
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 111.0
+        },
+        {
+          "seed": 45,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 109.5
+        },
+        {
+          "seed": 46,
+          "total_kills": 2.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.25,
+          "mean_damage": 100.5
+        }
+      ]
+    },
+    {
+      "pretrain_episodes": 4,
+      "mean_total_kills": 0.8,
+      "mean_last_q_kills": 0.0,
+      "mean_survival": 0.5,
+      "mean_damage": 93.3,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 94.5
+        },
+        {
+          "seed": 43,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 90.0
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 105.0
+        },
+        {
+          "seed": 45,
+          "total_kills": 2.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.75,
+          "mean_damage": 88.5
+        },
+        {
+          "seed": 46,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 88.5
+        }
+      ]
+    }
+  ]
+}

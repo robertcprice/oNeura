@@ -7,10 +7,11 @@
 
 use crate::molecular_dynamics::GPUMolecularDynamics;
 use crate::substrate_ir::{
-    evaluate_patch_assembly, execute_patch_reaction, localize_patch, AssemblyComponent,
+    evaluate_patch_assembly, execute_patch_reaction, localize_patch, AffineRule, AssemblyComponent,
     AssemblyContext, AssemblyRule, AssemblyState, FluxChannel, LocalizationCue, LocalizationRule,
-    LocalizedPatch, ReactionContext, ReactionLaw, ReactionRule, ReactionTerm, SpatialChannel,
-    EMPTY_LOCALIZATION_CUE, EMPTY_REACTION_TERM,
+    LocalizedPatch, ReactionContext, ReactionLaw, ReactionRule, ReactionTerm, ScalarBranch,
+    ScalarContext, ScalarFactor, ScalarRule, SpatialChannel, EMPTY_LOCALIZATION_CUE,
+    EMPTY_REACTION_TERM, EMPTY_SCALAR_FACTOR,
 };
 use crate::terrarium::{BatchedAtomTerrarium, TerrariumSpecies};
 use crate::whole_cell::WholeCellSnapshot;
@@ -204,6 +205,288 @@ impl LocalPatchSignals {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+enum CrowdingSignal {
+    CarbonDioxide = 0,
+    Proton,
+}
+
+impl CrowdingSignal {
+    const COUNT: usize = Self::Proton as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CrowdingContext {
+    signals: [f32; CrowdingSignal::COUNT],
+}
+
+impl Default for CrowdingContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; CrowdingSignal::COUNT],
+        }
+    }
+}
+
+impl CrowdingContext {
+    fn set(&mut self, signal: CrowdingSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ CrowdingSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+enum StructuralReducerSignal {
+    AssemblyAvailability = 0,
+    AssemblyOccupancy,
+    AssemblyStability,
+    StructuralOrder,
+    CrowdingPenalty,
+    AssemblyTurnover,
+}
+
+impl StructuralReducerSignal {
+    const COUNT: usize = Self::AssemblyTurnover as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StructuralReducerContext {
+    signals: [f32; StructuralReducerSignal::COUNT],
+}
+
+impl Default for StructuralReducerContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; StructuralReducerSignal::COUNT],
+        }
+    }
+}
+
+impl StructuralReducerContext {
+    fn set(&mut self, signal: StructuralReducerSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ StructuralReducerSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+enum PatchReducerSignal {
+    Carbon = 0,
+    Nitrogen,
+    Phosphorus,
+    Energy,
+    Structural,
+    CarbonDioxide,
+    Proton,
+    AssemblyTurnover,
+    CrowdingPenalty,
+    DemandSatisfaction,
+}
+
+impl PatchReducerSignal {
+    const COUNT: usize = Self::DemandSatisfaction as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PatchReducerContext {
+    signals: [f32; PatchReducerSignal::COUNT],
+}
+
+impl Default for PatchReducerContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; PatchReducerSignal::COUNT],
+        }
+    }
+}
+
+impl PatchReducerContext {
+    fn set(&mut self, signal: PatchReducerSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ PatchReducerSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+enum AssemblyReducerSignal {
+    Oxygen = 0,
+    Carbon,
+    Energy,
+    Nitrogen,
+    Phosphorus,
+    Biosynthesis,
+    Stress,
+    StructuralOrder,
+    AtpScale,
+    TranslationScale,
+    ReplicationScale,
+    MembraneScale,
+    ConstrictionScale,
+    DemandSatisfaction,
+    ByproductLoad,
+}
+
+impl AssemblyReducerSignal {
+    const COUNT: usize = Self::ByproductLoad as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AssemblyReducerContext {
+    signals: [f32; AssemblyReducerSignal::COUNT],
+}
+
+impl Default for AssemblyReducerContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; AssemblyReducerSignal::COUNT],
+        }
+    }
+}
+
+impl AssemblyReducerContext {
+    fn set(&mut self, signal: AssemblyReducerSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ AssemblyReducerSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+enum GlobalReportSignal {
+    Glucose = 0,
+    Oxygen,
+    AtpFlux,
+    Nitrate,
+    Ammonium,
+    CrowdingPenalty,
+}
+
+impl GlobalReportSignal {
+    const COUNT: usize = Self::CrowdingPenalty as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GlobalReportContext {
+    signals: [f32; GlobalReportSignal::COUNT],
+}
+
+impl Default for GlobalReportContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; GlobalReportSignal::COUNT],
+        }
+    }
+}
+
+impl GlobalReportContext {
+    fn set(&mut self, signal: GlobalReportSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ GlobalReportSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+const PATCH_CROWDING_RULE: AffineRule<{ CrowdingSignal::COUNT }> =
+    AffineRule::new(1.0, [-0.24, -0.18], 0.68, 1.0);
+
+const PATCH_STRUCTURAL_SIGNAL_RULE: AffineRule<{ StructuralReducerSignal::COUNT }> =
+    AffineRule::new(0.0, [0.20, 0.28, 0.30, 0.12, 0.10, -0.18], 0.0, 1.2);
+
+const PATCH_BIOSYNTHESIS_SIGNAL_RULE: AffineRule<{ PatchReducerSignal::COUNT }> = AffineRule::new(
+    0.0,
+    [0.28, 0.28, 0.16, 0.16, 0.12, 0.0, 0.0, 0.0, 0.0, 0.0],
+    0.0,
+    1.2,
+);
+
+const PATCH_STRESS_SIGNAL_RULE: AffineRule<{ PatchReducerSignal::COUNT }> = AffineRule::new(
+    0.26,
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.32, 0.24, 0.18, -0.14, -0.12],
+    0.0,
+    1.2,
+);
+
+const ASSEMBLY_CATALYST_SCALE_RULE: AffineRule<{ AssemblyReducerSignal::COUNT }> = AffineRule::new(
+    0.30,
+    [
+        0.0, 0.0, 0.12, 0.0, 0.0, 0.0, -0.10, 0.18, 0.14, 0.10, 0.10, 0.10, 0.08, 0.0, 0.0,
+    ],
+    0.25,
+    1.8,
+);
+
+const ASSEMBLY_SUPPORT_SCALE_RULE: AffineRule<{ AssemblyReducerSignal::COUNT }> = AffineRule::new(
+    0.34,
+    [
+        0.18, 0.18, 0.0, 0.16, 0.10, 0.18, -0.10, 0.10, 0.0, 0.0, 0.0, 0.0, 0.0, 0.10, -0.05,
+    ],
+    0.25,
+    1.6,
+);
+
+const SITE_STRUCTURAL_TARGET_RULE: AffineRule<{ StructuralReducerSignal::COUNT }> =
+    AffineRule::new(0.20, [0.20, 0.25, 0.30, 0.08, 0.10, -0.10], 0.2, 1.0);
+
+const GLOBAL_ATP_SUPPORT_RULE: AffineRule<{ GlobalReportSignal::COUNT }> =
+    AffineRule::new(0.92, [0.0, 0.18, 0.06, 0.0, 0.0, 0.10], 0.85, 1.35);
+
+const GLOBAL_TRANSLATION_SUPPORT_RULE: AffineRule<{ GlobalReportSignal::COUNT }> =
+    AffineRule::new(0.92, [0.16, 0.0, 0.0, 0.0, 0.06, 0.08], 0.85, 1.35);
+
+const GLOBAL_NUCLEOTIDE_SUPPORT_RULE: AffineRule<{ GlobalReportSignal::COUNT }> =
+    AffineRule::new(0.92, [0.04, 0.0, 0.0, 0.16, 0.0, 0.08], 0.85, 1.35);
+
+const GLOBAL_MEMBRANE_SUPPORT_RULE: AffineRule<{ GlobalReportSignal::COUNT }> =
+    AffineRule::new(0.92, [0.0, 0.05, 0.10, 0.0, 0.0, 0.08], 0.85, 1.30);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct LocalActivityProfile {
@@ -977,6 +1260,416 @@ impl Default for LocalChemistryDemandSummary {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+enum SnapshotExchangeSignal {
+    Pool = 0,
+    LocalMean,
+    Support,
+    Progress,
+}
+
+impl SnapshotExchangeSignal {
+    const COUNT: usize = Self::Progress as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SnapshotExchangeContext {
+    signals: [f32; SnapshotExchangeSignal::COUNT],
+}
+
+impl Default for SnapshotExchangeContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; SnapshotExchangeSignal::COUNT],
+        }
+    }
+}
+
+impl SnapshotExchangeContext {
+    fn set(&mut self, signal: SnapshotExchangeSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ SnapshotExchangeSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+const fn exchange_factor(signal: SnapshotExchangeSignal, bias: f32, scale: f32) -> ScalarFactor {
+    ScalarFactor::new(signal as usize, bias, scale, 1.0)
+}
+
+const GLUCOSE_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.02,
+    3,
+    [
+        ScalarBranch::new(
+            0.09,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.05,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::LocalMean, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.03,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Support, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    1.2,
+);
+
+const OXYGEN_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.02,
+    3,
+    [
+        ScalarBranch::new(
+            0.10,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.05,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::LocalMean, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.02,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Support, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    1.0,
+);
+
+const ATP_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.0,
+    3,
+    [
+        ScalarBranch::new(
+            0.14,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.08,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::LocalMean, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.04,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Support, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    1.5,
+);
+
+const AMMONIUM_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.01,
+    2,
+    [
+        ScalarBranch::new(
+            0.06,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.03,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Support, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    0.8,
+);
+
+const NITRATE_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.01,
+    2,
+    [
+        ScalarBranch::new(
+            0.05,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.03,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Support, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    0.8,
+);
+
+const PHOSPHORUS_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.004,
+    2,
+    [
+        ScalarBranch::new(
+            0.025,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.015,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Support, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    0.20,
+);
+
+const CARBON_DIOXIDE_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.01,
+    3,
+    [
+        ScalarBranch::new(
+            0.03,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.04,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::LocalMean, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.02,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Progress, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    0.8,
+);
+
+const PROTON_EXCHANGE_RULE: ScalarRule = ScalarRule::new(
+    0.002,
+    2,
+    [
+        ScalarBranch::new(
+            0.006,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Pool, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.015,
+            1,
+            [
+                exchange_factor(SnapshotExchangeSignal::Progress, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+        ScalarBranch::new(0.0, 0, [EMPTY_SCALAR_FACTOR; 8]),
+    ],
+    0.0,
+    0.3,
+);
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct SnapshotExchangeTargets {
     reactive_species: [(TerrariumSpecies, f32); 8],
@@ -984,40 +1677,97 @@ struct SnapshotExchangeTargets {
 
 impl SnapshotExchangeTargets {
     fn from_snapshot(snapshot: &WholeCellSnapshot) -> Self {
+        let chemistry = snapshot.local_chemistry.unwrap_or_default();
+        let evaluate_target =
+            |rule: ScalarRule, pool: f32, local_mean: f32, support: f32, progress: f32| {
+                let mut ctx = SnapshotExchangeContext::default();
+                ctx.set(SnapshotExchangeSignal::Pool, pool);
+                ctx.set(SnapshotExchangeSignal::LocalMean, local_mean);
+                ctx.set(SnapshotExchangeSignal::Support, support);
+                ctx.set(SnapshotExchangeSignal::Progress, progress);
+                rule.evaluate(ctx.scalar())
+            };
         Self {
             reactive_species: [
                 (
                     TerrariumSpecies::Glucose,
-                    (0.02 + snapshot.glucose_mm * 0.09).clamp(0.0, 1.2),
+                    evaluate_target(
+                        GLUCOSE_EXCHANGE_RULE,
+                        snapshot.glucose_mm,
+                        chemistry.mean_glucose,
+                        chemistry.atp_support,
+                        snapshot.division_progress,
+                    ),
                 ),
                 (
                     TerrariumSpecies::OxygenGas,
-                    (0.02 + snapshot.oxygen_mm * 0.10).clamp(0.0, 1.0),
+                    evaluate_target(
+                        OXYGEN_EXCHANGE_RULE,
+                        snapshot.oxygen_mm,
+                        chemistry.mean_oxygen,
+                        chemistry.atp_support,
+                        snapshot.division_progress,
+                    ),
                 ),
                 (
                     TerrariumSpecies::AtpFlux,
-                    (snapshot.atp_mm * 0.14).clamp(0.0, 1.5),
+                    evaluate_target(
+                        ATP_EXCHANGE_RULE,
+                        snapshot.atp_mm,
+                        chemistry.mean_atp_flux,
+                        chemistry.atp_support,
+                        snapshot.division_progress,
+                    ),
                 ),
                 (
                     TerrariumSpecies::Ammonium,
-                    (0.01 + snapshot.amino_acids_mm * 0.06).clamp(0.0, 0.8),
+                    evaluate_target(
+                        AMMONIUM_EXCHANGE_RULE,
+                        snapshot.amino_acids_mm,
+                        chemistry.mean_glucose,
+                        chemistry.translation_support,
+                        snapshot.division_progress,
+                    ),
                 ),
                 (
                     TerrariumSpecies::Nitrate,
-                    (0.01 + snapshot.nucleotides_mm * 0.05).clamp(0.0, 0.8),
+                    evaluate_target(
+                        NITRATE_EXCHANGE_RULE,
+                        snapshot.nucleotides_mm,
+                        chemistry.mean_atp_flux,
+                        chemistry.nucleotide_support,
+                        snapshot.division_progress,
+                    ),
                 ),
                 (
                     TerrariumSpecies::Phosphorus,
-                    (0.004 + snapshot.membrane_precursors_mm * 0.025).clamp(0.0, 0.20),
+                    evaluate_target(
+                        PHOSPHORUS_EXCHANGE_RULE,
+                        snapshot.membrane_precursors_mm,
+                        chemistry.mean_oxygen,
+                        chemistry.membrane_support,
+                        snapshot.division_progress,
+                    ),
                 ),
                 (
                     TerrariumSpecies::CarbonDioxide,
-                    (0.01 + snapshot.adp_mm * 0.03 + snapshot.division_progress * 0.02)
-                        .clamp(0.0, 0.8),
+                    evaluate_target(
+                        CARBON_DIOXIDE_EXCHANGE_RULE,
+                        snapshot.adp_mm,
+                        chemistry.mean_carbon_dioxide,
+                        chemistry.crowding_penalty,
+                        snapshot.division_progress,
+                    ),
                 ),
                 (
                     TerrariumSpecies::Proton,
-                    (0.002 + snapshot.division_progress * 0.015).clamp(0.0, 0.3),
+                    evaluate_target(
+                        PROTON_EXCHANGE_RULE,
+                        snapshot.adp_mm,
+                        chemistry.mean_carbon_dioxide,
+                        chemistry.crowding_penalty,
+                        snapshot.division_progress,
+                    ),
                 ),
             ],
         }
@@ -1204,14 +1954,32 @@ impl WholeCellSubsystemState {
         );
         self.crowding_penalty =
             finite_clamped(report.crowding_penalty, self.crowding_penalty, 0.65, 1.0);
-        let structural_target = (0.20
-            + report.assembly_component_availability * 0.20
-            + report.assembly_occupancy * 0.25
-            + report.assembly_stability * 0.30
-            + report.crowding_penalty * 0.10
-            + report.demand_satisfaction * 0.08
-            - report.assembly_turnover * 0.10)
-            .clamp(0.2, 1.0);
+        let mut structural_ctx = StructuralReducerContext::default();
+        structural_ctx.set(
+            StructuralReducerSignal::AssemblyAvailability,
+            report.assembly_component_availability,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::AssemblyOccupancy,
+            report.assembly_occupancy,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::AssemblyStability,
+            report.assembly_stability,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::StructuralOrder,
+            report.demand_satisfaction,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::CrowdingPenalty,
+            report.crowding_penalty,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::AssemblyTurnover,
+            report.assembly_turnover,
+        );
+        let structural_target = SITE_STRUCTURAL_TARGET_RULE.evaluate(structural_ctx.scalar());
         self.structural_order = finite_clamped(
             0.60 * self.structural_order + 0.40 * structural_target,
             self.structural_order,
@@ -1500,9 +2268,16 @@ impl WholeCellChemistryBridge {
     }
 
     fn patch_crowding_penalty(metrics: PatchSpeciesMetrics) -> f32 {
-        let acidity_penalty = (1.0 / (1.0 + metrics.mean_proton * 3.8)).clamp(0.72, 1.0);
-        let carbon_penalty = (1.0 / (1.0 + metrics.mean_carbon_dioxide * 1.9)).clamp(0.76, 1.0);
-        (acidity_penalty * carbon_penalty).clamp(0.68, 1.0)
+        let mut ctx = CrowdingContext::default();
+        ctx.set(
+            CrowdingSignal::CarbonDioxide,
+            saturating_signal(metrics.mean_carbon_dioxide, 0.04),
+        );
+        ctx.set(
+            CrowdingSignal::Proton,
+            saturating_signal(metrics.mean_proton, 0.01),
+        );
+        PATCH_CROWDING_RULE.evaluate(ctx.scalar())
     }
 
     fn base_assembly_context(
@@ -1530,28 +2305,41 @@ impl WholeCellChemistryBridge {
             + 0.24 * energy_signal)
             .clamp(0.0, 1.0);
 
+        let mut ctx = AssemblyReducerContext::default();
+        ctx.set(AssemblyReducerSignal::Oxygen, oxygen_signal);
+        ctx.set(AssemblyReducerSignal::Carbon, carbon_signal);
+        ctx.set(AssemblyReducerSignal::Energy, energy_signal);
+        ctx.set(AssemblyReducerSignal::Nitrogen, nitrogen_signal);
+        ctx.set(AssemblyReducerSignal::Phosphorus, phosphorus_signal);
+        ctx.set(AssemblyReducerSignal::Biosynthesis, biosynthesis_signal);
+        ctx.set(AssemblyReducerSignal::Stress, stress_signal);
+        ctx.set(
+            AssemblyReducerSignal::StructuralOrder,
+            state.structural_order,
+        );
+        ctx.set(AssemblyReducerSignal::AtpScale, state.atp_scale);
+        ctx.set(
+            AssemblyReducerSignal::TranslationScale,
+            state.translation_scale,
+        );
+        ctx.set(
+            AssemblyReducerSignal::ReplicationScale,
+            state.replication_scale,
+        );
+        ctx.set(AssemblyReducerSignal::MembraneScale, state.membrane_scale);
+        ctx.set(
+            AssemblyReducerSignal::ConstrictionScale,
+            state.constriction_scale,
+        );
+        ctx.set(
+            AssemblyReducerSignal::DemandSatisfaction,
+            demand.demand_satisfaction,
+        );
+        ctx.set(AssemblyReducerSignal::ByproductLoad, demand.byproduct_load);
+
         AssemblyContext {
-            catalyst_scale: (0.30
-                + 0.18 * state.structural_order
-                + 0.14 * state.atp_scale
-                + 0.10 * state.translation_scale
-                + 0.10 * state.replication_scale
-                + 0.10 * state.membrane_scale
-                + 0.08 * state.constriction_scale
-                + 0.12 * energy_signal
-                - 0.10 * stress_signal)
-                .clamp(0.25, 1.8),
-            support_scale: (0.34
-                + 0.18 * oxygen_signal
-                + 0.18 * carbon_signal
-                + 0.16 * nitrogen_signal
-                + 0.10 * phosphorus_signal
-                + 0.18 * biosynthesis_signal
-                + 0.10 * state.structural_order
-                + 0.10 * demand.demand_satisfaction
-                - 0.10 * stress_signal
-                - 0.05 * demand.byproduct_load)
-                .clamp(0.25, 1.6),
+            catalyst_scale: ASSEMBLY_CATALYST_SCALE_RULE.evaluate(ctx.scalar()),
+            support_scale: ASSEMBLY_SUPPORT_SCALE_RULE.evaluate(ctx.scalar()),
             demand_satisfaction: demand.demand_satisfaction,
             crowding_penalty,
             byproduct_load: demand.byproduct_load,
@@ -1580,25 +2368,45 @@ impl WholeCellChemistryBridge {
         let assembly_occupancy = saturating_signal(assembly.occupancy, 0.55);
         let assembly_stability = saturating_signal(assembly.stability, 0.55);
         let assembly_turnover = saturating_signal(assembly.turnover, 0.30);
-        let structural_signal = (0.20 * assembly_availability
-            + 0.28 * assembly_occupancy
-            + 0.30 * assembly_stability
-            + 0.12 * state.structural_order
-            + 0.10 * crowding_penalty
-            - 0.18 * assembly_turnover)
-            .clamp(0.0, 1.2);
-        let biosynthesis_signal = (0.28 * carbon_signal
-            + 0.28 * nitrogen_signal
-            + 0.16 * phosphorus_signal
-            + 0.16 * energy_signal
-            + 0.12 * structural_signal)
-            .clamp(0.0, 1.2);
-        let stress_signal = (0.32 * saturating_signal(metrics.mean_carbon_dioxide, 0.04)
-            + 0.24 * saturating_signal(metrics.mean_proton, 0.01)
-            + 0.18 * assembly_turnover
-            + 0.14 * (1.0 - crowding_penalty)
-            + 0.12 * (1.0 - state.demand_satisfaction.clamp(0.0, 1.0)))
-        .clamp(0.0, 1.2);
+        let carbon_dioxide_signal = saturating_signal(metrics.mean_carbon_dioxide, 0.04);
+        let proton_signal = saturating_signal(metrics.mean_proton, 0.01);
+        let mut structural_ctx = StructuralReducerContext::default();
+        structural_ctx.set(
+            StructuralReducerSignal::AssemblyAvailability,
+            assembly_availability,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::AssemblyOccupancy,
+            assembly_occupancy,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::AssemblyStability,
+            assembly_stability,
+        );
+        structural_ctx.set(
+            StructuralReducerSignal::StructuralOrder,
+            state.structural_order,
+        );
+        structural_ctx.set(StructuralReducerSignal::CrowdingPenalty, crowding_penalty);
+        structural_ctx.set(StructuralReducerSignal::AssemblyTurnover, assembly_turnover);
+        let structural_signal = PATCH_STRUCTURAL_SIGNAL_RULE.evaluate(structural_ctx.scalar());
+
+        let mut patch_ctx = PatchReducerContext::default();
+        patch_ctx.set(PatchReducerSignal::Carbon, carbon_signal);
+        patch_ctx.set(PatchReducerSignal::Nitrogen, nitrogen_signal);
+        patch_ctx.set(PatchReducerSignal::Phosphorus, phosphorus_signal);
+        patch_ctx.set(PatchReducerSignal::Energy, energy_signal);
+        patch_ctx.set(PatchReducerSignal::Structural, structural_signal);
+        patch_ctx.set(PatchReducerSignal::CarbonDioxide, carbon_dioxide_signal);
+        patch_ctx.set(PatchReducerSignal::Proton, proton_signal);
+        patch_ctx.set(PatchReducerSignal::AssemblyTurnover, assembly_turnover);
+        patch_ctx.set(PatchReducerSignal::CrowdingPenalty, crowding_penalty);
+        patch_ctx.set(
+            PatchReducerSignal::DemandSatisfaction,
+            state.demand_satisfaction.clamp(0.0, 1.0),
+        );
+        let biosynthesis_signal = PATCH_BIOSYNTHESIS_SIGNAL_RULE.evaluate(patch_ctx.scalar());
+        let stress_signal = PATCH_STRESS_SIGNAL_RULE.evaluate(patch_ctx.scalar());
 
         LocalPatchSignals {
             oxygen_signal,
@@ -1839,17 +2647,27 @@ impl WholeCellChemistryBridge {
         let mean_ammonium = self.substrate.mean_species(TerrariumSpecies::Ammonium);
         let mean_proton = self.substrate.mean_species(TerrariumSpecies::Proton);
 
-        let acidity_penalty = (1.0 / (1.0 + mean_proton * 3.5)).clamp(0.75, 1.0);
-        let carbon_penalty = (1.0 / (1.0 + mean_co2 * 1.8)).clamp(0.78, 1.0);
-        let crowding_penalty = (acidity_penalty * carbon_penalty).clamp(0.70, 1.0);
+        let mut crowding_ctx = CrowdingContext::default();
+        crowding_ctx.set(
+            CrowdingSignal::CarbonDioxide,
+            saturating_signal(mean_co2, 0.04),
+        );
+        crowding_ctx.set(CrowdingSignal::Proton, saturating_signal(mean_proton, 0.01));
+        let crowding_penalty = PATCH_CROWDING_RULE.evaluate(crowding_ctx.scalar());
+
+        let mut report_ctx = GlobalReportContext::default();
+        report_ctx.set(GlobalReportSignal::Glucose, mean_glucose);
+        report_ctx.set(GlobalReportSignal::Oxygen, mean_oxygen);
+        report_ctx.set(GlobalReportSignal::AtpFlux, mean_atp_flux);
+        report_ctx.set(GlobalReportSignal::Nitrate, mean_nitrate);
+        report_ctx.set(GlobalReportSignal::Ammonium, mean_ammonium);
+        report_ctx.set(GlobalReportSignal::CrowdingPenalty, crowding_penalty);
 
         let report = LocalChemistryReport {
-            atp_support: (0.92 + mean_oxygen * 0.18 + mean_atp_flux * 0.06).clamp(0.85, 1.35),
-            translation_support: (0.92 + mean_glucose * 0.16 + mean_ammonium * 0.06)
-                .clamp(0.85, 1.35),
-            nucleotide_support: (0.92 + mean_nitrate * 0.16 + mean_glucose * 0.04)
-                .clamp(0.85, 1.35),
-            membrane_support: (0.92 + mean_atp_flux * 0.10 + mean_oxygen * 0.05).clamp(0.85, 1.30),
+            atp_support: GLOBAL_ATP_SUPPORT_RULE.evaluate(report_ctx.scalar()),
+            translation_support: GLOBAL_TRANSLATION_SUPPORT_RULE.evaluate(report_ctx.scalar()),
+            nucleotide_support: GLOBAL_NUCLEOTIDE_SUPPORT_RULE.evaluate(report_ctx.scalar()),
+            membrane_support: GLOBAL_MEMBRANE_SUPPORT_RULE.evaluate(report_ctx.scalar()),
             crowding_penalty,
             mean_glucose,
             mean_oxygen,
@@ -2126,6 +2944,55 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_exchange_targets_use_local_chemistry_context() {
+        let sim = WholeCellSimulator::new(WholeCellConfig {
+            use_gpu: false,
+            ..WholeCellConfig::default()
+        });
+        let mut snapshot = sim.snapshot();
+        let baseline = SnapshotExchangeTargets::from_snapshot(&snapshot);
+
+        snapshot.local_chemistry = Some(LocalChemistryReport {
+            atp_support: 1.15,
+            translation_support: 1.10,
+            nucleotide_support: 1.08,
+            membrane_support: 1.05,
+            crowding_penalty: 0.94,
+            mean_glucose: 0.90,
+            mean_oxygen: 0.82,
+            mean_atp_flux: 0.88,
+            mean_carbon_dioxide: 0.26,
+        });
+        let enriched = SnapshotExchangeTargets::from_snapshot(&snapshot);
+
+        let target_for = |targets: SnapshotExchangeTargets, species: TerrariumSpecies| {
+            targets
+                .reactive_species
+                .iter()
+                .find(|(candidate, _)| *candidate == species)
+                .map(|(_, value)| *value)
+                .expect("exchange target")
+        };
+
+        assert!(
+            target_for(enriched, TerrariumSpecies::Glucose)
+                > target_for(baseline, TerrariumSpecies::Glucose)
+        );
+        assert!(
+            target_for(enriched, TerrariumSpecies::OxygenGas)
+                > target_for(baseline, TerrariumSpecies::OxygenGas)
+        );
+        assert!(
+            target_for(enriched, TerrariumSpecies::AtpFlux)
+                > target_for(baseline, TerrariumSpecies::AtpFlux)
+        );
+        assert!(
+            target_for(enriched, TerrariumSpecies::CarbonDioxide)
+                > target_for(baseline, TerrariumSpecies::CarbonDioxide)
+        );
+    }
+
+    #[test]
     fn snapshot_resync_preserves_local_depletion_memory() {
         let sim = WholeCellSimulator::new(WholeCellConfig {
             use_gpu: false,
@@ -2199,6 +3066,11 @@ mod tests {
             demand_satisfaction: 1.0,
         };
         let depleted = LocalChemistrySiteReport {
+            crowding_penalty: 0.82,
+            assembly_component_availability: 0.78,
+            assembly_occupancy: 0.74,
+            assembly_stability: 0.70,
+            assembly_turnover: 0.30,
             substrate_draw: 0.55,
             energy_draw: 0.48,
             biosynthetic_draw: 0.20,
@@ -2216,8 +3088,35 @@ mod tests {
         depleted_state.apply_site_report(depleted);
 
         assert!(depleted_state.translation_scale < rich_state.translation_scale);
+        assert!(depleted_state.structural_order < rich_state.structural_order);
         assert!(depleted_state.demand_satisfaction < rich_state.demand_satisfaction);
         assert!(depleted_state.byproduct_load > rich_state.byproduct_load);
+    }
+
+    #[test]
+    fn acidic_byproduct_load_reduces_global_crowding_penalty() {
+        let sim = WholeCellSimulator::new(WholeCellConfig {
+            use_gpu: false,
+            ..WholeCellConfig::default()
+        });
+        let snap = sim.snapshot();
+
+        let mut baseline = WholeCellChemistryBridge::new(12, 12, 6, 0.5, false);
+        baseline.synchronize_from_snapshot(&snap);
+        let baseline_report = baseline.step(0.10);
+
+        let mut stressed = WholeCellChemistryBridge::new(12, 12, 6, 0.5, false);
+        stressed.synchronize_from_snapshot(&snap);
+        stressed
+            .substrate
+            .add_hotspot(TerrariumSpecies::CarbonDioxide, 6, 6, 3, 3.5);
+        stressed
+            .substrate
+            .add_hotspot(TerrariumSpecies::Proton, 6, 6, 3, 2.5);
+        let stressed_report = stressed.step(0.10);
+
+        assert!(stressed_report.crowding_penalty < baseline_report.crowding_penalty);
+        assert!(stressed_report.atp_support <= baseline_report.atp_support);
     }
 
     #[test]

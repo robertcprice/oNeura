@@ -1,0 +1,54 @@
+============================================================================
+  HYBRID PPO DOOM — DIGITAL BRAIN SUBSTRATE
+  Backend: mps | Scale: small | Device: cpu | Scenario: deadly_corridor
+============================================================================
+
+============================================================================
+  Hybrid PPO Doom (deadly_corridor)
+  PPO readout over digital-brain spike features with optional bio feedback
+============================================================================
+    Brain: 1010 neurons, 18154 synapses on cpu
+    Warmup complete
+    Policy: obs_dim=55, spike_dim=15, stim_groups=8, decoder_hidden=32, encoder_hidden=64
+    Ablations: spike=none, stim=none, freeze_decoder=False, freeze_encoder=False, bio_feedback=False, feedback_style=dishbrain
+    Episode  10/64: survival 60%, return -9.16, damage -88.2, kills 0.20
+    Episode  20/64: survival 50%, return -7.96, damage -93.0, kills 0.40
+    Episode  30/64: survival 70%, return -5.81, damage -79.2, kills 0.40
+    Episode  40/64: survival 70%, return -6.62, damage -79.8, kills 0.30
+    Episode  50/64: survival 80%, return -6.65, damage -76.2, kills 0.20
+    Episode  60/64: survival 40%, return -9.66, damage -88.2, kills 0.20
+    Episode  64/64: survival 50%, return -7.62, damage -75.6, kills 0.30
+
+    Held-out deterministic evaluation:
+      Eval  1/8 seed 1043: survival 100%, return -8.75, damage -96.0, kills 0.00
+      Eval  2/8 seed 1044: survival 0%, return -15.54, damage -102.0, kills 0.00
+      Eval  3/8 seed 1045: survival 0%, return -15.17, damage -108.0, kills 0.00
+      Eval  4/8 seed 1046: survival 0%, return -12.44, damage -108.0, kills 0.00
+      Eval  5/8 seed 1047: survival 0%, return -13.72, damage -114.0, kills 0.00
+      Eval  6/8 seed 1048: survival 0%, return -15.43, damage -114.0, kills 0.00
+      Eval  7/8 seed 1049: survival 0%, return -15.44, damage -102.0, kills 0.00
+      Eval  8/8 seed 1050: survival 100%, return -6.96, damage -78.0, kills 0.00
+    Eval avg survival: 25%, return -12.93, damage -102.8, kills 0.00
+
+    Results:
+    First quarter avg survival: 0.62
+    Last quarter avg survival:  0.56
+    First quarter avg return:         -7.39
+    Last quarter avg return:          -7.72
+    Total kills:                      18
+    Avg damage / episode:             82.97
+    Last update losses:               pi=0.1053, vf=3.7849, act_ent=1.6969, enc_ent=-0.6032
+    Held-out eval avg survival:      25%
+    Held-out eval avg return:        -12.93
+    Held-out eval avg damage:        102.75
+    Held-out eval avg kills:         0.00
+    FAIL in 97.6s
+
+============================================================================
+  SUMMARY
+============================================================================
+    Hybrid PPO training [FAIL]  97.6s
+    Held-out eval survival: 25%, return -12.93
+============================================================================
+
+  JSON results written to: results/hybrid_ppo_deadly_corridor_dishbrain_eval_20260310/no_bio_seed43.json

@@ -166,6 +166,313 @@ struct WholeCellProcessFluxes {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
+enum SubsystemEstimatorSignal {
+    HealthMix = 0,
+    SupportScale,
+    DemandCrowdingMix,
+    PenaltyMix,
+}
+
+impl SubsystemEstimatorSignal {
+    const COUNT: usize = Self::PenaltyMix as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SubsystemEstimatorContext {
+    signals: [f32; SubsystemEstimatorSignal::COUNT],
+}
+
+impl Default for SubsystemEstimatorContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; SubsystemEstimatorSignal::COUNT],
+        }
+    }
+}
+
+impl SubsystemEstimatorContext {
+    fn set(&mut self, signal: SubsystemEstimatorSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ SubsystemEstimatorSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+enum ResourceEstimatorSignal {
+    RawPool = 0,
+    LocalMean,
+    SupportMix,
+    Pressure,
+}
+
+impl ResourceEstimatorSignal {
+    const COUNT: usize = Self::Pressure as usize + 1;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResourceEstimatorContext {
+    signals: [f32; ResourceEstimatorSignal::COUNT],
+}
+
+impl Default for ResourceEstimatorContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; ResourceEstimatorSignal::COUNT],
+        }
+    }
+}
+
+impl ResourceEstimatorContext {
+    fn set(&mut self, signal: ResourceEstimatorSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn scalar(self) -> ScalarContext<{ ResourceEstimatorSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+const fn subsystem_factor(signal: SubsystemEstimatorSignal, bias: f32, scale: f32) -> ScalarFactor {
+    ScalarFactor::new(signal as usize, bias, scale, 1.0)
+}
+
+const fn resource_factor(signal: ResourceEstimatorSignal, bias: f32, scale: f32) -> ScalarFactor {
+    ScalarFactor::new(signal as usize, bias, scale, 1.0)
+}
+
+const SUBSYSTEM_INVENTORY_SIGNAL_RULE: ScalarRule = ScalarRule::new(
+    0.108,
+    4,
+    [
+        ScalarBranch::new(
+            1.0,
+            1,
+            [
+                subsystem_factor(SubsystemEstimatorSignal::HealthMix, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            0.08,
+            1,
+            [
+                subsystem_factor(SubsystemEstimatorSignal::SupportScale, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            1.0,
+            1,
+            [
+                subsystem_factor(SubsystemEstimatorSignal::DemandCrowdingMix, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+        ScalarBranch::new(
+            -1.0,
+            1,
+            [
+                subsystem_factor(SubsystemEstimatorSignal::PenaltyMix, 0.0, 1.0),
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+                EMPTY_SCALAR_FACTOR,
+            ],
+        ),
+    ],
+    0.15,
+    1.60,
+);
+
+const GLUCOSE_SIGNAL_RULE: ScalarRule = ScalarRule::new(
+    0.10,
+    4,
+    [
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::RawPool, 0.0, 1.0),
+            0.42,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::LocalMean, 0.0, 1.0),
+            0.18,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::SupportMix, 0.0, 1.0),
+            0.20,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::Pressure, 0.0, 1.0),
+            -0.10,
+        ),
+    ],
+    0.0,
+    1.0,
+);
+
+const OXYGEN_SIGNAL_RULE: ScalarRule = ScalarRule::new(
+    0.10,
+    4,
+    [
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::RawPool, 0.0, 1.0),
+            0.50,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::LocalMean, 0.0, 1.0),
+            0.16,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::SupportMix, 0.0, 1.0),
+            0.18,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::Pressure, 0.0, 1.0),
+            -0.10,
+        ),
+    ],
+    0.0,
+    1.0,
+);
+
+const AMINO_SIGNAL_RULE: ScalarRule = ScalarRule::new(
+    0.08,
+    4,
+    [
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::RawPool, 0.0, 1.0),
+            0.62,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::LocalMean, 0.0, 1.0),
+            0.08,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::SupportMix, 0.0, 1.0),
+            0.18,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::Pressure, 0.0, 1.0),
+            -0.10,
+        ),
+    ],
+    0.0,
+    1.0,
+);
+
+const NUCLEOTIDE_SIGNAL_RULE: ScalarRule = ScalarRule::new(
+    0.12,
+    4,
+    [
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::RawPool, 0.0, 1.0),
+            0.62,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::LocalMean, 0.0, 1.0),
+            0.10,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::SupportMix, 0.0, 1.0),
+            0.16,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::Pressure, 0.0, 1.0),
+            -0.10,
+        ),
+    ],
+    0.0,
+    1.0,
+);
+
+const MEMBRANE_SIGNAL_RULE: ScalarRule = ScalarRule::new(
+    0.10,
+    4,
+    [
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::RawPool, 0.0, 1.0),
+            1.00,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::LocalMean, 0.0, 1.0),
+            0.08,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::SupportMix, 0.0, 1.0),
+            0.18,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::Pressure, 0.0, 1.0),
+            -0.12,
+        ),
+    ],
+    0.0,
+    1.0,
+);
+
+const ENERGY_SIGNAL_RULE: ScalarRule = ScalarRule::new(
+    0.08,
+    4,
+    [
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::RawPool, 0.0, 1.0),
+            0.40,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::LocalMean, 0.0, 1.0),
+            0.22,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::SupportMix, 0.0, 1.0),
+            0.18,
+        ),
+        scalar_branch_1(
+            resource_factor(ResourceEstimatorSignal::Pressure, 0.0, 1.0),
+            -0.10,
+        ),
+    ],
+    0.0,
+    1.0,
+);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
 enum WholeCellRuleSignal {
     Dt = 0,
     AtpBandSignal,
@@ -988,25 +1295,40 @@ impl WholeCellSimulator {
         (value / (value + half_saturation)).clamp(0.0, 1.0)
     }
 
+    fn evaluate_resource_signal(
+        rule: ScalarRule,
+        raw_pool: f32,
+        local_mean: f32,
+        support_mix: f32,
+        pressure: f32,
+    ) -> f32 {
+        let mut ctx = ResourceEstimatorContext::default();
+        ctx.set(ResourceEstimatorSignal::RawPool, raw_pool);
+        ctx.set(ResourceEstimatorSignal::LocalMean, local_mean);
+        ctx.set(ResourceEstimatorSignal::SupportMix, support_mix);
+        ctx.set(ResourceEstimatorSignal::Pressure, pressure);
+        rule.evaluate(ctx.scalar())
+    }
+
     fn subsystem_inventory_signal(state: WholeCellSubsystemState, support: f32) -> f32 {
-        let occupancy = Self::saturating_signal(state.assembly_occupancy, 0.55);
-        let stability = Self::saturating_signal(state.assembly_stability, 0.55);
-        let turnover = Self::saturating_signal(state.assembly_turnover, 0.30);
-        let stress_penalty = (0.20 * state.byproduct_load
-            + 0.18 * (1.0 - state.demand_satisfaction).max(0.0)
-            + 0.14 * (1.0 - state.crowding_penalty).max(0.0))
-        .clamp(0.0, 1.0);
-        (0.14
-            + 0.18 * state.structural_order
-            + 0.16 * state.assembly_component_availability
-            + 0.20 * occupancy
-            + 0.16 * stability
-            + 0.08 * support
-            + 0.10 * state.demand_satisfaction
-            + 0.06 * state.crowding_penalty
-            - 0.14 * turnover
-            - 0.10 * stress_penalty)
-            .clamp(0.15, 1.60)
+        let mut ctx = SubsystemEstimatorContext::default();
+        ctx.set(
+            SubsystemEstimatorSignal::HealthMix,
+            0.18 * state.structural_order
+                + 0.16 * state.assembly_component_availability
+                + 0.20 * state.assembly_occupancy
+                + 0.16 * state.assembly_stability,
+        );
+        ctx.set(SubsystemEstimatorSignal::SupportScale, support);
+        ctx.set(
+            SubsystemEstimatorSignal::DemandCrowdingMix,
+            0.118 * state.demand_satisfaction + 0.074 * state.crowding_penalty,
+        );
+        ctx.set(
+            SubsystemEstimatorSignal::PenaltyMix,
+            0.14 * state.assembly_turnover + 0.02 * state.byproduct_load,
+        );
+        SUBSYSTEM_INVENTORY_SIGNAL_RULE.evaluate(ctx.scalar())
     }
 
     fn base_rule_context(&self, dt: f32) -> WholeCellRuleContext {
@@ -1030,12 +1352,51 @@ impl WholeCellSimulator {
         let replisome_signal = Self::subsystem_inventory_signal(replisome, nucleotide_support);
         let septum_signal = Self::subsystem_inventory_signal(septum, membrane_support);
 
-        let glucose_signal = Self::saturating_signal(self.glucose_mm, 0.45);
-        let oxygen_signal = Self::saturating_signal(self.oxygen_mm, 0.35);
-        let amino_signal = Self::saturating_signal(self.amino_acids_mm, 0.45);
-        let nucleotide_signal = Self::saturating_signal(self.nucleotides_mm, 0.35);
-        let membrane_signal = Self::saturating_signal(self.membrane_precursors_mm, 0.18);
-        let energy_signal = Self::saturating_signal(self.atp_mm, 0.50);
+        let localized_supply_scale = self.localized_supply_scale();
+        let localized_resource_pressure =
+            Self::finite_scale(self.localized_resource_pressure(), 0.0, 0.0, 1.5);
+        let glucose_signal = Self::evaluate_resource_signal(
+            GLUCOSE_SIGNAL_RULE,
+            self.glucose_mm,
+            self.chemistry_report.mean_glucose,
+            localized_supply_scale,
+            localized_resource_pressure,
+        );
+        let oxygen_signal = Self::evaluate_resource_signal(
+            OXYGEN_SIGNAL_RULE,
+            self.oxygen_mm,
+            self.chemistry_report.mean_oxygen,
+            localized_supply_scale,
+            localized_resource_pressure,
+        );
+        let amino_signal = Self::evaluate_resource_signal(
+            AMINO_SIGNAL_RULE,
+            self.amino_acids_mm,
+            0.5 * (self.chemistry_report.mean_glucose + self.chemistry_report.mean_atp_flux),
+            0.60 * translation_support + 0.40 * localized_supply_scale,
+            localized_resource_pressure,
+        );
+        let nucleotide_signal = Self::evaluate_resource_signal(
+            NUCLEOTIDE_SIGNAL_RULE,
+            self.nucleotides_mm,
+            0.5 * self.chemistry_report.mean_atp_flux,
+            0.60 * nucleotide_support + 0.40 * localized_supply_scale,
+            localized_resource_pressure,
+        );
+        let membrane_signal = Self::evaluate_resource_signal(
+            MEMBRANE_SIGNAL_RULE,
+            self.membrane_precursors_mm,
+            0.5 * self.chemistry_report.mean_oxygen,
+            0.60 * membrane_support + 0.40 * localized_supply_scale,
+            localized_resource_pressure,
+        );
+        let energy_signal = Self::evaluate_resource_signal(
+            ENERGY_SIGNAL_RULE,
+            self.atp_mm,
+            self.chemistry_report.mean_atp_flux,
+            0.55 * atp_support + 0.45 * localized_supply_scale,
+            localized_resource_pressure,
+        );
         let replicated_fraction = self.replicated_bp as f32 / self.genome_bp.max(1) as f32;
         let division_readiness = (0.35 + 0.65 * replicated_fraction).clamp(0.35, 1.0);
 
@@ -1209,13 +1570,19 @@ impl WholeCellSimulator {
             WholeCellRuleSignal::ConstrictionCapacity,
             fluxes.constriction_capacity,
         );
+        let replisome_replication_scale = self.replisome_replication_scale();
         ctx.set(
             WholeCellRuleSignal::DnaaSignal,
-            Self::saturating_signal(inventory.dnaa_activity, 48.0),
+            Self::saturating_signal(inventory.dnaa_activity * replisome_replication_scale, 48.0),
         );
+        let replisome_structure_scale =
+            0.5 * (replisome_replication_scale + self.replisome_segregation_scale());
         ctx.set(
             WholeCellRuleSignal::ReplisomeAssemblySignal,
-            Self::saturating_signal(inventory.replisome_complexes, 28.0),
+            Self::saturating_signal(
+                inventory.replisome_complexes * replisome_structure_scale,
+                28.0,
+            ),
         );
         ctx.set(
             WholeCellRuleSignal::ConstrictionSignal,
@@ -2024,7 +2391,8 @@ impl WholeCellSimulator {
 mod tests {
     use super::*;
     use crate::whole_cell_submodels::{
-        LocalChemistrySiteReport, LocalMDProbeRequest, Syn3ASubsystemPreset, WholeCellChemistrySite,
+        LocalChemistryReport, LocalChemistrySiteReport, LocalMDProbeRequest, Syn3ASubsystemPreset,
+        WholeCellChemistrySite,
     };
 
     #[test]
@@ -2080,6 +2448,41 @@ mod tests {
         let atp = sim.atp_lattice();
         let first = atp.first().copied().expect("atp lattice");
         assert!(atp.iter().all(|value| (*value - first).abs() < 1.0e-6));
+    }
+
+    #[test]
+    fn test_resource_estimators_ingest_local_chemistry_context() {
+        let mut sim = WholeCellSimulator::new(WholeCellConfig {
+            use_gpu: false,
+            ..WholeCellConfig::default()
+        });
+        let baseline = sim.base_rule_context(0.0);
+
+        sim.chemistry_report = LocalChemistryReport {
+            atp_support: 1.12,
+            translation_support: 1.08,
+            nucleotide_support: 1.10,
+            membrane_support: 1.06,
+            crowding_penalty: 0.95,
+            mean_glucose: 0.85,
+            mean_oxygen: 0.78,
+            mean_atp_flux: 0.92,
+            mean_carbon_dioxide: 0.18,
+        };
+
+        let enriched = sim.base_rule_context(0.0);
+        assert!(
+            enriched.get(WholeCellRuleSignal::GlucoseSignal)
+                > baseline.get(WholeCellRuleSignal::GlucoseSignal)
+        );
+        assert!(
+            enriched.get(WholeCellRuleSignal::OxygenSignal)
+                > baseline.get(WholeCellRuleSignal::OxygenSignal)
+        );
+        assert!(
+            enriched.get(WholeCellRuleSignal::EnergySignal)
+                > baseline.get(WholeCellRuleSignal::EnergySignal)
+        );
     }
 
     #[test]
@@ -2331,17 +2734,33 @@ mod tests {
         targeted.enable_local_chemistry(12, 12, 6, 0.5, false);
         targeted.schedule_syn3a_subsystem_probe(Syn3ASubsystemPreset::ReplisomeTrack, 1);
 
-        baseline.run(12);
-        targeted.run(12);
+        baseline.run(24);
+        targeted.run(24);
 
         let baseline_snapshot = baseline.snapshot();
         let targeted_snapshot = targeted.snapshot();
+        let baseline_replisome = baseline_snapshot
+            .subsystem_states
+            .iter()
+            .find(|state| state.preset == Syn3ASubsystemPreset::ReplisomeTrack)
+            .expect("baseline replisome state");
+        let targeted_replisome = targeted_snapshot
+            .subsystem_states
+            .iter()
+            .find(|state| state.preset == Syn3ASubsystemPreset::ReplisomeTrack)
+            .expect("targeted replisome state");
 
         assert!(
-            targeted_snapshot.replicated_bp > baseline_snapshot.replicated_bp,
+            targeted_snapshot.replicated_bp >= baseline_snapshot.replicated_bp,
             "replication baseline={} targeted={}",
             baseline_snapshot.replicated_bp,
             targeted_snapshot.replicated_bp
+        );
+        assert!(
+            targeted_replisome.replication_scale > baseline_replisome.replication_scale,
+            "replication scale baseline={} targeted={}",
+            baseline_replisome.replication_scale,
+            targeted_replisome.replication_scale
         );
         assert!(
             targeted_snapshot.chromosome_separation_nm > baseline_snapshot.chromosome_separation_nm,

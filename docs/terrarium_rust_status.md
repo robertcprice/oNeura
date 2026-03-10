@@ -37,7 +37,7 @@ Yes, the terrarium can become a pure Rust program. The current blocker is no lon
 - `oneuro-metal/src/bin/terrarium_viewer.rs`
   - Rust-native graphical viewer with a live window, top-down field rendering, keyboard controls, and an in-window stats panel driven directly by `TerrariumWorld`.
 - `oneuro-3d/src/bin/terrarium_gpu.rs`
-  - Rust-native GPU viewer built on Bevy/wgpu that renders the terrarium through the platform graphics backend while driving the same native `TerrariumWorld`.
+  - Rust-native GPU viewer built on Bevy/wgpu that renders the terrarium through the platform graphics backend while driving the same native `TerrariumWorld`, now with a custom fragment-shader material that colors the scene on-GPU from a raw scalar field texture plus live overlay point data for water, plants, fruit, and flies.
 
 ## Still Python-Owned
 
@@ -70,6 +70,6 @@ The clean path is:
 2. Keep `terrarium_native` as the Python-free terminal/runtime path while feature parity improves.
 3. Keep `terrarium_viewer` as the lightweight native graphical runtime path for inspecting the world without the Python demo shell.
 4. Keep `terrarium_gpu` as the current GPU-backed viewer path when a richer render surface is needed.
-5. Add a custom-shader render path on top of the GPU viewer once the visual contract is stable.
+5. Deepen the GPU render path further with more simulation-aware shader passes once the current visual contract is stable.
 
 That is how the project gets to “no Python at all” honestly, without pretending the current Python shell is gone when it is not.

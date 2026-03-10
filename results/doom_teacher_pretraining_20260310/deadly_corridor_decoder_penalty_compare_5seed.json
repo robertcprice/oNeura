@@ -1,0 +1,123 @@
+{
+  "scenario": "deadly_corridor",
+  "episodes": 4,
+  "pretrain_episodes": 4,
+  "results": [
+    {
+      "name": "base",
+      "bonus": 0.0,
+      "penalty": 0.0,
+      "mean_total_kills": 0.8,
+      "mean_last_q_kills": 0.4,
+      "mean_survival": 0.3,
+      "mean_damage": 96.9,
+      "mean_attack_window_fire_rate": 0.04179037336932074,
+      "mean_blind_attack_shots": 9.9,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.0,
+          "mean_damage": 108.0,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 10
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 90.0,
+          "mean_attack_window_fire_rate": 0.08547008547008547,
+          "mean_blind_attack_shots": 10.25
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 103.5,
+          "mean_attack_window_fire_rate": 0.057692307692307696,
+          "mean_blind_attack_shots": 10.25
+        },
+        {
+          "seed": 45,
+          "total_kills": 2.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.5,
+          "mean_damage": 96.0,
+          "mean_attack_window_fire_rate": 0.06578947368421052,
+          "mean_blind_attack_shots": 10
+        },
+        {
+          "seed": 46,
+          "total_kills": 1.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.5,
+          "mean_damage": 87.0,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 9
+        }
+      ]
+    },
+    {
+      "name": "bias_1_15",
+      "bonus": 1.0,
+      "penalty": 1.5,
+      "mean_total_kills": 0.8,
+      "mean_last_q_kills": 0.2,
+      "mean_survival": 0.45,
+      "mean_damage": 96.0,
+      "mean_attack_window_fire_rate": 0.125,
+      "mean_blind_attack_shots": 10.0,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 100.5,
+          "mean_attack_window_fire_rate": 0.125,
+          "mean_blind_attack_shots": 6
+        },
+        {
+          "seed": 43,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 90.0,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 9
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 108.0,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 12.5
+        },
+        {
+          "seed": 45,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.75,
+          "mean_damage": 88.5,
+          "mean_attack_window_fire_rate": 0.5,
+          "mean_blind_attack_shots": 11.75
+        },
+        {
+          "seed": 46,
+          "total_kills": 2.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.5,
+          "mean_damage": 93.0,
+          "mean_attack_window_fire_rate": 0.0,
+          "mean_blind_attack_shots": 10.75
+        }
+      ]
+    }
+  ]
+}

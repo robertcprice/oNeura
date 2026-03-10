@@ -8,16 +8,25 @@
 struct TerrariumMaterial {
     tone: vec4<f32>,
     bio: vec4<f32>,
+    field_main_min: vec4<f32>,
+    field_main_inv: vec4<f32>,
+    field_aux_min: vec4<f32>,
+    field_aux_inv: vec4<f32>,
+    overlay_counts: vec4<f32>,
+    water_points: array<vec4<f32>, 128>,
+    plant_points: array<vec4<f32>, 256>,
+    fruit_points: array<vec4<f32>, 256>,
+    fly_points: array<vec4<f32>, 128>,
 };
 
 @group(1) @binding(0)
-var field_image: texture_2d<f32>;
+var field_main_image: texture_2d<f32>;
 @group(1) @binding(1)
-var field_sampler: sampler;
+var field_main_sampler: sampler;
 @group(1) @binding(2)
-var overlay_image: texture_2d<f32>;
+var field_aux_image: texture_2d<f32>;
 @group(1) @binding(3)
-var overlay_sampler: sampler;
+var field_aux_sampler: sampler;
 @group(1) @binding(4)
 var<uniform> material: TerrariumMaterial;
 
@@ -66,6 +75,12 @@ fn odor_palette(value: f32, daylight: f32) -> vec3<f32> {
     return lerp3(plume * 0.74, plume * 1.02, daylight);
 }
 
+fn gas_palette(value: f32, daylight: f32) -> vec3<f32> {
+    let base = lerp3(vec3<f32>(0.02, 0.05, 0.08), vec3<f32>(0.10, 0.28, 0.30), value);
+    let plume = lerp3(base, vec3<f32>(0.46, 0.92, 0.84), sqrt(value));
+    return lerp3(plume * 0.72, plume * 1.02, daylight);
+}
+
 fn palette(view_id: f32, value: f32, daylight: f32) -> vec3<f32> {
     if (view_id < 0.5) {
         return terrain_palette(value, daylight);
@@ -79,29 +94,65 @@ fn palette(view_id: f32, value: f32, daylight: f32) -> vec3<f32> {
     if (view_id < 3.5) {
         return chemistry_palette(value, daylight);
     }
-    return odor_palette(value, daylight);
+    if (view_id < 4.5) {
+        return odor_palette(value, daylight);
+    }
+    return gas_palette(value, daylight);
+}
+
+fn normalize_main(sample: vec4<f32>, view_id: f32) -> f32 {
+    if (view_id < 0.5) {
+        return clamp((sample.x - material.field_main_min.x) * material.field_main_inv.x, 0.0, 1.0);
+    }
+    if (view_id < 1.5) {
+        return clamp((sample.y - material.field_main_min.y) * material.field_main_inv.y, 0.0, 1.0);
+    }
+    if (view_id < 2.5) {
+        return clamp((sample.z - material.field_main_min.z) * material.field_main_inv.z, 0.0, 1.0);
+    }
+    return clamp((sample.w - material.field_main_min.w) * material.field_main_inv.w, 0.0, 1.0);
+}
+
+fn normalize_aux(sample: vec4<f32>, view_id: f32) -> f32 {
+    if (view_id < 4.5) {
+        return clamp((sample.x - material.field_aux_min.x) * material.field_aux_inv.x, 0.0, 1.0);
+    }
+    return clamp((sample.y - material.field_aux_min.y) * material.field_aux_inv.y, 0.0, 1.0);
+}
+
+fn sample_field(uv: vec2<f32>, view_id: f32) -> f32 {
+    if (view_id < 3.5) {
+        let sample = textureSample(field_main_image, field_main_sampler, uv);
+        return normalize_main(sample, view_id);
+    }
+    let aux = textureSample(field_aux_image, field_aux_sampler, uv);
+    return normalize_aux(aux, view_id);
+}
+
+fn point_strength(cell: vec2<f32>, point: vec4<f32>) -> f32 {
+    let delta = abs(cell - point.xy);
+    let chebyshev = max(delta.x, delta.y);
+    return point.z * (1.0 - smoothstep(point.w, point.w + 0.85, chebyshev));
 }
 
 @fragment
 fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let uv = in.uv;
-    let dims = max(vec2<f32>(textureDimensions(field_image)), vec2<f32>(1.0, 1.0));
+    let dims = max(vec2<f32>(textureDimensions(field_main_image)), vec2<f32>(1.0, 1.0));
     let texel = 1.0 / dims;
-
-    let field = textureSample(field_image, field_sampler, uv).r;
-    let north = textureSample(field_image, field_sampler, uv + vec2<f32>(0.0, -texel.y)).r;
-    let south = textureSample(field_image, field_sampler, uv + vec2<f32>(0.0, texel.y)).r;
-    let east = textureSample(field_image, field_sampler, uv + vec2<f32>(texel.x, 0.0)).r;
-    let west = textureSample(field_image, field_sampler, uv + vec2<f32>(-texel.x, 0.0)).r;
-
-    let edge = clamp((abs(east - west) + abs(north - south)) * 1.45, 0.0, 1.0);
-
-    let overlay = textureSample(overlay_image, overlay_sampler, uv);
+    let cell = uv * dims;
 
     let daylight = clamp(material.tone.x, 0.0, 1.0);
     let paused = material.tone.y;
-    let view_id = clamp(material.tone.z, 0.0, 4.0);
+    let view_id = clamp(material.tone.z, 0.0, 5.0);
     let time_phase = material.tone.w;
+
+    let field = sample_field(uv, view_id);
+    let north = sample_field(uv + vec2<f32>(0.0, -texel.y), view_id);
+    let south = sample_field(uv + vec2<f32>(0.0, texel.y), view_id);
+    let east = sample_field(uv + vec2<f32>(texel.x, 0.0), view_id);
+    let west = sample_field(uv + vec2<f32>(-texel.x, 0.0), view_id);
+    let edge = clamp((abs(east - west) + abs(north - south)) * 1.45, 0.0, 1.0);
 
     let food = clamp(material.bio.x, 0.0, 1.0);
     let vitality = clamp(material.bio.y, 0.0, 1.0);
@@ -120,14 +171,44 @@ fn fragment(in: FragmentInput) -> @location(0) vec4<f32> {
     let contour_tint = lerp3(
         vec3<f32>(0.02, 0.03, 0.05),
         vec3<f32>(0.18, 0.12, 0.05),
-        clamp(view_id / 4.0, 0.0, 1.0),
+        clamp(view_id / 5.0, 0.0, 1.0),
     );
     color += edge * (0.05 + 0.08 * vitality) * contour_tint;
 
-    let water_mask = overlay.r;
-    let plant_mask = overlay.g;
-    let fruit_mask = overlay.b;
-    let fly_mask = overlay.a;
+    var water_mask = 0.0;
+    var plant_mask = 0.0;
+    var fruit_mask = 0.0;
+    var fly_mask = 0.0;
+
+    let water_count = u32(material.overlay_counts.x);
+    let plant_count = u32(material.overlay_counts.y);
+    let fruit_count = u32(material.overlay_counts.z);
+    let fly_count = u32(material.overlay_counts.w);
+
+    for (var i: u32 = 0u; i < 128u; i = i + 1u) {
+        if (i >= water_count) {
+            break;
+        }
+        water_mask = max(water_mask, point_strength(cell, material.water_points[i]));
+    }
+    for (var i: u32 = 0u; i < 256u; i = i + 1u) {
+        if (i >= plant_count) {
+            break;
+        }
+        plant_mask = max(plant_mask, point_strength(cell, material.plant_points[i]));
+    }
+    for (var i: u32 = 0u; i < 256u; i = i + 1u) {
+        if (i >= fruit_count) {
+            break;
+        }
+        fruit_mask = max(fruit_mask, point_strength(cell, material.fruit_points[i]));
+    }
+    for (var i: u32 = 0u; i < 128u; i = i + 1u) {
+        if (i >= fly_count) {
+            break;
+        }
+        fly_mask = max(fly_mask, point_strength(cell, material.fly_points[i]));
+    }
 
     color = lerp3(color, vec3<f32>(0.20, 0.46, 0.88), water_mask * 0.72);
     color = lerp3(color, vec3<f32>(0.10, 0.78, 0.22), plant_mask * 0.78);

@@ -1,0 +1,228 @@
+{
+  "sweep": [
+    {
+      "scenario": "defend_the_center",
+      "episodes": 6,
+      "combat_teacher_shaping_delta": 0.0,
+      "mean_total_kills": 3.6666666666666665,
+      "mean_last_q_kills": 0.0,
+      "mean_teacher_match_rate": 0.16319444444444445,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 5.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.14166666666666666
+        },
+        {
+          "seed": 43,
+          "total_kills": 2.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.16875
+        },
+        {
+          "seed": 44,
+          "total_kills": 4.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.17916666666666667
+        }
+      ]
+    },
+    {
+      "scenario": "defend_the_center",
+      "episodes": 6,
+      "combat_teacher_shaping_delta": 0.15,
+      "mean_total_kills": 1.6666666666666667,
+      "mean_last_q_kills": 0.3333333333333333,
+      "mean_teacher_match_rate": 0.1736111111111111,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 2.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.17291666666666666
+        },
+        {
+          "seed": 43,
+          "total_kills": 2.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.15416666666666667
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.19375
+        }
+      ]
+    },
+    {
+      "scenario": "defend_the_center",
+      "episodes": 6,
+      "combat_teacher_shaping_delta": 0.3,
+      "mean_total_kills": 3.0,
+      "mean_last_q_kills": 0.6666666666666666,
+      "mean_teacher_match_rate": 0.18472222222222223,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.18541666666666667
+        },
+        {
+          "seed": 43,
+          "total_kills": 3.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.18333333333333335
+        },
+        {
+          "seed": 44,
+          "total_kills": 5.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.18541666666666665
+        }
+      ]
+    },
+    {
+      "scenario": "defend_the_center",
+      "episodes": 6,
+      "combat_teacher_shaping_delta": 0.6,
+      "mean_total_kills": 2.3333333333333335,
+      "mean_last_q_kills": 0.3333333333333333,
+      "mean_teacher_match_rate": 0.16111111111111112,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.17708333333333334
+        },
+        {
+          "seed": 43,
+          "total_kills": 5.0,
+          "last_q_kills": 1.0,
+          "teacher_match_rate": 0.16875
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.1375
+        }
+      ]
+    },
+    {
+      "scenario": "deadly_corridor",
+      "episodes": 4,
+      "combat_teacher_shaping_delta": 0.0,
+      "mean_total_kills": 0.6666666666666666,
+      "mean_last_q_kills": 0.0,
+      "mean_teacher_match_rate": 0.1795365169700276,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.2012428396072013
+        },
+        {
+          "seed": 43,
+          "total_kills": 2.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.14113273694390716
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.19623397435897436
+        }
+      ]
+    },
+    {
+      "scenario": "deadly_corridor",
+      "episodes": 4,
+      "combat_teacher_shaping_delta": 0.15,
+      "mean_total_kills": 0.0,
+      "mean_last_q_kills": 0.0,
+      "mean_teacher_match_rate": 0.17548033379150402,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.1991407528641571
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.15029704338214978
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.17700320512820514
+        }
+      ]
+    },
+    {
+      "scenario": "deadly_corridor",
+      "episodes": 4,
+      "combat_teacher_shaping_delta": 0.3,
+      "mean_total_kills": 0.3333333333333333,
+      "mean_last_q_kills": 0.0,
+      "mean_teacher_match_rate": 0.1497900592315486,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.13871215220949262
+        },
+        {
+          "seed": 43,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.13325417933130698
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.17740384615384613
+        }
+      ]
+    },
+    {
+      "scenario": "deadly_corridor",
+      "episodes": 4,
+      "combat_teacher_shaping_delta": 0.6,
+      "mean_total_kills": 0.0,
+      "mean_last_q_kills": 0.0,
+      "mean_teacher_match_rate": 0.15332880499803792,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.14417962356792144
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.14857922732362822
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "teacher_match_rate": 0.16722756410256412
+        }
+      ]
+    }
+  ]
+}

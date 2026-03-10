@@ -1,0 +1,35 @@
+{
+  "experiment": "doom_vizdoom",
+  "scale": "small",
+  "device": "cpu",
+  "scenario": "health_gathering",
+  "n_runs": 1,
+  "base_seed": 42,
+  "total_time_s": 7.59,
+  "system": {
+    "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+    "python": "3.14.2",
+    "torch": "2.10.0",
+    "backend": "mps",
+    "vizdoom": true,
+    "gpu": "Apple Silicon (MPS)"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "experiments": {
+        "1": {
+          "passed": true,
+          "time": 7.584117,
+          "metric_name": "health_gained",
+          "first_q_avg": 0.0,
+          "last_q_avg": 0.0,
+          "total_metric": 8.0,
+          "pretrain_episodes": 0,
+          "pretrain_metrics": [],
+          "name": "Doom Navigation"
+        }
+      }
+    }
+  ]
+}

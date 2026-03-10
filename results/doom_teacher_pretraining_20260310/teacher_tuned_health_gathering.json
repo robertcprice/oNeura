@@ -1,0 +1,72 @@
+{
+  "experiment": "doom_vizdoom",
+  "scale": "small",
+  "device": "cpu",
+  "scenario": "health_gathering",
+  "n_runs": 1,
+  "base_seed": 42,
+  "total_time_s": 11.41,
+  "system": {
+    "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+    "python": "3.14.2",
+    "torch": "2.10.0",
+    "backend": "mps",
+    "vizdoom": true,
+    "gpu": "Apple Silicon (MPS)"
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "experiments": {
+        "1": {
+          "passed": true,
+          "time": 11.406599,
+          "metric_name": "health_gained",
+          "first_q_avg": 8.0,
+          "last_q_avg": 8.0,
+          "total_metric": 16.0,
+          "pretrain_episodes": 2,
+          "pretrain_metrics": [
+            {
+              "health_gained": 16.0,
+              "kills": 0,
+              "survived": 1.0,
+              "damage_taken": 16.0,
+              "steps": 80,
+              "positive_events": 2,
+              "negative_events": 2,
+              "action_counts": [
+                47,
+                10,
+                23,
+                0,
+                0,
+                0
+              ],
+              "teacher_match_rate": 0.3875
+            },
+            {
+              "health_gained": 16.0,
+              "kills": 0,
+              "survived": 1.0,
+              "damage_taken": 16.0,
+              "steps": 80,
+              "positive_events": 3,
+              "negative_events": 2,
+              "action_counts": [
+                74,
+                0,
+                6,
+                0,
+                0,
+                0
+              ],
+              "teacher_match_rate": 0.55
+            }
+          ],
+          "name": "Doom Navigation"
+        }
+      }
+    }
+  ]
+}

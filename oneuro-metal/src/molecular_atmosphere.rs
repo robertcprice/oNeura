@@ -98,6 +98,13 @@ pub fn odorant_channel_params(name: &str) -> Option<OdorantChannelParams> {
             molecular_weight: 17.03,
         });
     }
+    if key.contains("carbon_dioxide") || key.contains("carbon dioxide") || key == "co2" {
+        return Some(OdorantChannelParams {
+            diffusion_mm2_per_s: 16.0,
+            decay_per_s: 0.0002,
+            molecular_weight: 44.01,
+        });
+    }
     None
 }
 

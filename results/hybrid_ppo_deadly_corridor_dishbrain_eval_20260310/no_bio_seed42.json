@@ -1,0 +1,1341 @@
+{
+  "passed": true,
+  "time": 97.08501020801486,
+  "metric_name": "survived",
+  "bio_feedback": false,
+  "feedback_style": "dishbrain",
+  "spike_ablation": "none",
+  "stim_ablation": "none",
+  "freeze_decoder": false,
+  "freeze_encoder": false,
+  "first_q_metric": 0.625,
+  "last_q_metric": 0.6875,
+  "first_q_return": -7.96187499999999,
+  "last_q_return": -6.51374999999999,
+  "avg_damage": 81.5625,
+  "total_kills": 19,
+  "last_update": {
+    "policy_loss": 0.008543514646589756,
+    "value_loss": 7.087807655334473,
+    "action_entropy": 1.6828460693359375,
+    "encoder_entropy": -0.6024011969566345
+  },
+  "episode_metrics": [
+    {
+      "episode_return": -8.369999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 96.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        9,
+        12,
+        13,
+        15,
+        14,
+        17
+      ]
+    },
+    {
+      "episode_return": -4.1699999999999875,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 54.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        16,
+        13,
+        19,
+        14,
+        6
+      ]
+    },
+    {
+      "episode_return": 6.210000000000008,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 0.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        7,
+        14,
+        17,
+        17,
+        10,
+        15
+      ]
+    },
+    {
+      "episode_return": -13.689999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 108.0,
+      "steps": 52,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        7,
+        9,
+        6,
+        9,
+        5,
+        16
+      ]
+    },
+    {
+      "episode_return": -3.3499999999999863,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 96.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        9,
+        11,
+        19,
+        8,
+        18,
+        15
+      ]
+    },
+    {
+      "episode_return": -14.239999999999995,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 108.0,
+      "steps": 47,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        5,
+        15,
+        6,
+        7,
+        7,
+        7
+      ]
+    },
+    {
+      "episode_return": -15.689999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 73,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        19,
+        16,
+        8,
+        7,
+        9
+      ]
+    },
+    {
+      "episode_return": -11.799999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 43,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        4,
+        8,
+        10,
+        9,
+        8,
+        4
+      ]
+    },
+    {
+      "episode_return": 0.830000000000007,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 54.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        17,
+        19,
+        9,
+        13,
+        14,
+        8
+      ]
+    },
+    {
+      "episode_return": -4.179999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 54.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        17,
+        15,
+        10,
+        13,
+        14,
+        11
+      ]
+    },
+    {
+      "episode_return": -14.349999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 108.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        19,
+        14,
+        12,
+        14,
+        11,
+        10
+      ]
+    },
+    {
+      "episode_return": -8.369999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 96.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        8,
+        20,
+        10,
+        13,
+        20,
+        9
+      ]
+    },
+    {
+      "episode_return": -7.559999999999988,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 84.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        16,
+        13,
+        14,
+        14,
+        9,
+        14
+      ]
+    },
+    {
+      "episode_return": -13.929999999999989,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 120.0,
+      "steps": 77,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        20,
+        13,
+        10,
+        9,
+        14
+      ]
+    },
+    {
+      "episode_return": -7.559999999999988,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 84.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        9,
+        12,
+        12,
+        23,
+        16,
+        8
+      ]
+    },
+    {
+      "episode_return": -7.169999999999995,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 84.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        21,
+        12,
+        12,
+        11,
+        6,
+        18
+      ]
+    },
+    {
+      "episode_return": -0.7599999999999856,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 66.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        7,
+        17,
+        9,
+        15,
+        16,
+        16
+      ]
+    },
+    {
+      "episode_return": -7.179999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 84.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        18,
+        11,
+        10,
+        11,
+        19
+      ]
+    },
+    {
+      "episode_return": -6.369999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 72.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        12,
+        15,
+        11,
+        14,
+        16
+      ]
+    },
+    {
+      "episode_return": -6.969999999999995,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 78.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        8,
+        16,
+        15,
+        11,
+        12,
+        18
+      ]
+    },
+    {
+      "episode_return": -7.779999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 90.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        13,
+        17,
+        19,
+        12,
+        8,
+        11
+      ]
+    },
+    {
+      "episode_return": -6.579999999999995,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 78.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        12,
+        12,
+        18,
+        12,
+        12
+      ]
+    },
+    {
+      "episode_return": -2.989999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 42.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        18,
+        12,
+        15,
+        14,
+        16,
+        5
+      ]
+    },
+    {
+      "episode_return": -6.569999999999988,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 78.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        16,
+        14,
+        10,
+        13,
+        16
+      ]
+    },
+    {
+      "episode_return": -10.229999999999997,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 48,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        7,
+        11,
+        8,
+        4,
+        9,
+        9
+      ]
+    },
+    {
+      "episode_return": -4.179999999999986,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 54.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        10,
+        11,
+        16,
+        14,
+        15,
+        14
+      ]
+    },
+    {
+      "episode_return": -9.529999999999987,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 77,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        13,
+        13,
+        11,
+        14,
+        15
+      ]
+    },
+    {
+      "episode_return": -11.109999999999985,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 0.0,
+      "damage_taken": 120.0,
+      "steps": 77,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        13,
+        16,
+        10,
+        14,
+        10,
+        14
+      ]
+    },
+    {
+      "episode_return": -11.099999999999989,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 0.0,
+      "damage_taken": 120.0,
+      "steps": 75,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        14,
+        10,
+        14,
+        14,
+        12
+      ]
+    },
+    {
+      "episode_return": -8.759999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 96.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        21,
+        10,
+        9,
+        15,
+        13
+      ]
+    },
+    {
+      "episode_return": 1.4300000000000066,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 48.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        20,
+        12,
+        13,
+        11,
+        10
+      ]
+    },
+    {
+      "episode_return": -16.12999999999999,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 108.0,
+      "steps": 78,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        13,
+        15,
+        15,
+        11,
+        12,
+        12
+      ]
+    },
+    {
+      "episode_return": 0.22000000000000064,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 60.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        15,
+        15,
+        14,
+        16,
+        6,
+        14
+      ]
+    },
+    {
+      "episode_return": -5.969999999999986,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 72.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        13,
+        9,
+        11,
+        13,
+        20
+      ]
+    },
+    {
+      "episode_return": -13.089999999999993,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 52,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        7,
+        13,
+        8,
+        10,
+        7,
+        7
+      ]
+    },
+    {
+      "episode_return": -10.649999999999993,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 114.0,
+      "steps": 47,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        9,
+        7,
+        5,
+        6,
+        8
+      ]
+    },
+    {
+      "episode_return": -3.9699999999999873,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 48.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        11,
+        16,
+        14,
+        13,
+        14
+      ]
+    },
+    {
+      "episode_return": -16.099999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 108.0,
+      "steps": 74,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        13,
+        14,
+        12,
+        14,
+        10,
+        11
+      ]
+    },
+    {
+      "episode_return": -1.5599999999999863,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 78.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        10,
+        20,
+        7,
+        19,
+        15,
+        9
+      ]
+    },
+    {
+      "episode_return": -4.569999999999988,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 54.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        14,
+        17,
+        14,
+        18,
+        5
+      ]
+    },
+    {
+      "episode_return": -4.779999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 60.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        17,
+        18,
+        11,
+        17,
+        6
+      ]
+    },
+    {
+      "episode_return": -6.579999999999988,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 78.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        13,
+        15,
+        18,
+        10,
+        10
+      ]
+    },
+    {
+      "episode_return": -8.149999999999995,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 90.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        22,
+        16,
+        9,
+        12,
+        9
+      ]
+    },
+    {
+      "episode_return": -15.719999999999986,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 108.0,
+      "steps": 76,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        13,
+        14,
+        15,
+        9,
+        11
+      ]
+    },
+    {
+      "episode_return": 1.640000000000011,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 42.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        20,
+        13,
+        13,
+        14,
+        9
+      ]
+    },
+    {
+      "episode_return": -10.079999999999995,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 50,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        8,
+        12,
+        6,
+        9,
+        6,
+        9
+      ]
+    },
+    {
+      "episode_return": -0.9499999999999948,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 72.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        20,
+        19,
+        8,
+        12,
+        8,
+        13
+      ]
+    },
+    {
+      "episode_return": -3.369999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 42.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        17,
+        17,
+        14,
+        12,
+        9
+      ]
+    },
+    {
+      "episode_return": -1.359999999999994,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 72.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        13,
+        10,
+        19,
+        15,
+        10,
+        13
+      ]
+    },
+    {
+      "episode_return": -1.1899999999999866,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 24.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        18,
+        15,
+        12,
+        11,
+        10
+      ]
+    },
+    {
+      "episode_return": -0.3699999999999868,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 66.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        22,
+        20,
+        8,
+        15,
+        5,
+        10
+      ]
+    },
+    {
+      "episode_return": -7.769999999999989,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 90.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        13,
+        11,
+        15,
+        16,
+        13
+      ]
+    },
+    {
+      "episode_return": -13.969999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        16,
+        15,
+        17,
+        11,
+        8,
+        13
+      ]
+    },
+    {
+      "episode_return": -13.629999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 108.0,
+      "steps": 46,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        8,
+        13,
+        5,
+        8,
+        7,
+        5
+      ]
+    },
+    {
+      "episode_return": -6.569999999999986,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 78.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        10,
+        15,
+        14,
+        16,
+        16,
+        9
+      ]
+    },
+    {
+      "episode_return": -2.1799999999999873,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 30.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        6,
+        15,
+        11,
+        19,
+        13,
+        16
+      ]
+    },
+    {
+      "episode_return": -8.549999999999988,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 90.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        19,
+        9,
+        17,
+        9,
+        12
+      ]
+    },
+    {
+      "episode_return": -8.359999999999987,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 1.0,
+      "damage_taken": 96.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        19,
+        8,
+        15,
+        12,
+        12,
+        14
+      ]
+    },
+    {
+      "episode_return": -2.1599999999999993,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 84.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        13,
+        17,
+        14,
+        11,
+        17,
+        8
+      ]
+    },
+    {
+      "episode_return": -2.5499999999999883,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 84.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        12,
+        21,
+        18,
+        7,
+        13,
+        9
+      ]
+    },
+    {
+      "episode_return": -15.459999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 50,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        11,
+        11,
+        9,
+        7,
+        7,
+        5
+      ]
+    },
+    {
+      "episode_return": -1.3599999999999905,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 1.0,
+      "damage_taken": 72.0,
+      "steps": 80,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        15,
+        18,
+        13,
+        15,
+        12,
+        7
+      ]
+    },
+    {
+      "episode_return": -10.029999999999994,
+      "health_gained": 0.0,
+      "kills": 0,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 45,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        3,
+        10,
+        2,
+        13,
+        7,
+        10
+      ]
+    },
+    {
+      "episode_return": -8.70999999999999,
+      "health_gained": 0.0,
+      "kills": 1,
+      "survived": 0.0,
+      "damage_taken": 102.0,
+      "steps": 76,
+      "positive_events": 0.0,
+      "negative_events": 0.0,
+      "action_counts": [
+        14,
+        18,
+        13,
+        11,
+        12,
+        8
+      ]
+    }
+  ],
+  "eval_results": {
+    "metric_name": "survived",
+    "seeds": [
+      1042,
+      1043,
+      1044,
+      1045,
+      1046,
+      1047,
+      1048,
+      1049
+    ],
+    "use_biological_feedback": false,
+    "avg_metric": 0.5,
+    "avg_return": -6.433749999999996,
+    "avg_damage": 78.0,
+    "avg_kills": 0.5,
+    "episode_metrics": [
+      {
+        "episode_return": 0.8300000000000005,
+        "health_gained": 0.0,
+        "kills": 1,
+        "survived": 1.0,
+        "damage_taken": 54.0,
+        "steps": 80,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          8,
+          0,
+          68,
+          1,
+          3
+        ]
+      },
+      {
+        "episode_return": -0.7499999999999978,
+        "health_gained": 0.0,
+        "kills": 1,
+        "survived": 1.0,
+        "damage_taken": 66.0,
+        "steps": 80,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          10,
+          0,
+          67,
+          1,
+          2
+        ]
+      },
+      {
+        "episode_return": 2.83,
+        "health_gained": 0.0,
+        "kills": 1,
+        "survived": 1.0,
+        "damage_taken": 30.0,
+        "steps": 80,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          9,
+          0,
+          68,
+          2,
+          1
+        ]
+      },
+      {
+        "episode_return": 2.6200000000000014,
+        "health_gained": 0.0,
+        "kills": 1,
+        "survived": 1.0,
+        "damage_taken": 36.0,
+        "steps": 80,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          11,
+          0,
+          68,
+          0,
+          1
+        ]
+      },
+      {
+        "episode_return": -12.439999999999994,
+        "health_gained": 0.0,
+        "kills": 0,
+        "survived": 0.0,
+        "damage_taken": 108.0,
+        "steps": 47,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          9,
+          0,
+          36,
+          2,
+          0
+        ]
+      },
+      {
+        "episode_return": -13.689999999999994,
+        "health_gained": 0.0,
+        "kills": 0,
+        "survived": 0.0,
+        "damage_taken": 114.0,
+        "steps": 52,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          11,
+          0,
+          41,
+          0,
+          0
+        ]
+      },
+      {
+        "episode_return": -15.429999999999993,
+        "health_gained": 0.0,
+        "kills": 0,
+        "survived": 0.0,
+        "damage_taken": 114.0,
+        "steps": 47,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          11,
+          0,
+          35,
+          1,
+          0
+        ]
+      },
+      {
+        "episode_return": -15.439999999999992,
+        "health_gained": 0.0,
+        "kills": 0,
+        "survived": 0.0,
+        "damage_taken": 102.0,
+        "steps": 48,
+        "positive_events": 0.0,
+        "negative_events": 0.0,
+        "action_counts": [
+          0,
+          12,
+          0,
+          36,
+          0,
+          0
+        ]
+      }
+    ]
+  }
+}

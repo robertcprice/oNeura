@@ -1,0 +1,108 @@
+{
+  "scenario": "deadly_corridor",
+  "episodes": 4,
+  "results": [
+    {
+      "pretrain_episodes": 0,
+      "mean_total_kills": 0.6666666666666666,
+      "mean_last_q_kills": 0.0,
+      "mean_survival": 0.25,
+      "mean_damage": 98.0,
+      "mean_teacher_match_rate": 0.18196690739498958,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 84.0,
+          "teacher_match_rate": 0.1778846153846154
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 93.0,
+          "teacher_match_rate": 0.16977060230484886
+        },
+        {
+          "seed": 44,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.0,
+          "mean_damage": 117.0,
+          "teacher_match_rate": 0.19824550449550452
+        }
+      ]
+    },
+    {
+      "pretrain_episodes": 2,
+      "mean_total_kills": 0.0,
+      "mean_last_q_kills": 0.0,
+      "mean_survival": 0.16666666666666666,
+      "mean_damage": 107.5,
+      "mean_teacher_match_rate": 0.17611861395106077,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.0,
+          "mean_damage": 109.5,
+          "teacher_match_rate": 0.19159676759410801
+        },
+        {
+          "seed": 43,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.5,
+          "mean_damage": 99.0,
+          "teacher_match_rate": 0.1828327922077922
+        },
+        {
+          "seed": 44,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.0,
+          "mean_damage": 114.0,
+          "teacher_match_rate": 0.15392628205128206
+        }
+      ]
+    },
+    {
+      "pretrain_episodes": 4,
+      "mean_total_kills": 1.0,
+      "mean_last_q_kills": 0.3333333333333333,
+      "mean_survival": 0.4166666666666667,
+      "mean_damage": 96.0,
+      "mean_teacher_match_rate": 0.15886937486347946,
+      "results": [
+        {
+          "seed": 42,
+          "total_kills": 0.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.25,
+          "mean_damage": 100.5,
+          "teacher_match_rate": 0.11647389905987135
+        },
+        {
+          "seed": 43,
+          "total_kills": 1.0,
+          "last_q_kills": 0.0,
+          "mean_survival": 0.75,
+          "mean_damage": 78.0,
+          "teacher_match_rate": 0.1801829268292683
+        },
+        {
+          "seed": 44,
+          "total_kills": 2.0,
+          "last_q_kills": 1.0,
+          "mean_survival": 0.25,
+          "mean_damage": 109.5,
+          "teacher_match_rate": 0.17995129870129872
+        }
+      ]
+    }
+  ]
+}

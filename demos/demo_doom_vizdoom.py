@@ -1015,13 +1015,15 @@ class DoomMotorDecoder:
             self.populations.append(l5_ids[start:end])
 
     def decode(self, brain: CUDAMolecularBrain,
-               counts: Optional[List[int]] = None) -> Tuple[int, List[int]]:
+               counts: Optional[List[int]] = None,
+               biases: Optional[List[float]] = None) -> Tuple[int, List[int]]:
         """Decode motor action from spike counts.
 
         Args:
             brain: The brain to read fired neurons from.
             counts: Pre-computed spike counts per population. If None,
                 reads from brain.fired.
+            biases: Optional additive per-action decoder bias.
 
         Returns:
             Tuple of (action_index, spike_counts_per_population).
@@ -1033,12 +1035,20 @@ class DoomMotorDecoder:
 
         total = sum(counts)
         if total == 0:
+            if biases is not None:
+                best_score = max(biases)
+                if best_score > 0:
+                    return biases.index(best_score), counts
             # No spikes: random action to explore
             return random.randint(0, N_MOTOR_POPULATIONS - 1), counts
 
-        # Zero-threshold: pick population with most spikes
-        max_count = max(counts)
-        action = counts.index(max_count)
+        # Zero-threshold: pick population with most biased spikes
+        if biases is not None:
+            scores = [float(c) + float(b) for c, b in zip(counts, biases)]
+        else:
+            scores = [float(c) for c in counts]
+        max_count = max(scores)
+        action = scores.index(max_count)
         return action, counts
 
 
@@ -1493,6 +1503,20 @@ def _apply_motor_penalty(
         brain._NT_W_sparse = None
 
 
+def _combat_decoder_biases(
+    guidance: Dict[str, Any],
+    attack_bonus: float,
+    attack_penalty: float,
+) -> List[float]:
+    """Return decoder biases for combat attack selection."""
+    biases = [0.0] * N_MOTOR_POPULATIONS
+    if guidance["attack_window"]:
+        biases[MOTOR_ATTACK] += float(attack_bonus)
+    else:
+        biases[MOTOR_ATTACK] -= float(attack_penalty)
+    return biases
+
+
 def _apply_doom_event_feedback(
     rb: CUDARegionalBrain,
     protocol,
@@ -1551,6 +1575,8 @@ def play_doom_episode(
     combat_teacher_shaping_delta: float = 0.0,
     combat_attack_window_delta: float = 0.0,
     combat_attack_miss_delta: float = 0.0,
+    combat_decoder_attack_bonus: float = 0.0,
+    combat_decoder_attack_penalty: float = 0.0,
     record_video: bool = False,
     video_path: str = None,
 ) -> Dict[str, Any]:
@@ -1600,7 +1626,14 @@ def play_doom_episode(
         counts = _present_doom_stimulus(
             rb, bridge, decoder, activation, stim_steps=stim_steps
         )
-        action, _ = decoder.decode(brain, counts=counts)
+        decoder_biases = None
+        if combat_decoder_attack_bonus > 0 or combat_decoder_attack_penalty > 0:
+            decoder_biases = _combat_decoder_biases(
+                guidance,
+                attack_bonus=combat_decoder_attack_bonus,
+                attack_penalty=combat_decoder_attack_penalty,
+            )
+        action, _ = decoder.decode(brain, counts=counts, biases=decoder_biases)
 
         if guidance["enemy_visible"]:
             teacher_match_steps += 1
@@ -1874,6 +1907,8 @@ def exp_doom_navigation(
     combat_teacher_shaping_delta: float = 0.0,
     combat_attack_window_delta: float = 0.0,
     combat_attack_miss_delta: float = 0.0,
+    combat_decoder_attack_bonus: float = 0.0,
+    combat_decoder_attack_penalty: float = 0.0,
     metric_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Can a dONN learn to gather health in Doom via the free energy principle?
@@ -1969,6 +2004,8 @@ def exp_doom_navigation(
             combat_teacher_shaping_delta=combat_teacher_shaping_delta,
             combat_attack_window_delta=combat_attack_window_delta,
             combat_attack_miss_delta=combat_attack_miss_delta,
+            combat_decoder_attack_bonus=combat_decoder_attack_bonus,
+            combat_decoder_attack_penalty=combat_decoder_attack_penalty,
             record_video=record_this, video_path=video_path)
         episode_metrics.append(metrics)
 
@@ -2015,6 +2052,8 @@ def exp_doom_navigation(
         "combat_teacher_shaping_delta": combat_teacher_shaping_delta,
         "combat_attack_window_delta": combat_attack_window_delta,
         "combat_attack_miss_delta": combat_attack_miss_delta,
+        "combat_decoder_attack_bonus": combat_decoder_attack_bonus,
+        "combat_decoder_attack_penalty": combat_decoder_attack_penalty,
         "pretrain_metrics": pretrain_metrics,
         "episode_metrics": episode_metrics,
     }
@@ -2401,6 +2440,8 @@ def _run_single(args, seed: int) -> Dict[str, Any]:
                 kwargs["combat_teacher_shaping_delta"] = args.combat_teacher_shaping_delta
                 kwargs["combat_attack_window_delta"] = args.combat_attack_window_delta
                 kwargs["combat_attack_miss_delta"] = args.combat_attack_miss_delta
+                kwargs["combat_decoder_attack_bonus"] = args.combat_decoder_attack_bonus
+                kwargs["combat_decoder_attack_penalty"] = args.combat_decoder_attack_penalty
                 kwargs["metric_override"] = args.metric_override
             elif args.episodes and exp_id == 2:
                 kwargs["n_episodes"] = args.episodes
@@ -2412,6 +2453,8 @@ def _run_single(args, seed: int) -> Dict[str, Any]:
                 kwargs["combat_teacher_shaping_delta"] = args.combat_teacher_shaping_delta
                 kwargs["combat_attack_window_delta"] = args.combat_attack_window_delta
                 kwargs["combat_attack_miss_delta"] = args.combat_attack_miss_delta
+                kwargs["combat_decoder_attack_bonus"] = args.combat_decoder_attack_bonus
+                kwargs["combat_decoder_attack_penalty"] = args.combat_decoder_attack_penalty
                 kwargs["metric_override"] = args.metric_override
             result = func(**kwargs)
             results[exp_id] = result
@@ -2456,6 +2499,10 @@ def main():
                         help="Combat-only Hebbian bonus for attack actions in valid attack windows")
     parser.add_argument("--combat-attack-miss-delta", type=float, default=0.0,
                         help="Combat-only Hebbian suppression for blind attack actions")
+    parser.add_argument("--combat-decoder-attack-bonus", type=float, default=0.0,
+                        help="Combat-only decoder bonus for attack in valid attack windows")
+    parser.add_argument("--combat-decoder-attack-penalty", type=float, default=0.0,
+                        help="Combat-only decoder penalty for attack outside valid attack windows")
     parser.add_argument("--metric-override", type=str, default=None,
                         help="Override exp 1 success metric, e.g. kills")
     parser.add_argument("--json", type=str, default=None, metavar="PATH",

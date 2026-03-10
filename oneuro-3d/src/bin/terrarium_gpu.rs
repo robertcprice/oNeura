@@ -44,7 +44,8 @@ impl Default for Cli {
 
 #[derive(Resource, Clone)]
 struct RenderTargets {
-    field_image: Handle<Image>,
+    field_main_image: Handle<Image>,
+    field_aux_image: Handle<Image>,
     material: Handle<TerrariumMaterial>,
 }
 
@@ -68,7 +69,10 @@ struct SimState {
 struct TerrariumMaterialUniform {
     tone: Vec4,
     bio: Vec4,
-    field_stats: Vec4,
+    field_main_min: Vec4,
+    field_main_inv: Vec4,
+    field_aux_min: Vec4,
+    field_aux_inv: Vec4,
     overlay_counts: Vec4,
     water_points: [Vec4; MAX_WATER_POINTS],
     plant_points: [Vec4; MAX_PLANT_POINTS],
@@ -81,8 +85,11 @@ struct TerrariumMaterialUniform {
 struct TerrariumMaterial {
     #[texture(0)]
     #[sampler(1)]
-    field_image: Handle<Image>,
-    #[uniform(2)]
+    field_main_image: Handle<Image>,
+    #[texture(2)]
+    #[sampler(3)]
+    field_aux_image: Handle<Image>,
+    #[uniform(4)]
     uniform: TerrariumMaterialUniform,
 }
 
@@ -159,40 +166,64 @@ fn parse_args() -> Result<Cli, String> {
     Ok(cli)
 }
 
-fn normalize_field(values: &[f32]) -> Vec<f32> {
-    let peak = values.iter().copied().fold(0.0f32, f32::max);
-    if peak <= 1.0e-9 {
-        vec![0.0; values.len()]
-    } else {
-        values.iter().map(|value| *value / peak).collect()
-    }
-}
-
 const MAX_WATER_POINTS: usize = 128;
 const MAX_PLANT_POINTS: usize = 256;
 const MAX_FRUIT_POINTS: usize = 256;
 const MAX_FLY_POINTS: usize = 128;
 
-fn encode_field(values: &[f32]) -> Vec<u8> {
-    let mut data = Vec::with_capacity(values.len() * std::mem::size_of::<f32>());
-    for value in values {
-        data.extend_from_slice(&value.to_le_bytes());
+#[derive(Clone)]
+struct TerrariumFieldPack {
+    main: [Vec<f32>; 4],
+    aux: [Vec<f32>; 4],
+}
+
+fn encode_rgba_field(channels: [&[f32]; 4]) -> Vec<u8> {
+    let len = channels[0].len();
+    let mut data = Vec::with_capacity(len * 4 * std::mem::size_of::<f32>());
+    for idx in 0..len {
+        for channel in channels {
+            data.extend_from_slice(&channel[idx].to_le_bytes());
+        }
     }
     data
 }
 
-fn field_stats(values: &[f32]) -> Vec4 {
-    if values.is_empty() {
-        return Vec4::new(0.0, 0.0, 1.0, 0.0);
+fn channel_stats(channels: [&[f32]; 4]) -> (Vec4, Vec4) {
+    let mut mins = [0.0f32; 4];
+    let mut invs = [1.0f32; 4];
+    for (idx, channel) in channels.into_iter().enumerate() {
+        if channel.is_empty() {
+            continue;
+        }
+        let mut min_value = f32::INFINITY;
+        let mut max_value = f32::NEG_INFINITY;
+        for value in channel {
+            min_value = min_value.min(*value);
+            max_value = max_value.max(*value);
+        }
+        let span = (max_value - min_value).max(1.0e-6);
+        mins[idx] = min_value;
+        invs[idx] = 1.0 / span;
     }
-    let mut min_value = f32::INFINITY;
-    let mut max_value = f32::NEG_INFINITY;
-    for value in values {
-        min_value = min_value.min(*value);
-        max_value = max_value.max(*value);
+    (
+        Vec4::new(mins[0], mins[1], mins[2], mins[3]),
+        Vec4::new(invs[0], invs[1], invs[2], invs[3]),
+    )
+}
+
+fn terrarium_field_pack(world: &TerrariumWorld) -> TerrariumFieldPack {
+    let terrain = world.topdown_field(TerrariumTopdownView::Terrain);
+    let plane = terrain.len();
+    let soil = world.topdown_field(TerrariumTopdownView::SoilMoisture);
+    let canopy = world.topdown_field(TerrariumTopdownView::Canopy);
+    let chemistry = world.topdown_field(TerrariumTopdownView::Chemistry);
+    let odor = world.topdown_field(TerrariumTopdownView::Odor);
+    let gas = world.topdown_field(TerrariumTopdownView::GasExchange);
+    let zero = vec![0.0f32; plane];
+    TerrariumFieldPack {
+        main: [terrain, soil, canopy, chemistry],
+        aux: [odor, gas, zero.clone(), zero],
     }
-    let span = (max_value - min_value).max(1.0e-6);
-    Vec4::new(min_value, max_value, 1.0 / span, normalize_field(values).iter().copied().fold(0.0, f32::max))
 }
 
 fn store_point(points: &mut [Vec4], count: &mut usize, point: Vec4) {
@@ -259,7 +290,10 @@ fn encode_overlay_uniform(world: &TerrariumWorld) -> TerrariumMaterialUniform {
     TerrariumMaterialUniform {
         tone: Vec4::ZERO,
         bio: Vec4::ZERO,
-        field_stats: Vec4::ZERO,
+        field_main_min: Vec4::ZERO,
+        field_main_inv: Vec4::ONE,
+        field_aux_min: Vec4::ZERO,
+        field_aux_inv: Vec4::ONE,
         overlay_counts: Vec4::new(
             water_count as f32,
             plant_count as f32,
@@ -273,15 +307,27 @@ fn encode_overlay_uniform(world: &TerrariumWorld) -> TerrariumMaterialUniform {
     }
 }
 
-fn terrarium_uniform(state: &SimState) -> TerrariumMaterialUniform {
-    let field = state.world.topdown_field(state.view);
+fn terrarium_uniform(state: &SimState, fields: &TerrariumFieldPack) -> TerrariumMaterialUniform {
     let mut uniform = encode_overlay_uniform(&state.world);
+    let (field_main_min, field_main_inv) = channel_stats([
+        &fields.main[0],
+        &fields.main[1],
+        &fields.main[2],
+        &fields.main[3],
+    ]);
+    let (field_aux_min, field_aux_inv) = channel_stats([
+        &fields.aux[0],
+        &fields.aux[1],
+        &fields.aux[2],
+        &fields.aux[3],
+    ]);
     let view_id = match state.view {
         TerrariumTopdownView::Terrain => 0.0,
         TerrariumTopdownView::SoilMoisture => 1.0,
         TerrariumTopdownView::Canopy => 2.0,
         TerrariumTopdownView::Chemistry => 3.0,
         TerrariumTopdownView::Odor => 4.0,
+        TerrariumTopdownView::GasExchange => 5.0,
     };
     uniform.tone = Vec4::new(
         state.snapshot.light.clamp(0.0, 1.0),
@@ -295,12 +341,29 @@ fn terrarium_uniform(state: &SimState) -> TerrariumMaterialUniform {
         state.snapshot.humidity.clamp(0.0, 1.0),
         state.snapshot.mean_cell_energy.clamp(0.0, 1.0),
     );
-    uniform.field_stats = field_stats(&field);
+    uniform.field_main_min = field_main_min;
+    uniform.field_main_inv = field_main_inv;
+    uniform.field_aux_min = field_aux_min;
+    uniform.field_aux_inv = field_aux_inv;
     uniform
 }
 
-fn terrarium_field_bytes(world: &TerrariumWorld, view: TerrariumTopdownView) -> Vec<u8> {
-    encode_field(&world.topdown_field(view))
+fn terrarium_main_field_bytes(fields: &TerrariumFieldPack) -> Vec<u8> {
+    encode_rgba_field([
+        &fields.main[0],
+        &fields.main[1],
+        &fields.main[2],
+        &fields.main[3],
+    ])
+}
+
+fn terrarium_aux_field_bytes(fields: &TerrariumFieldPack) -> Vec<u8> {
+    encode_rgba_field([
+        &fields.aux[0],
+        &fields.aux[1],
+        &fields.aux[2],
+        &fields.aux[3],
+    ])
 }
 
 fn setup(
@@ -312,22 +375,37 @@ fn setup(
 ) {
     let width = state.world.width();
     let height = state.world.height();
-    let uniform = terrarium_uniform(&state);
-    let mut field_image = Image::new_fill(
+    let fields = terrarium_field_pack(&state.world);
+    let uniform = terrarium_uniform(&state, &fields);
+    let mut field_main_image = Image::new_fill(
         Extent3d {
             width: width as u32,
             height: height as u32,
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
-        &[0, 0, 0, 0],
-        TextureFormat::R32Float,
+        &[0; 16],
+        TextureFormat::Rgba32Float,
     );
-    field_image.texture_descriptor.usage = TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING;
-    field_image.data = terrarium_field_bytes(&state.world, state.view);
-    let field_image_handle = images.add(field_image);
+    field_main_image.texture_descriptor.usage = TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING;
+    field_main_image.data = terrarium_main_field_bytes(&fields);
+    let field_main_image_handle = images.add(field_main_image);
+    let mut field_aux_image = Image::new_fill(
+        Extent3d {
+            width: width as u32,
+            height: height as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &[0; 16],
+        TextureFormat::Rgba32Float,
+    );
+    field_aux_image.texture_descriptor.usage = TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING;
+    field_aux_image.data = terrarium_aux_field_bytes(&fields);
+    let field_aux_image_handle = images.add(field_aux_image);
     let material_handle = materials.add(TerrariumMaterial {
-        field_image: field_image_handle.clone(),
+        field_main_image: field_main_image_handle.clone(),
+        field_aux_image: field_aux_image_handle.clone(),
         uniform,
     });
     let quad = meshes.add(Mesh::from(shape::Quad::new(Vec2::new(
@@ -336,7 +414,8 @@ fn setup(
     ))));
 
     commands.insert_resource(RenderTargets {
-        field_image: field_image_handle.clone(),
+        field_main_image: field_main_image_handle.clone(),
+        field_aux_image: field_aux_image_handle.clone(),
         material: material_handle.clone(),
     });
 
@@ -376,6 +455,9 @@ fn handle_input(
     }
     if keyboard.just_pressed(KeyCode::Key5) {
         state.view = TerrariumTopdownView::Odor;
+    }
+    if keyboard.just_pressed(KeyCode::Key6) {
+        state.view = TerrariumTopdownView::GasExchange;
     }
     if keyboard.just_pressed(KeyCode::Up) {
         state.fps = (state.fps + 5.0).min(120.0);
@@ -434,11 +516,15 @@ fn update_gpu_inputs(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<TerrariumMaterial>>,
 ) {
-    if let Some(image) = images.get_mut(&targets.field_image) {
-        image.data = terrarium_field_bytes(&state.world, state.view);
+    let fields = terrarium_field_pack(&state.world);
+    if let Some(image) = images.get_mut(&targets.field_main_image) {
+        image.data = terrarium_main_field_bytes(&fields);
+    }
+    if let Some(image) = images.get_mut(&targets.field_aux_image) {
+        image.data = terrarium_aux_field_bytes(&fields);
     }
     if let Some(material) = materials.get_mut(&targets.material) {
-        material.uniform = terrarium_uniform(&state);
+        material.uniform = terrarium_uniform(&state, &fields);
     }
 }
 

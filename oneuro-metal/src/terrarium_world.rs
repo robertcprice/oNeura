@@ -27,6 +27,7 @@ const DAY_LENGTH_S: f32 = 86_400.0;
 const ETHYL_ACETATE_IDX: usize = 0;
 const GERANIOL_IDX: usize = 1;
 const AMMONIA_IDX: usize = 2;
+const ATMOS_CO2_IDX: usize = 3;
 
 fn idx2(width: usize, x: usize, y: usize) -> usize {
     y * width + x
@@ -97,6 +98,54 @@ fn deposit_2d(
             let dy = yy as f32 - y as f32;
             let kernel = (-(dx * dx + dy * dy) / denom).exp();
             field[idx2(width, xx, yy)] += kernel * scale;
+        }
+    }
+}
+
+fn exchange_layer_patch(
+    field: &mut [f32],
+    width: usize,
+    height: usize,
+    depth: usize,
+    x: usize,
+    y: usize,
+    z: usize,
+    radius: usize,
+    amount: f32,
+    min_value: f32,
+    max_value: f32,
+) {
+    if amount.abs() <= 1.0e-12 {
+        return;
+    }
+    let radius = radius.max(1);
+    let z = z.min(depth.saturating_sub(1));
+    let sigma = (radius as f32 * 0.72).max(0.75);
+    let denom = 2.0 * sigma * sigma;
+    let y0 = y.saturating_sub(radius);
+    let y1 = (y + radius + 1).min(height);
+    let x0 = x.saturating_sub(radius);
+    let x1 = (x + radius + 1).min(width);
+    let mut kernel_total = 0.0f32;
+
+    for yy in y0..y1 {
+        for xx in x0..x1 {
+            let dx = xx as f32 - x as f32;
+            let dy = yy as f32 - y as f32;
+            kernel_total += (-(dx * dx + dy * dy) / denom).exp();
+        }
+    }
+    if kernel_total <= 1.0e-9 {
+        return;
+    }
+    let scale = amount / kernel_total;
+    for yy in y0..y1 {
+        for xx in x0..x1 {
+            let dx = xx as f32 - x as f32;
+            let dy = yy as f32 - y as f32;
+            let kernel = (-(dx * dx + dy * dy) / denom).exp();
+            let cell = &mut field[idx3(width, height, xx, yy, z)];
+            *cell = (*cell + kernel * scale).clamp(min_value, max_value);
         }
     }
 }
@@ -217,11 +266,7 @@ impl TerrariumPlantGenome {
                 1.5,
             ),
             volatile_scale: clamp(self.volatile_scale + sample_normal(rng, 0.08), 0.45, 1.8),
-            fruiting_threshold: clamp(
-                self.fruiting_threshold + sample_normal(rng, 0.06),
-                0.3,
-                1.5,
-            ),
+            fruiting_threshold: clamp(self.fruiting_threshold + sample_normal(rng, 0.06), 0.3, 1.5),
             litter_turnover: clamp(self.litter_turnover + sample_normal(rng, 0.06), 0.45, 1.8),
             shade_tolerance: clamp(self.shade_tolerance + sample_normal(rng, 0.05), 0.4, 1.7),
             root_depth_bias: clamp(self.root_depth_bias + sample_normal(rng, 0.04), 0.05, 1.1),
@@ -299,7 +344,8 @@ impl TerrariumPlant {
         let stem_cells = 120.0 * biomass_scale * (0.84 + genome.max_height_mm / 24.0);
         let root_cells = 145.0 * biomass_scale * (0.78 + genome.root_depth_bias * 0.55);
         let meristem_cells = 70.0 * biomass_scale * (0.85 + genome.seed_mass * 3.8);
-        let cellular = PlantCellularStateSim::new(leaf_cells, stem_cells, root_cells, meristem_cells);
+        let cellular =
+            PlantCellularStateSim::new(leaf_cells, stem_cells, root_cells, meristem_cells);
         Self {
             x,
             y,
@@ -310,14 +356,20 @@ impl TerrariumPlant {
     }
 
     pub fn canopy_radius_cells(&self) -> usize {
-        let leaf_cells = self.cellular.cluster_snapshot(crate::plant_cellular::PlantTissue::Leaf).cell_count;
+        let leaf_cells = self
+            .cellular
+            .cluster_snapshot(crate::plant_cellular::PlantTissue::Leaf)
+            .cell_count;
         (self.genome.canopy_radius_mm + self.physiology.leaf_biomass() * 3.1 + leaf_cells * 0.0022)
             .max(2.0)
             .round() as usize
     }
 
     pub fn root_radius_cells(&self) -> usize {
-        let root_cells = self.cellular.cluster_snapshot(crate::plant_cellular::PlantTissue::Root).cell_count;
+        let root_cells = self
+            .cellular
+            .cluster_snapshot(crate::plant_cellular::PlantTissue::Root)
+            .cell_count;
         (self.genome.root_radius_mm + self.physiology.root_biomass() * 3.4 + root_cells * 0.0025)
             .max(2.0)
             .round() as usize
@@ -377,6 +429,7 @@ pub struct TerrariumWorldSnapshot {
     pub mean_soil_nitrate: f32,
     pub mean_soil_redox: f32,
     pub mean_soil_atp_flux: f32,
+    pub mean_atmospheric_co2: f32,
     pub substrate_backend: &'static str,
     pub substrate_steps: u64,
     pub substrate_time_ms: f32,
@@ -390,6 +443,7 @@ pub enum TerrariumTopdownView {
     Canopy,
     Chemistry,
     Odor,
+    GasExchange,
 }
 
 impl TerrariumTopdownView {
@@ -400,6 +454,7 @@ impl TerrariumTopdownView {
             Self::Canopy => "canopy",
             Self::Chemistry => "chemistry",
             Self::Odor => "odor",
+            Self::GasExchange => "gas",
         }
     }
 }
@@ -462,18 +517,40 @@ impl TerrariumWorld {
             config.use_gpu_substrate,
         );
 
-        let moisture = (0..plane).map(|_| rng.gen_range(0.18..0.42)).collect::<Vec<_>>();
-        let deep_moisture = (0..plane).map(|_| rng.gen_range(0.22..0.36)).collect::<Vec<_>>();
-        let dissolved_nutrients = (0..plane).map(|_| rng.gen_range(0.01..0.03)).collect::<Vec<_>>();
-        let mineral_nitrogen = (0..plane).map(|_| rng.gen_range(0.015..0.035)).collect::<Vec<_>>();
-        let shallow_nutrients = (0..plane).map(|_| rng.gen_range(0.02..0.08)).collect::<Vec<_>>();
-        let deep_minerals = (0..plane).map(|_| rng.gen_range(0.07..0.16)).collect::<Vec<_>>();
-        let organic_matter = (0..plane).map(|_| rng.gen_range(0.002..0.03)).collect::<Vec<_>>();
-        let litter_carbon = (0..plane).map(|_| rng.gen_range(0.006..0.02)).collect::<Vec<_>>();
-        let microbial_biomass = (0..plane).map(|_| rng.gen_range(0.01..0.03)).collect::<Vec<_>>();
-        let symbiont_biomass = (0..plane).map(|_| rng.gen_range(0.005..0.014)).collect::<Vec<_>>();
+        let moisture = (0..plane)
+            .map(|_| rng.gen_range(0.18..0.42))
+            .collect::<Vec<_>>();
+        let deep_moisture = (0..plane)
+            .map(|_| rng.gen_range(0.22..0.36))
+            .collect::<Vec<_>>();
+        let dissolved_nutrients = (0..plane)
+            .map(|_| rng.gen_range(0.01..0.03))
+            .collect::<Vec<_>>();
+        let mineral_nitrogen = (0..plane)
+            .map(|_| rng.gen_range(0.015..0.035))
+            .collect::<Vec<_>>();
+        let shallow_nutrients = (0..plane)
+            .map(|_| rng.gen_range(0.02..0.08))
+            .collect::<Vec<_>>();
+        let deep_minerals = (0..plane)
+            .map(|_| rng.gen_range(0.07..0.16))
+            .collect::<Vec<_>>();
+        let organic_matter = (0..plane)
+            .map(|_| rng.gen_range(0.002..0.03))
+            .collect::<Vec<_>>();
+        let litter_carbon = (0..plane)
+            .map(|_| rng.gen_range(0.006..0.02))
+            .collect::<Vec<_>>();
+        let microbial_biomass = (0..plane)
+            .map(|_| rng.gen_range(0.01..0.03))
+            .collect::<Vec<_>>();
+        let symbiont_biomass = (0..plane)
+            .map(|_| rng.gen_range(0.005..0.014))
+            .collect::<Vec<_>>();
         let root_exudates = vec![0.0; plane];
-        let soil_structure = (0..plane).map(|_| rng.gen_range(0.35..0.75)).collect::<Vec<_>>();
+        let soil_structure = (0..plane)
+            .map(|_| rng.gen_range(0.35..0.75))
+            .collect::<Vec<_>>();
 
         Ok(Self {
             atmosphere_rng_state: config.seed ^ 0x9E37_79B9_7F4A_7C15,
@@ -483,8 +560,13 @@ impl TerrariumWorld {
                 odorant_channel_params("ethyl_acetate").ok_or("missing ethyl acetate params")?,
                 odorant_channel_params("geraniol").ok_or("missing geraniol params")?,
                 odorant_channel_params("ammonia").ok_or("missing ammonia params")?,
+                odorant_channel_params("carbon_dioxide").ok_or("missing carbon dioxide params")?,
             ],
-            odorants: vec![vec![0.0; total]; 3],
+            odorants: {
+                let mut fields = vec![vec![0.0; total]; 4];
+                fields[ATMOS_CO2_IDX].fill(0.045);
+                fields
+            },
             temperature: vec![22.0; total],
             humidity: vec![0.4; total],
             wind_x: vec![0.0; total],
@@ -721,6 +803,22 @@ impl TerrariumWorld {
                 }
                 field
             }
+            TerrariumTopdownView::GasExchange => {
+                let plane = self.config.width * self.config.height;
+                let depth = self.config.depth.max(1);
+                let co2 = &self.odorants[ATMOS_CO2_IDX];
+                let mut field = vec![0.0f32; plane];
+                for z in 0..depth {
+                    let start = z * plane;
+                    for idx in 0..plane {
+                        field[idx] += co2[start + idx];
+                    }
+                }
+                for (idx, value) in field.iter_mut().enumerate() {
+                    *value = (*value / depth as f32) * (0.88 + self.canopy_cover[idx] * 0.18);
+                }
+                field
+            }
         }
     }
 
@@ -827,6 +925,97 @@ impl TerrariumWorld {
         )]
     }
 
+    fn sample_humidity_at(&self, x: usize, y: usize, z: usize) -> f32 {
+        self.humidity[idx3(
+            self.config.width,
+            self.config.height,
+            x.min(self.config.width - 1),
+            y.min(self.config.height - 1),
+            z.min(self.config.depth.max(1) - 1),
+        )]
+    }
+
+    fn sample_odorant_patch(
+        &self,
+        channel_idx: usize,
+        x: usize,
+        y: usize,
+        z: usize,
+        radius: usize,
+    ) -> f32 {
+        let Some(channel) = self.odorants.get(channel_idx) else {
+            return 0.0;
+        };
+        let radius = radius.max(1);
+        let z = z.min(self.config.depth.max(1) - 1);
+        let y0 = y.saturating_sub(radius);
+        let y1 = (y + radius + 1).min(self.config.height);
+        let x0 = x.saturating_sub(radius);
+        let x1 = (x + radius + 1).min(self.config.width);
+        let mut total = 0.0f32;
+        let mut count = 0usize;
+        for yy in y0..y1 {
+            for xx in x0..x1 {
+                total += channel[idx3(self.config.width, self.config.height, xx, yy, z)];
+                count += 1;
+            }
+        }
+        if count == 0 {
+            0.0
+        } else {
+            total / count as f32
+        }
+    }
+
+    fn exchange_atmosphere_odorant(
+        &mut self,
+        channel_idx: usize,
+        x: usize,
+        y: usize,
+        z: usize,
+        radius: usize,
+        amount: f32,
+    ) {
+        if let Some(channel) = self.odorants.get_mut(channel_idx) {
+            exchange_layer_patch(
+                channel,
+                self.config.width,
+                self.config.height,
+                self.config.depth.max(1),
+                x,
+                y,
+                z,
+                radius,
+                amount,
+                0.0,
+                1.25,
+            );
+        }
+    }
+
+    fn exchange_atmosphere_humidity(
+        &mut self,
+        x: usize,
+        y: usize,
+        z: usize,
+        radius: usize,
+        amount: f32,
+    ) {
+        exchange_layer_patch(
+            &mut self.humidity,
+            self.config.width,
+            self.config.height,
+            self.config.depth.max(1),
+            x,
+            y,
+            z,
+            radius,
+            amount,
+            0.0,
+            1.4,
+        );
+    }
+
     fn plant_source_states(&self) -> Vec<PlantSourceState> {
         self.plants
             .iter()
@@ -885,7 +1074,11 @@ impl TerrariumWorld {
             self.config.height,
             eco_dt,
             self.daylight(),
-            temp_response(self.sample_temperature_at(self.config.width / 2, self.config.height / 2, 0), 24.0, 10.0),
+            temp_response(
+                self.sample_temperature_at(self.config.width / 2, self.config.height / 2, 0),
+                24.0,
+                10.0,
+            ),
             &self.water_mask,
             &self.canopy_cover,
             &self.root_density,
@@ -948,12 +1141,25 @@ impl TerrariumWorld {
         let daylight = self.daylight();
         let mut queued_fruits = Vec::new();
         let mut queued_seeds = Vec::new();
+        let mut queued_co2_fluxes: Vec<(usize, usize, usize, usize, f32)> = Vec::new();
+        let mut queued_humidity_fluxes: Vec<(usize, usize, usize, usize, f32)> = Vec::new();
         let mut dead_plants = Vec::new();
 
         for idx in 0..self.plants.len() {
             let fruit_reset_s = self.rng.gen_range(7200.0..17000.0);
             let seed_reset_s = self.rng.gen_range(12000.0..30000.0);
-            let (x, y, genome, canopy_self, root_self, root_radius, storage_signal, health_before) = {
+            let (
+                x,
+                y,
+                genome,
+                canopy_self,
+                root_self,
+                canopy_radius,
+                root_radius,
+                canopy_z,
+                storage_signal,
+                health_before,
+            ) = {
                 let plant = &self.plants[idx];
                 (
                     plant.x,
@@ -961,7 +1167,9 @@ impl TerrariumWorld {
                     plant.genome.clone(),
                     plant.canopy_amplitude(),
                     plant.root_amplitude(),
+                    plant.canopy_radius_cells(),
                     plant.root_radius_cells(),
+                    ((plant.physiology.height_mm() / 3.0).round() as usize).clamp(1, depth - 1),
                     plant.physiology.storage_carbon().max(0.0),
                     plant.physiology.health(),
                 )
@@ -1033,17 +1241,23 @@ impl TerrariumWorld {
                 root_radius,
             );
             let root_energy_gate = clamp(0.32 + atp_flux * 1800.0, 0.2, 1.2);
-            let water_deficit = clamp(0.42 - (self.moisture[flat] + deep_moisture * 0.35), 0.0, 1.0);
+            let water_deficit = clamp(
+                0.42 - (self.moisture[flat] + deep_moisture * 0.35),
+                0.0,
+                1.0,
+            );
             let nitrogen_deficit = clamp(
-                0.14
-                    - (self.mineral_nitrogen[flat] + soil_ammonium + soil_nitrate_patch) * 0.32,
+                0.14 - (self.mineral_nitrogen[flat] + soil_ammonium + soil_nitrate_patch) * 0.32,
                 0.0,
                 1.0,
             );
 
-            let (water_demand, nutrient_demand) = self.plants[idx]
-                .physiology
-                .resource_demands(eco_dt, root_energy_gate, water_deficit, nitrogen_deficit);
+            let (water_demand, nutrient_demand) = self.plants[idx].physiology.resource_demands(
+                eco_dt,
+                root_energy_gate,
+                water_deficit,
+                nitrogen_deficit,
+            );
             let extraction = extract_root_resources_with_layers(
                 self.config.width,
                 self.config.height,
@@ -1118,10 +1332,26 @@ impl TerrariumWorld {
             };
             let local_temp = self.sample_temperature_at(x, y, 1.min(depth - 1));
             let temp_factor = temp_response(local_temp, 24.0, 10.0);
+            let local_humidity = self.sample_humidity_at(x, y, canopy_z);
             let local_light = clamp(
                 daylight * (1.0 - canopy_comp * (1.18 - genome.shade_tolerance).max(0.16)),
                 0.03,
                 1.15,
+            );
+            let local_air_co2 = self.sample_odorant_patch(
+                ATMOS_CO2_IDX,
+                x,
+                y,
+                canopy_z,
+                (canopy_radius.max(2) / 2).max(1),
+            );
+            let air_co2_factor = clamp(local_air_co2 / 0.045, 0.35, 1.8);
+            let stomatal_open = clamp(
+                0.24 + local_light * 0.46 + water_factor * 0.28 + local_humidity * 0.22
+                    - water_deficit * 0.32
+                    - canopy_comp * 0.02,
+                0.12,
+                1.45,
             );
             let symbiosis_signal = clamp(symbionts * 6.5 * genome.symbiosis_affinity, 0.0, 1.5);
             let symbiosis_bonus = 1.0 + symbionts * 7.5 * genome.symbiosis_affinity;
@@ -1171,6 +1401,8 @@ impl TerrariumWorld {
                     canopy_comp,
                     root_comp,
                     soil_glucose,
+                    air_co2_factor,
+                    stomatal_open,
                     cell_feedback.photosynthetic_capacity,
                     cell_feedback.maintenance_cost,
                     cell_feedback.storage_exchange,
@@ -1215,20 +1447,10 @@ impl TerrariumWorld {
                 report.litter,
             );
             let hotspot_radius = root_radius_after.max(1);
-            self.substrate.add_hotspot(
-                TerrariumSpecies::Glucose,
-                x,
-                y,
-                0,
-                report.exudates * 12.0,
-            );
-            self.substrate.add_hotspot(
-                TerrariumSpecies::Ammonium,
-                x,
-                y,
-                0,
-                report.litter * 8.0,
-            );
+            self.substrate
+                .add_hotspot(TerrariumSpecies::Glucose, x, y, 0, report.exudates * 12.0);
+            self.substrate
+                .add_hotspot(TerrariumSpecies::Ammonium, x, y, 0, report.litter * 8.0);
             self.substrate.add_hotspot(
                 TerrariumSpecies::CarbonDioxide,
                 x,
@@ -1245,12 +1467,31 @@ impl TerrariumWorld {
                 hotspot_radius / 2,
                 report.litter * 0.18,
             );
+            queued_co2_fluxes.push((
+                x,
+                y,
+                canopy_z,
+                (canopy_radius.max(2) / 2).max(1),
+                report.co2_flux,
+            ));
+            queued_humidity_fluxes.push((
+                x,
+                y,
+                canopy_z,
+                (canopy_radius.max(2) / 2).max(1),
+                report.water_vapor_flux,
+            ));
 
-            if report.spawned_fruit && self.fruits.len() + queued_fruits.len() < self.config.max_fruits {
+            if report.spawned_fruit
+                && self.fruits.len() + queued_fruits.len() < self.config.max_fruits
+            {
                 queued_fruits.push((x, y, report.fruit_size, volatile_scale));
             }
-            if report.spawned_seed && self.seeds.len() + queued_seeds.len() < self.config.max_seeds {
-                let dispersal = (7.0 - seed_mass * 18.0 + updated_health * 1.5).round().max(2.0) as isize;
+            if report.spawned_seed && self.seeds.len() + queued_seeds.len() < self.config.max_seeds
+            {
+                let dispersal = (7.0 - seed_mass * 18.0 + updated_health * 1.5)
+                    .round()
+                    .max(2.0) as isize;
                 let dx = self.rng.gen_range(-dispersal..=dispersal);
                 let dy = self.rng.gen_range(-dispersal..=dispersal);
                 let sx = offset_clamped(x, dx, self.config.width);
@@ -1271,11 +1512,20 @@ impl TerrariumWorld {
                     genome: genome.mutate(&mut self.rng),
                 });
             }
-            if self.plants[idx].physiology.is_dead() || (new_total_cells < 24.0 && cell_vitality < 0.08) {
+            if self.plants[idx].physiology.is_dead()
+                || (new_total_cells < 24.0 && cell_vitality < 0.08)
+            {
                 dead_plants.push(idx);
             }
 
             let _ = (health_before, litter);
+        }
+
+        for (x, y, z, radius, flux) in queued_co2_fluxes {
+            self.exchange_atmosphere_odorant(ATMOS_CO2_IDX, x, y, z, radius, flux);
+        }
+        for (x, y, z, radius, flux) in queued_humidity_fluxes {
+            self.exchange_atmosphere_humidity(x, y, z, radius, flux);
         }
 
         dead_plants.sort_unstable();
@@ -1537,13 +1787,9 @@ impl TerrariumWorld {
         let mut consumptions = Vec::new();
         for fly in &mut self.flies {
             let body = fly.body_state();
-            let sample = self.sensory_field.sample_fly(
-                body.x,
-                body.y,
-                body.z,
-                body.heading,
-                body.is_flying,
-            );
+            let sample =
+                self.sensory_field
+                    .sample_fly(body.x, body.y, body.z, body.heading, body.is_flying);
             let report = fly.body_step_terrarium(
                 sample.odorant,
                 sample.left_light,
@@ -1618,13 +1864,13 @@ impl TerrariumWorld {
         let avg_altitude = if self.flies.is_empty() {
             0.0
         } else {
-            self.flies
-                .iter()
-                .map(|fly| fly.body_state().z)
-                .sum::<f32>()
-                / self.flies.len() as f32
+            self.flies.iter().map(|fly| fly.body_state().z).sum::<f32>() / self.flies.len() as f32
         };
-        let total_plant_cells = self.plants.iter().map(|plant| plant.cellular.total_cells()).sum::<f32>();
+        let total_plant_cells = self
+            .plants
+            .iter()
+            .map(|plant| plant.cellular.total_cells())
+            .sum::<f32>();
         let mean_cell_vitality = if self.plants.is_empty() {
             0.0
         } else {
@@ -1698,6 +1944,7 @@ impl TerrariumWorld {
             mean_soil_nitrate,
             mean_soil_redox,
             mean_soil_atp_flux: self.substrate.mean_species(TerrariumSpecies::AtpFlux),
+            mean_atmospheric_co2: mean(&self.odorants[ATMOS_CO2_IDX]),
             substrate_backend: self.substrate.backend().as_str(),
             substrate_steps: self.substrate.step_count(),
             substrate_time_ms: self.substrate.time_ms(),
@@ -1708,7 +1955,7 @@ impl TerrariumWorld {
 
 #[cfg(test)]
 mod tests {
-    use super::TerrariumWorld;
+    use super::{TerrariumTopdownView, TerrariumWorld};
 
     #[test]
     fn native_terrarium_world_runs_and_stays_bounded() {
@@ -1721,5 +1968,19 @@ mod tests {
         assert!(snapshot.humidity >= 0.0);
         assert!(snapshot.mean_soil_moisture >= 0.0);
         assert!(snapshot.total_plant_cells > 0.0);
+    }
+
+    #[test]
+    fn gas_exchange_field_changes_over_time() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        let initial = world.topdown_field(TerrariumTopdownView::GasExchange);
+        world.run_frames(120).unwrap();
+        let evolved = world.topdown_field(TerrariumTopdownView::GasExchange);
+        let max_delta = initial
+            .iter()
+            .zip(evolved.iter())
+            .map(|(before, after)| (before - after).abs())
+            .fold(0.0f32, f32::max);
+        assert!(max_delta > 1.0e-6, "gas exchange field stayed static");
     }
 }

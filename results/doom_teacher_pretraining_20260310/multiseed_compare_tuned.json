@@ -1,0 +1,52 @@
+{
+  "scenario": "health_gathering",
+  "episodes": 4,
+  "tuned": {
+    "pretrain_episodes": 2,
+    "structured_replay_scale": 0.0,
+    "teacher_motor_intensity": 60.0,
+    "teacher_hebbian_delta": 1.2
+  },
+  "results": [
+    {
+      "seed": 42,
+      "baseline_total": 8.0,
+      "tuned_total": 16.0,
+      "baseline_last_q": 0.0,
+      "tuned_last_q": 8.0,
+      "tuned_pretrain_avg_match": 0.425
+    },
+    {
+      "seed": 43,
+      "baseline_total": 16.0,
+      "tuned_total": 0.0,
+      "baseline_last_q": 0.0,
+      "tuned_last_q": 0.0,
+      "tuned_pretrain_avg_match": 0.275
+    },
+    {
+      "seed": 44,
+      "baseline_total": 0.0,
+      "tuned_total": 16.0,
+      "baseline_last_q": 0.0,
+      "tuned_last_q": 16.0,
+      "tuned_pretrain_avg_match": 0.3375
+    },
+    {
+      "seed": 45,
+      "baseline_total": 0.0,
+      "tuned_total": 0.0,
+      "baseline_last_q": 0.0,
+      "tuned_last_q": 0.0,
+      "tuned_pretrain_avg_match": 0.35625
+    },
+    {
+      "seed": 46,
+      "baseline_total": 8.0,
+      "tuned_total": 8.0,
+      "baseline_last_q": 8.0,
+      "tuned_last_q": 0.0,
+      "tuned_pretrain_avg_match": 0.38125
+    }
+  ]
+}

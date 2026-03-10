@@ -129,11 +129,12 @@ fn render_terminal(
         snapshot.fly_food_total,
     );
     println!(
-        "soil_moisture={:.3} deep={:.3} microbes={:.3} symbionts={:.3}",
+        "soil_moisture={:.3} deep={:.3} microbes={:.3} symbionts={:.3} atm_co2={:.4}",
         snapshot.mean_soil_moisture,
         snapshot.mean_deep_moisture,
         snapshot.mean_microbes,
         snapshot.mean_symbionts,
+        snapshot.mean_atmospheric_co2,
     );
     println!(
         "cells={:.1} vitality={:.3} energy={:.3} division={:.3} substrate={} steps={}",
@@ -155,7 +156,7 @@ fn render_terminal(
 
 fn print_summary(frame_idx: usize, world: &TerrariumWorld, snapshot: &TerrariumWorldSnapshot) {
     println!(
-        "frame={} time={} plants={} fruits={} seeds={} flies={} food={:.3} fly_food={:.3} light={:.2} temp={:.2} humidity={:.2} substrate={} cells={:.1}",
+        "frame={} time={} plants={} fruits={} seeds={} flies={} food={:.3} fly_food={:.3} light={:.2} temp={:.2} humidity={:.2} atm_co2={:.4} substrate={} cells={:.1}",
         frame_idx,
         world.time_label(),
         snapshot.plants,
@@ -167,6 +168,7 @@ fn print_summary(frame_idx: usize, world: &TerrariumWorld, snapshot: &TerrariumW
         snapshot.light,
         snapshot.temperature,
         snapshot.humidity,
+        snapshot.mean_atmospheric_co2,
         snapshot.substrate_backend,
         snapshot.total_plant_cells,
     );

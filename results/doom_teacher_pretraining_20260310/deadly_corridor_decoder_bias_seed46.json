@@ -1,0 +1,113 @@
+{
+  "experiment": "doom_vizdoom",
+  "scale": "small",
+  "device": "cpu",
+  "scenario": "deadly_corridor",
+  "n_runs": 1,
+  "base_seed": 46,
+  "total_time_s": 13.94,
+  "system": {
+    "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+    "python": "3.14.2",
+    "torch": "2.10.0",
+    "backend": "mps",
+    "vizdoom": true,
+    "gpu": "Apple Silicon (MPS)"
+  },
+  "runs": [
+    {
+      "seed": 46,
+      "experiments": {
+        "1": {
+          "passed": true,
+          "time": 13.942078,
+          "metric_name": "kills",
+          "first_q_avg": 0.0,
+          "last_q_avg": 0.0,
+          "total_metric": 1.0,
+          "pretrain_episodes": 4,
+          "combat_teacher_shaping_delta": 0.0,
+          "combat_attack_window_delta": 0.0,
+          "combat_attack_miss_delta": 0.0,
+          "combat_decoder_attack_bonus": 1.0,
+          "combat_decoder_attack_penalty": 1.5,
+          "pretrain_metrics": [
+            {
+              "health_gained": 0.0,
+              "kills": 1,
+              "survived": 0.0,
+              "damage_taken": 114.0,
+              "steps": 79,
+              "positive_events": 5,
+              "negative_events": 13,
+              "action_counts": [
+                0,
+                0,
+                12,
+                12,
+                11,
+                44
+              ],
+              "teacher_match_rate": 0.392405
+            },
+            {
+              "health_gained": 0.0,
+              "kills": 1,
+              "survived": 1.0,
+              "damage_taken": 90.0,
+              "steps": 80,
+              "positive_events": 6,
+              "negative_events": 4,
+              "action_counts": [
+                0,
+                0,
+                12,
+                12,
+                12,
+                44
+              ],
+              "teacher_match_rate": 0.4125
+            },
+            {
+              "health_gained": 0.0,
+              "kills": 1,
+              "survived": 0.0,
+              "damage_taken": 102.0,
+              "steps": 79,
+              "positive_events": 5,
+              "negative_events": 11,
+              "action_counts": [
+                0,
+                0,
+                13,
+                8,
+                11,
+                47
+              ],
+              "teacher_match_rate": 0.329114
+            },
+            {
+              "health_gained": 0.0,
+              "kills": 0,
+              "survived": 1.0,
+              "damage_taken": 84.0,
+              "steps": 80,
+              "positive_events": 1,
+              "negative_events": 5,
+              "action_counts": [
+                0,
+                0,
+                12,
+                20,
+                4,
+                44
+              ],
+              "teacher_match_rate": 0.3625
+            }
+          ],
+          "name": "Doom Navigation"
+        }
+      }
+    }
+  ]
+}

@@ -6,6 +6,8 @@ use crate::constants::clamp;
 pub struct PlantStepReport {
     pub exudates: f32,
     pub litter: f32,
+    pub co2_flux: f32,
+    pub water_vapor_flux: f32,
     pub spawned_fruit: bool,
     pub fruit_size: f32,
     pub spawned_seed: bool,
@@ -208,6 +210,8 @@ impl PlantOrganismSim {
         canopy_competition: f32,
         root_competition: f32,
         soil_glucose: f32,
+        air_co2_factor: f32,
+        stomatal_open: f32,
         cell_photosynthetic_capacity: f32,
         cell_maintenance_cost: f32,
         cell_storage_exchange: f32,
@@ -224,6 +228,8 @@ impl PlantOrganismSim {
         self.age_s += dt;
         self.water_buffer = clamp(self.water_buffer + water_uptake, 0.0, 3.2);
         self.nitrogen_buffer = clamp(self.nitrogen_buffer + nutrient_uptake, 0.0, 2.8);
+        let stomatal_open = stomatal_open.clamp(0.12, 1.45);
+        let air_co2_factor = air_co2_factor.clamp(0.25, 1.8);
 
         let photosynthesis = self.leaf_biomass
             * self.leaf_efficiency
@@ -233,6 +239,8 @@ impl PlantOrganismSim {
             * nutrient_factor.min(1.0)
             * symbiosis_bonus
             * root_pressure
+            * air_co2_factor
+            * stomatal_open
             * cell_photosynthetic_capacity
             * 0.0023
             * dt;
@@ -248,13 +256,20 @@ impl PlantOrganismSim {
         );
 
         let water_used = self.water_buffer.min(
-            (0.00018 + self.leaf_biomass * 0.00012) * dt / self.water_use_efficiency.max(1e-6),
+            (0.00018 + self.leaf_biomass * 0.00012) * dt * (0.72 + stomatal_open * 0.55)
+                / self.water_use_efficiency.max(1e-6),
         );
         let nitrogen_used = self
             .nitrogen_buffer
             .min((0.00010 + self.leaf_biomass * 0.00006) * dt / symbiosis_bonus.max(1.0));
         self.water_buffer -= water_used;
         self.nitrogen_buffer -= nitrogen_used;
+
+        let respiration = self.total_biomass().max(0.02)
+            * (0.000018 + temp_factor * 0.000015 + (1.0 - cell_energy_charge).max(0.0) * 0.00001)
+            * dt;
+        let co2_flux = (respiration - photosynthesis * (0.52 + 0.34 * air_co2_factor)) * 0.025;
+        let water_vapor_flux = water_used * (0.45 + stomatal_open * 0.85) * 0.12;
 
         if self.storage_carbon > 0.03 {
             let allocation = self.storage_carbon.min(
@@ -292,6 +307,8 @@ impl PlantOrganismSim {
                 + nutrient_factor.min(1.0) * 0.18
                 + clamp(self.storage_carbon, 0.0, 0.9) * 0.40
                 + clamp(symbiosis_bonus - 1.0, 0.0, 1.0) * 0.12
+                + air_co2_factor * 0.05
+                + stomatal_open * 0.03
                 + cell_vitality * 0.16
                 + cell_energy_charge * 0.08
                 - canopy_competition * 0.05,
@@ -321,6 +338,7 @@ impl PlantOrganismSim {
                 + self.health * 0.010
                 + self.fruit_count as f32 * 0.0012
                 + self.leaf_biomass * 0.003
+                + stomatal_open * 0.0015
                 + cell_division_signal * 0.003)
                 * self.volatile_scale,
             0.002,
@@ -376,6 +394,8 @@ impl PlantOrganismSim {
         PlantStepReport {
             exudates,
             litter: litter.max(0.0),
+            co2_flux,
+            water_vapor_flux,
             spawned_fruit,
             fruit_size,
             spawned_seed,
@@ -396,8 +416,8 @@ mod tests {
         for _ in 0..200 {
             let (_wd, _nd) = plant.resource_demands(20.0, 0.9, 0.2, 0.1);
             let _report = plant.step(
-                20.0, 0.02, 0.01, 0.7, 0.95, 0.9, 1.2, 0.9, 0.8, 0.1, 0.1, 0.02, 1.0, 0.001, 0.0,
-                0.0001, 0.0, 0.8, 0.7, 2.0, 0.2, 400.0, 9000.0, 15000.0,
+                20.0, 0.02, 0.01, 0.7, 0.95, 0.9, 1.2, 0.9, 0.8, 0.1, 0.1, 0.02, 1.0, 1.0, 0.001,
+                0.0, 0.0001, 0.0, 0.8, 0.7, 2.0, 0.2, 400.0, 9000.0, 15000.0, 18000.0,
             );
         }
         assert!(plant.leaf_biomass() >= 0.0);

@@ -1,4 +1,4 @@
-use font8x8::{BASIC_FONTS, UnicodeFonts};
+use font8x8::{UnicodeFonts, BASIC_FONTS};
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 use oneuro_metal::{TerrariumTopdownView, TerrariumWorld, TerrariumWorldSnapshot};
 use std::env;
@@ -123,6 +123,7 @@ fn field_color(view: TerrariumTopdownView, value: f32, daylight: f32) -> u32 {
         TerrariumTopdownView::Canopy => lerp_color((18, 44, 24), (116, 185, 90), v),
         TerrariumTopdownView::Chemistry => lerp_color((18, 24, 32), (228, 164, 56), v),
         TerrariumTopdownView::Odor => lerp_color((10, 12, 14), (220, 82, 42), v),
+        TerrariumTopdownView::GasExchange => lerp_color((8, 18, 26), (110, 214, 196), v),
     }
 }
 
@@ -259,7 +260,11 @@ fn draw_world(
         let x = plant.x * cell_px;
         let y = plant.y * cell_px;
         let canopy = plant.canopy_radius_cells().min(3) * (cell_px / 3).max(1);
-        let accent = blend(rgb(18, 64, 26), rgb(98, 182, 92), snapshot.light * 0.6 + 0.25);
+        let accent = blend(
+            rgb(18, 64, 26),
+            rgb(98, 182, 92),
+            snapshot.light * 0.6 + 0.25,
+        );
         draw_rect(
             buffer,
             screen_w,
@@ -336,12 +341,38 @@ fn draw_panel(
     let world_px_w = world.width() * cell_px;
     let screen_w = world_px_w + PANEL_W;
     let screen_h = world.height() * cell_px;
-    draw_rect(buffer, screen_w, screen_h, world_px_w, 0, PANEL_W, screen_h, rgb(20, 22, 26));
-    draw_rect(buffer, screen_w, screen_h, world_px_w, 0, 2, screen_h, rgb(40, 46, 54));
+    draw_rect(
+        buffer,
+        screen_w,
+        screen_h,
+        world_px_w,
+        0,
+        PANEL_W,
+        screen_h,
+        rgb(20, 22, 26),
+    );
+    draw_rect(
+        buffer,
+        screen_w,
+        screen_h,
+        world_px_w,
+        0,
+        2,
+        screen_h,
+        rgb(40, 46, 54),
+    );
 
     let x = world_px_w + 14;
     let mut y = 14usize;
-    draw_text(buffer, screen_w, screen_h, x, y, "NATIVE TERRARIUM", rgb(232, 236, 240));
+    draw_text(
+        buffer,
+        screen_w,
+        screen_h,
+        x,
+        y,
+        "NATIVE TERRARIUM",
+        rgb(232, 236, 240),
+    );
     y += 20;
     draw_text(
         buffer,
@@ -370,7 +401,11 @@ fn draw_panel(
         x,
         y,
         if paused { "state paused" } else { "state live" },
-        if paused { rgb(234, 186, 78) } else { rgb(112, 196, 122) },
+        if paused {
+            rgb(234, 186, 78)
+        } else {
+            rgb(112, 196, 122)
+        },
     );
     y += 12;
     draw_text(
@@ -398,15 +433,59 @@ fn draw_panel(
     }
     y += 8;
 
-    draw_text(buffer, screen_w, screen_h, x, y, "LIGHT", rgb(210, 214, 220));
+    draw_text(
+        buffer,
+        screen_w,
+        screen_h,
+        x,
+        y,
+        "LIGHT",
+        rgb(210, 214, 220),
+    );
     y += 10;
-    draw_bar(buffer, screen_w, screen_h, x, y, PANEL_W - 28, 8, snapshot.light, rgb(230, 200, 88));
+    draw_bar(
+        buffer,
+        screen_w,
+        screen_h,
+        x,
+        y,
+        PANEL_W - 28,
+        8,
+        snapshot.light,
+        rgb(230, 200, 88),
+    );
     y += 18;
-    draw_text(buffer, screen_w, screen_h, x, y, "HUMIDITY", rgb(210, 214, 220));
+    draw_text(
+        buffer,
+        screen_w,
+        screen_h,
+        x,
+        y,
+        "HUMIDITY",
+        rgb(210, 214, 220),
+    );
     y += 10;
-    draw_bar(buffer, screen_w, screen_h, x, y, PANEL_W - 28, 8, snapshot.humidity, rgb(80, 156, 228));
+    draw_bar(
+        buffer,
+        screen_w,
+        screen_h,
+        x,
+        y,
+        PANEL_W - 28,
+        8,
+        snapshot.humidity,
+        rgb(80, 156, 228),
+    );
     y += 18;
-    draw_text(buffer, screen_w, screen_h, x, y, "CELL VITALITY", rgb(210, 214, 220));
+    draw_text(
+        buffer,
+        screen_w,
+        screen_h,
+        x,
+        y,
+        "CELL VITALITY",
+        rgb(210, 214, 220),
+    );
     y += 10;
     draw_bar(
         buffer,
@@ -420,7 +499,15 @@ fn draw_panel(
         rgb(94, 188, 108),
     );
     y += 18;
-    draw_text(buffer, screen_w, screen_h, x, y, "CELL ENERGY", rgb(210, 214, 220));
+    draw_text(
+        buffer,
+        screen_w,
+        screen_h,
+        x,
+        y,
+        "CELL ENERGY",
+        rgb(210, 214, 220),
+    );
     y += 10;
     draw_bar(
         buffer,
@@ -454,7 +541,8 @@ fn draw_panel(
     for line in [
         "1 terrain  2 soil",
         "3 canopy   4 chemistry",
-        "5 odor     space pause",
+        "5 odor     6 gas",
+        "space pause",
         "right step r reset",
         "up/down fps esc quit",
     ] {
@@ -463,7 +551,12 @@ fn draw_panel(
     }
 }
 
-fn update_title(window: &mut Window, snapshot: &TerrariumWorldSnapshot, world: &TerrariumWorld, view: TerrariumTopdownView) {
+fn update_title(
+    window: &mut Window,
+    snapshot: &TerrariumWorldSnapshot,
+    world: &TerrariumWorld,
+    view: TerrariumTopdownView,
+) {
     window.set_title(&format!(
         "oNeuro Terrarium | time={} | view={} | plants={} fruits={} flies={} | food={:.2} | cells={:.0} | substrate={}",
         world.time_label(),
@@ -538,6 +631,9 @@ fn main() -> ExitCode {
         if window.is_key_pressed(Key::Key5, KeyRepeat::No) {
             view = TerrariumTopdownView::Odor;
         }
+        if window.is_key_pressed(Key::Key6, KeyRepeat::No) {
+            view = TerrariumTopdownView::GasExchange;
+        }
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
             match TerrariumWorld::demo(cli.seed, !cli.cpu_substrate) {
                 Ok(new_world) => world = new_world,
@@ -568,7 +664,15 @@ fn main() -> ExitCode {
         let snapshot = world.snapshot();
         let _ = stepped;
         draw_world(&mut buffer, &world, &snapshot, view, cli.cell_px);
-        draw_panel(&mut buffer, &world, &snapshot, view, paused, fps, cli.cell_px);
+        draw_panel(
+            &mut buffer,
+            &world,
+            &snapshot,
+            view,
+            paused,
+            fps,
+            cli.cell_px,
+        );
         update_title(&mut window, &snapshot, &world, view);
 
         if let Err(err) = window.update_with_buffer(&buffer, width, height) {
