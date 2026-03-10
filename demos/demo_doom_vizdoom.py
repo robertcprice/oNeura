@@ -808,6 +808,45 @@ class DoomRLProtocol:
         for _ in range(self.settle_steps):
             rb.step()
 
+    def deliver_kill_reward(self, rb: CUDARegionalBrain) -> None:
+        """HUGE DOPAMINE for killing an enemy!
+
+        This is the key for combat - brain learns to shoot enemies.
+        """
+        brain = rb.brain
+
+        # Credit assignment: find attack action from 2-4 steps ago
+        killer_actions = []
+        for action, steps_ago in self.action_history:
+            if 1 <= steps_ago <= 4 and action == 5:  # action 5 = attack
+                killer_actions.append(action)
+
+        if killer_actions and self.motor_populations:
+            # BIG dopamine for the kill!
+            pop = self.motor_populations[5]  # Attack
+            brain.nt_conc[pop, NT_DA] += self.da_amount * 2.0  # Double dopamine for kills!
+
+        # Brief stimulation
+        for _ in range(3):
+            rb.step()
+
+    def deliver_miss_punishment(self, rb: CUDARegionalBrain) -> None:
+        """CORTISOL for missing a shot!
+
+        Attack but didn't kill - punish that action.
+        """
+        brain = rb.brain
+
+        # Find recent attack actions
+        for action, steps_ago in self.action_history:
+            if 1 <= steps_ago <= 2 and action == 5 and self.motor_populations:
+                pop = self.motor_populations[5]  # Attack
+                brain.nt_conc[pop, NT_5HT] += self.cortisol_amount * 0.5
+                break
+
+        for _ in range(2):
+            rb.step()
+
 
 # ============================================================================
 # Hebbian Weight Nudge
@@ -949,12 +988,21 @@ def play_doom_episode(
             # Dopamine for health!
             protocol.deliver_positive(rb)
             total_positive += 1
+        elif event == "kill":
+            # HUGE dopamine for killing enemy!
+            if hasattr(protocol, 'deliver_kill_reward'):
+                protocol.deliver_kill_reward(rb)
+            total_positive += 5  # Big reward
         elif event == "damage_taken":
             # Cortisol for damage!
             protocol.deliver_negative(rb)
             total_negative += 1
-            total_negative += 1
         else:
+            # Check for attack misses: if attack action but no kill
+            if action == 5 and hasattr(protocol, 'deliver_miss_punishment'):
+                # Small chance of missing punishment
+                if np.random.random() < 0.3:
+                    protocol.deliver_miss_punishment(rb)
             # Neutral step: brief settling
             rb.run(neutral_steps)
 
