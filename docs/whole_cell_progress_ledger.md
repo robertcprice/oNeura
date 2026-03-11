@@ -348,6 +348,23 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Remaining blockers:
   - `asset-package and higher-level compatibility paths still retain some fallback semantic inference for legacy payloads that arrive without explicit compiled metadata`
 
+### 2026-03-11 - Phase 7 / Asset-Package Semantic Boundary Slice
+
+- Summary:
+  - added compatibility normalization for compiled asset packages so sparse legacy operon semantics are rebuilt from protein/complex structure and carried forward explicitly before registry compilation
+  - backfilled operon subsystem targets plus operon/complex asset class, family, and coupling flags for legacy package payloads at parse time
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `fully unannotated legacy genes and operons still require fallback semantic recovery; remaining work is narrowing or replacing those last heuristic defaults with explicit compiled semantic maps`
+
 ### 2026-03-11 - Phase 5 / Explicit Chromosome Runtime Slice
 
 - Summary:

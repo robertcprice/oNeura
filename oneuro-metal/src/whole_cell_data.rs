@@ -2167,6 +2167,112 @@ fn with_normalized_asset_pool_metadata(
     package
 }
 
+fn normalize_asset_package_semantic_metadata(package: &mut WholeCellGenomeAssetPackage) {
+    let mut operon_targets = HashMap::<String, Vec<Syn3ASubsystemPreset>>::new();
+    for protein in &package.proteins {
+        let entry = operon_targets.entry(protein.operon.clone()).or_default();
+        push_unique_subsystem_targets(entry, &protein.subsystem_targets);
+    }
+
+    for operon in &mut package.operons {
+        let mut subsystem_targets = operon.subsystem_targets.clone();
+        if let Some(extra_targets) = operon_targets.get(&operon.name) {
+            push_unique_subsystem_targets(&mut subsystem_targets, extra_targets);
+        }
+        operon.subsystem_targets = subsystem_targets;
+        let asset_class = operon.asset_class.unwrap_or_else(|| {
+            inferred_asset_class(
+                operon.process_weights,
+                &operon.subsystem_targets,
+                &operon.name,
+            )
+        });
+        operon.asset_class = Some(asset_class);
+        if operon.complex_family.is_none() {
+            operon.complex_family = Some(inferred_complex_family(
+                asset_class,
+                &operon.subsystem_targets,
+                &operon.name,
+            ));
+        }
+    }
+
+    let operon_semantics: HashMap<
+        String,
+        (
+            Vec<Syn3ASubsystemPreset>,
+            WholeCellAssetClass,
+            WholeCellAssemblyFamily,
+        ),
+    > = package
+        .operons
+        .iter()
+        .filter_map(|operon| {
+            Some((
+                operon.name.clone(),
+                (
+                    operon.subsystem_targets.clone(),
+                    operon.asset_class?,
+                    operon.complex_family?,
+                ),
+            ))
+        })
+        .collect();
+
+    for protein in &mut package.proteins {
+        if let Some((subsystem_targets, asset_class, _)) = operon_semantics.get(&protein.operon) {
+            if protein.subsystem_targets.is_empty() {
+                protein.subsystem_targets = subsystem_targets.clone();
+            }
+            if matches!(protein.asset_class, WholeCellAssetClass::Generic) {
+                protein.asset_class = *asset_class;
+            }
+        }
+    }
+
+    for complex in &mut package.complexes {
+        if let Some((subsystem_targets, asset_class, family)) =
+            operon_semantics.get(&complex.operon)
+        {
+            if complex.subsystem_targets.is_empty() {
+                complex.subsystem_targets = subsystem_targets.clone();
+            }
+            if matches!(complex.asset_class, WholeCellAssetClass::Generic) {
+                complex.asset_class = *asset_class;
+            }
+            if matches!(complex.family, WholeCellAssemblyFamily::Generic) {
+                complex.family = *family;
+            }
+            if !complex.membrane_inserted {
+                complex.membrane_inserted = matches!(
+                    complex.family,
+                    WholeCellAssemblyFamily::AtpSynthase
+                        | WholeCellAssemblyFamily::Transporter
+                        | WholeCellAssemblyFamily::MembraneEnzyme
+                        | WholeCellAssemblyFamily::Divisome
+                );
+            }
+            if !complex.chromosome_coupled {
+                complex.chromosome_coupled = matches!(
+                    complex.family,
+                    WholeCellAssemblyFamily::Replisome | WholeCellAssemblyFamily::RnaPolymerase
+                );
+            }
+            if !complex.division_coupled {
+                complex.division_coupled =
+                    matches!(complex.family, WholeCellAssemblyFamily::Divisome);
+            }
+        }
+    }
+}
+
+fn with_normalized_asset_semantic_metadata(
+    mut package: WholeCellGenomeAssetPackage,
+) -> WholeCellGenomeAssetPackage {
+    normalize_asset_package_semantic_metadata(&mut package);
+    package
+}
+
 fn pool_bulk_field(pool: &WholeCellMoleculePoolSpec) -> Option<WholeCellBulkField> {
     pool.bulk_field
 }
@@ -4648,6 +4754,7 @@ pub fn parse_genome_asset_package_json(
 ) -> Result<WholeCellGenomeAssetPackage, String> {
     serde_json::from_str(spec_json)
         .map(with_normalized_asset_pool_metadata)
+        .map(with_normalized_asset_semantic_metadata)
         .map_err(|error| format!("failed to parse genome asset package: {error}"))
 }
 
@@ -5432,6 +5539,65 @@ mod tests {
             .find(|pool| pool.species == "ribosome_shadow_buffer")
             .expect("reparsed role pool");
         assert_eq!(reparsed_pool.role, Some(WholeCellPoolRole::ActiveRibosomes));
+    }
+
+    #[test]
+    fn parse_genome_asset_package_json_backfills_legacy_operon_semantics() {
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let operon = package
+            .operons
+            .iter_mut()
+            .find(|operon| operon.name == "division_ring_operon")
+            .expect("division operon");
+        operon.subsystem_targets.clear();
+        operon.asset_class = None;
+        operon.complex_family = None;
+
+        let complex = package
+            .complexes
+            .iter_mut()
+            .find(|complex| complex.operon == "division_ring_operon")
+            .expect("division complex");
+        complex.subsystem_targets.clear();
+        complex.asset_class = WholeCellAssetClass::Generic;
+        complex.family = WholeCellAssemblyFamily::Generic;
+        complex.membrane_inserted = false;
+        complex.division_coupled = false;
+
+        let json = serde_json::to_string(&package).expect("serialize package");
+        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed_operon = reparsed
+            .operons
+            .iter()
+            .find(|operon| operon.name == "division_ring_operon")
+            .expect("reparsed operon");
+        let reparsed_complex = reparsed
+            .complexes
+            .iter()
+            .find(|complex| complex.operon == "division_ring_operon")
+            .expect("reparsed complex");
+
+        assert_eq!(
+            reparsed_operon.asset_class,
+            Some(WholeCellAssetClass::Constriction)
+        );
+        assert_eq!(
+            reparsed_operon.complex_family,
+            Some(WholeCellAssemblyFamily::Divisome)
+        );
+        assert!(reparsed_operon
+            .subsystem_targets
+            .contains(&Syn3ASubsystemPreset::FtsZSeptumRing));
+        assert_eq!(
+            reparsed_complex.asset_class,
+            WholeCellAssetClass::Constriction
+        );
+        assert_eq!(reparsed_complex.family, WholeCellAssemblyFamily::Divisome);
+        assert!(reparsed_complex
+            .subsystem_targets
+            .contains(&Syn3ASubsystemPreset::FtsZSeptumRing));
+        assert!(reparsed_complex.division_coupled);
+        assert!(reparsed_complex.membrane_inserted);
     }
 
     #[test]
