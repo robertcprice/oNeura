@@ -5,6 +5,7 @@ from .compiler import (
     available_bundles,
     compile_bundle_manifest,
     compile_named_bundle,
+    write_structured_bundle_sources,
     write_compiled_bundle,
 )
 
@@ -13,6 +14,6 @@ __all__ = [
     "available_bundles",
     "compile_bundle_manifest",
     "compile_named_bundle",
+    "write_structured_bundle_sources",
     "write_compiled_bundle",
 ]
-

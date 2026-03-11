@@ -8,6 +8,7 @@ from oneuro.whole_cell import (
     available_bundles,
     compile_bundle_manifest,
     compile_named_bundle,
+    write_structured_bundle_sources,
     write_compiled_bundle,
 )
 
@@ -145,6 +146,52 @@ def test_rust_bundle_manifest_ingestion_if_available():
     assert "\"bulk_field\"" in compiled_spec
     assert summary is not None
     assert summary["organism"] == "Mgen-minimal-demo"
+
+
+def test_structured_bundle_export_round_trips_syn3a_python(tmp_path):
+    bundle = compile_named_bundle("jcvi_syn3a")
+    written = write_structured_bundle_sources(
+        bundle.organism_spec,
+        tmp_path / "syn3a_structured",
+        source_dataset="jcvi_syn3a_structured_export",
+    )
+    round_tripped = compile_bundle_manifest(written["manifest"])
+
+    assert round_tripped.organism == bundle.organism
+    assert round_tripped.summary()["gene_count"] == bundle.summary()["gene_count"]
+    assert (
+        round_tripped.summary()["transcription_unit_count"]
+        == bundle.summary()["transcription_unit_count"]
+    )
+    assert (
+        round_tripped.summary()["protein_count"] == bundle.summary()["protein_count"]
+    )
+    assert round_tripped.organism_spec["chromosome_length_bp"] == bundle.organism_spec[
+        "chromosome_length_bp"
+    ]
+    assert "gene_semantics_json" in round_tripped.source_hashes
+    assert "transcription_unit_semantics_json" in round_tripped.source_hashes
+
+
+def test_structured_bundle_export_round_trips_syn3a_rust_if_available(tmp_path):
+    if RustWholeCellSimulator is None:
+        return
+
+    bundle = compile_named_bundle("jcvi_syn3a")
+    written = write_structured_bundle_sources(
+        bundle.organism_spec,
+        tmp_path / "syn3a_structured",
+        source_dataset="jcvi_syn3a_structured_export",
+    )
+    compiled_spec = RustWholeCellSimulator.compile_bundle_manifest_organism_spec_json(
+        written["manifest"]
+    )
+    sim = RustWholeCellSimulator.from_bundle_manifest_path(written["manifest"])
+    summary = sim.organism_summary()
+
+    assert "\"JCVI-syn3A\"" in compiled_spec
+    assert summary["organism"] == "JCVI-syn3A"
+    assert summary["gene_count"] >= bundle.summary()["gene_count"]
 
 
 def test_explicit_semantic_bundle_rejects_missing_gene_overlay(tmp_path):

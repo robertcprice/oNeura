@@ -12,6 +12,7 @@ from .assets import (
     available_bundles,
     compile_bundle_manifest,
     compile_named_bundle,
+    write_structured_bundle_sources,
     write_compiled_bundle,
 )
 from .architecture import (
@@ -85,6 +86,7 @@ __all__ = [
     "available_bundles",
     "compile_bundle_manifest",
     "compile_named_bundle",
+    "write_structured_bundle_sources",
     "syn3a_reference_program",
     "syn3a_reference_manifest",
     "syn3a_minimal_state",

@@ -121,6 +121,177 @@ def write_compiled_bundle(
     }
 
 
+def _normalize_organism_spec_semantics(spec: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(spec)
+    genes = [dict(gene) for gene in normalized.get("genes", [])]
+    for gene in genes:
+        subsystem_targets = list(gene.get("subsystem_targets", []))
+        asset_class = gene.get("asset_class") or _infer_asset_class(
+            gene.get("process_weights", {}),
+            subsystem_targets,
+            gene["gene"],
+        )
+        if not subsystem_targets:
+            subsystem_targets = _default_subsystem_targets_for_asset_class(asset_class)
+        gene["subsystem_targets"] = subsystem_targets
+        gene["asset_class"] = asset_class
+        gene["complex_family"] = gene.get("complex_family") or _infer_complex_family(
+            asset_class,
+            subsystem_targets,
+            gene["gene"],
+        )
+    gene_map = {gene["gene"]: gene for gene in genes}
+
+    transcription_units = [
+        _merge_transcription_unit_semantics(unit, {})
+        for unit in normalized.get("transcription_units", [])
+    ]
+    for unit in transcription_units:
+        subsystem_targets = list(unit.get("subsystem_targets", []))
+        for gene_name in unit.get("genes", []):
+            gene = gene_map.get(gene_name)
+            if gene is None:
+                continue
+            for target in gene.get("subsystem_targets", []):
+                if target not in subsystem_targets:
+                    subsystem_targets.append(target)
+        unit["subsystem_targets"] = subsystem_targets
+        asset_class = unit.get("asset_class") or _infer_asset_class(
+            unit.get("process_weights", {}),
+            subsystem_targets,
+            unit["name"],
+        )
+        if not subsystem_targets:
+            subsystem_targets = _default_subsystem_targets_for_asset_class(asset_class)
+            unit["subsystem_targets"] = subsystem_targets
+        unit["asset_class"] = asset_class
+        unit["complex_family"] = unit.get("complex_family") or _infer_complex_family(
+            asset_class,
+            subsystem_targets,
+            unit["name"],
+        )
+
+    normalized["genes"] = genes
+    normalized["transcription_units"] = transcription_units
+    normalized["chromosome_domains"] = _compile_chromosome_domains(normalized)
+    return normalized
+
+
+def write_structured_bundle_sources(
+    organism_spec: Dict[str, Any],
+    output_dir: Path | str,
+    *,
+    source_dataset: str | None = None,
+    require_explicit_gene_semantics: bool = True,
+    require_explicit_transcription_unit_semantics: bool = True,
+) -> Dict[str, str]:
+    """Write a structured source bundle from a compiled organism spec."""
+
+    organism_spec = _normalize_organism_spec_semantics(organism_spec)
+    out_dir = Path(output_dir).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = {
+        "organism": organism_spec["organism"],
+        "chromosome_length_bp": int(organism_spec["chromosome_length_bp"]),
+        "origin_bp": int(organism_spec["origin_bp"]),
+        "terminus_bp": int(organism_spec["terminus_bp"]),
+        "geometry": organism_spec["geometry"],
+        "composition": organism_spec["composition"],
+    }
+    gene_features = [
+        {
+            "gene": gene["gene"],
+            "start_bp": int(gene["start_bp"]),
+            "end_bp": int(gene["end_bp"]),
+            "strand": int(gene.get("strand", 1)),
+        }
+        for gene in organism_spec.get("genes", [])
+    ]
+    gene_products = [
+        {
+            "gene": gene["gene"],
+            "essential": bool(gene.get("essential", False)),
+            "basal_expression": float(gene.get("basal_expression", 1.0)),
+            "translation_cost": float(gene.get("translation_cost", 1.0)),
+            "nucleotide_cost": float(gene.get("nucleotide_cost", 1.0)),
+            "process_weights": gene.get("process_weights", {}),
+        }
+        for gene in organism_spec.get("genes", [])
+    ]
+    gene_semantics = [
+        {
+            "gene": gene["gene"],
+            "subsystem_targets": list(gene.get("subsystem_targets", [])),
+            "asset_class": gene.get("asset_class"),
+            "complex_family": gene.get("complex_family"),
+        }
+        for gene in organism_spec.get("genes", [])
+    ]
+    transcription_units = [
+        {
+            "name": unit["name"],
+            "genes": list(unit.get("genes", [])),
+            "basal_activity": float(unit.get("basal_activity", 1.0)),
+            "process_weights": unit.get("process_weights", {}),
+        }
+        for unit in organism_spec.get("transcription_units", [])
+    ]
+    transcription_unit_semantics = [
+        {
+            "name": unit["name"],
+            "subsystem_targets": list(unit.get("subsystem_targets", [])),
+            "asset_class": unit.get("asset_class"),
+            "complex_family": unit.get("complex_family"),
+        }
+        for unit in organism_spec.get("transcription_units", [])
+    ]
+    chromosome_domains = list(organism_spec.get("chromosome_domains", []))
+    pools = list(organism_spec.get("pools", []))
+    manifest = {
+        "organism": organism_spec["organism"],
+        "source_dataset": source_dataset
+        or f"{organism_spec['organism'].lower().replace(' ', '_').replace('-', '_')}_structured",
+        "require_explicit_gene_semantics": require_explicit_gene_semantics,
+        "require_explicit_transcription_unit_semantics": require_explicit_transcription_unit_semantics,
+        "metadata_json": "metadata.json",
+        "gene_features_json": "gene_features.json",
+        "gene_products_json": "gene_products.json",
+        "gene_semantics_json": "gene_semantics.json",
+        "transcription_units_json": "transcription_units.json",
+        "transcription_unit_semantics_json": "transcription_unit_semantics.json",
+        "chromosome_domains_json": "chromosome_domains.json",
+        "pools_json": "pools.json",
+    }
+
+    written = {
+        "manifest": out_dir / "manifest.json",
+        "metadata": out_dir / "metadata.json",
+        "gene_features": out_dir / "gene_features.json",
+        "gene_products": out_dir / "gene_products.json",
+        "gene_semantics": out_dir / "gene_semantics.json",
+        "transcription_units": out_dir / "transcription_units.json",
+        "transcription_unit_semantics": out_dir / "transcription_unit_semantics.json",
+        "chromosome_domains": out_dir / "chromosome_domains.json",
+        "pools": out_dir / "pools.json",
+    }
+
+    payloads = {
+        "manifest": manifest,
+        "metadata": metadata,
+        "gene_features": gene_features,
+        "gene_products": gene_products,
+        "gene_semantics": gene_semantics,
+        "transcription_units": transcription_units,
+        "transcription_unit_semantics": transcription_unit_semantics,
+        "chromosome_domains": chromosome_domains,
+        "pools": pools,
+    }
+    for key, path in written.items():
+        path.write_text(json.dumps(payloads[key], indent=2), encoding="ascii")
+    return {key: str(path) for key, path in written.items()}
+
+
 def _compile_structured_bundle(
     manifest_path: Path,
     manifest: Dict[str, Any],
@@ -716,6 +887,18 @@ def _infer_asset_class(
     ]
     ranked.sort(key=lambda item: item[1], reverse=True)
     return ranked[0][0] if ranked and ranked[0][1] > 0.0 else "generic"
+
+
+def _default_subsystem_targets_for_asset_class(asset_class: str) -> list[str]:
+    if asset_class in {"energy", "membrane", "homeostasis"}:
+        return ["AtpSynthaseMembraneBand"]
+    if asset_class in {"translation", "quality_control"}:
+        return ["RibosomePolysomeCluster"]
+    if asset_class in {"replication", "segregation"}:
+        return ["ReplisomeTrack"]
+    if asset_class == "constriction":
+        return ["FtsZSeptumRing"]
+    return []
 
 
 def _infer_complex_family(

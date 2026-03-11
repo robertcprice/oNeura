@@ -954,3 +954,23 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `strict explicit semantics now exists for structured bundles, but the richer upstream organism sources still need more direct semantic annotation coverage before the inference path can be demoted to compatibility-only status across the broader pipeline`
+
+### 2026-03-11 - Phase 7 / Monolith-to-Structured Export Slice
+
+- Summary:
+  - added a structured-bundle export path in the Python asset compiler so an existing organism spec can be decomposed into explicit source files (`metadata`, `gene_features`, `gene_products`, `gene_semantics`, `transcription_units`, `transcription_unit_semantics`, `chromosome_domains`, `pools`, and `manifest`) instead of staying trapped in the monolithic `organism_spec_json` format
+  - normalized sparse legacy organism semantics during export so partially annotated monoliths like the bundled Syn3A reference can still be migrated onto the strict structured-source workflow with explicit semantic overlays
+  - added round-trip coverage showing the bundled Syn3A organism can be exported to a strict structured bundle and then recompiled through the normal bundle compiler and Rust manifest path
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/__init__.py`
+  - `src/oneuro/whole_cell/assets/__init__.py`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the export path now makes monolithic organism specs convertible into strict structured bundles, but the upstream reference assets still need to be actually migrated and checked into source-bundle form before the monolithic path can stop being the default for richer organisms`
