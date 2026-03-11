@@ -547,3 +547,21 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `chromosome domain ownership is now compiled into the IR, but the domain chemistry itself is still derived from generic source geometry rather than richer organism-specific domain assets and domain-resolved reaction datasets`
+
+### 2026-03-11 - Phase 7 / Chromosome Domain RDME Coupling Slice
+
+- Summary:
+  - wired compiled `chromosome_domain` ownership into `locality_weights()`, so nucleoid-local species and reactions can now shape RDME drive fields through their explicit compiled domain IDs instead of only broad `NucleoidLocal` or `NucleoidTrack` scopes
+  - added a regression that assigns the same replication-driving reaction to the first versus last compiled chromosome domain and verifies that nucleotide demand shifts into the corresponding domain-weighted chemistry field
+  - kept the new coupling local to the native Rust runtime so the compiled chromosome domains now affect actual chemistry placement without introducing another hardcoded side channel
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell.rs`
+  - `cargo test -q test_rdme_drive_fields_follow_compiled_chromosome_domains --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiled chromosome domains now bias RDME chemistry fields, but bulk-delta application and broader solver ownership still need to carry domain IDs through the remaining localized pool and reaction execution paths`
