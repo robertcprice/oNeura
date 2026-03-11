@@ -667,3 +667,22 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `runtime seeding now honors explicit pool identity, but several later execution paths still infer chemistry from pool/species names when compiled field metadata is absent or not yet threaded all the way through the runtime`
+
+### 2026-03-11 - Phase 7 / Runtime Pool Field Normalization Slice
+
+- Summary:
+  - moved missing pool `bulk_field` recovery out of the per-step pool anchoring path and into runtime-species normalization, so compiled registry metadata now backfills pool identity once during initialization, restore, and species sync instead of forcing the hot loop to parse pool names every step
+  - reduced the pool anchor logic to metadata-driven concentration anchoring plus basal fallback, with legacy name inference retained only inside the one-time normalization helper for older or manually constructed runtime species that still lack explicit fields
+  - added a regression that injects a pool runtime species with an opaque name but a matching registry entry and verifies that the runtime backfills `bulk_field` from compiled registry metadata
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_runtime_pool_bulk_fields_backfill_from_registry_metadata --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `pool anchoring no longer parses names in the hot loop, but later runtime paths still contain species-name-to-field fallbacks for manually injected or partially compiled chemistry outside the normalized pool-state path`

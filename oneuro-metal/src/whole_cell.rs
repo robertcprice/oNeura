@@ -2740,27 +2740,62 @@ impl WholeCellSimulator {
         }
     }
 
+    fn infer_bulk_field_from_name(name: &str) -> Option<WholeCellBulkField> {
+        let lowered = name.trim().to_lowercase();
+        if lowered.contains("amino") {
+            Some(WholeCellBulkField::AminoAcids)
+        } else if lowered.contains("nucleotide") {
+            Some(WholeCellBulkField::Nucleotides)
+        } else if lowered.contains("membrane") {
+            Some(WholeCellBulkField::MembranePrecursors)
+        } else if lowered == "atp" || lowered.contains("pool_") && lowered.contains("atp") {
+            Some(WholeCellBulkField::ATP)
+        } else if lowered == "adp" || lowered.contains("pool_") && lowered.contains("adp") {
+            Some(WholeCellBulkField::ADP)
+        } else if lowered.contains("glucose") {
+            Some(WholeCellBulkField::Glucose)
+        } else if lowered.contains("oxygen") {
+            Some(WholeCellBulkField::Oxygen)
+        } else {
+            None
+        }
+    }
+
     fn infer_bulk_field_for_pool(pool: &WholeCellMoleculePoolSpec) -> Option<WholeCellBulkField> {
-        pool.bulk_field.or_else(|| {
-            let name = pool.species.trim().to_lowercase();
-            if name.contains("amino") {
-                Some(WholeCellBulkField::AminoAcids)
-            } else if name.contains("nucleotide") {
-                Some(WholeCellBulkField::Nucleotides)
-            } else if name.contains("membrane") {
-                Some(WholeCellBulkField::MembranePrecursors)
-            } else if name == "atp" {
-                Some(WholeCellBulkField::ATP)
-            } else if name == "adp" {
-                Some(WholeCellBulkField::ADP)
-            } else if name.contains("glucose") {
-                Some(WholeCellBulkField::Glucose)
-            } else if name.contains("oxygen") {
-                Some(WholeCellBulkField::Oxygen)
-            } else {
-                None
+        pool.bulk_field
+            .or_else(|| Self::infer_bulk_field_from_name(&pool.species))
+    }
+
+    fn normalize_runtime_species_bulk_fields(&mut self) {
+        if self.organism_species.is_empty() {
+            return;
+        }
+        let registry_bulk_fields = self
+            .organism_process_registry
+            .as_ref()
+            .map(|registry| {
+                registry
+                    .species
+                    .iter()
+                    .map(|species| (species.id.clone(), species.bulk_field))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        for species in &mut self.organism_species {
+            if species.bulk_field.is_some() || species.species_class != WholeCellSpeciesClass::Pool
+            {
+                continue;
             }
-        })
+            if let Some(bulk_field) = registry_bulk_fields
+                .get(&species.id)
+                .copied()
+                .flatten()
+                .or_else(|| Self::infer_bulk_field_from_name(&species.id))
+                .or_else(|| Self::infer_bulk_field_from_name(&species.name))
+            {
+                species.bulk_field = Some(bulk_field);
+            }
+        }
     }
 
     fn apply_pool_seed(&mut self, pool: &WholeCellMoleculePoolSpec) {
@@ -3759,6 +3794,7 @@ impl WholeCellSimulator {
             return;
         };
         self.organism_species = initialize_runtime_species_state(&registry);
+        self.normalize_runtime_species_bulk_fields();
         self.organism_reactions = initialize_runtime_reaction_state(&registry);
         self.sync_runtime_process_species(0.0);
         self.update_runtime_process_reactions(0.0, 0.0, 0.0);
@@ -4422,7 +4458,6 @@ impl WholeCellSimulator {
         bulk_field: Option<WholeCellBulkField>,
         spatial_scope: WholeCellSpatialScope,
         patch_domain: WholeCellPatchDomain,
-        species_id: &str,
         basal_abundance: f32,
         cache: &WholeCellSpatialCouplingCache,
     ) -> f32 {
@@ -4436,36 +4471,7 @@ impl WholeCellSimulator {
                 )
                 .max(0.0)
         } else {
-            let lowered = species_id.to_ascii_lowercase();
-            if lowered.contains("atp") {
-                56.0 * cache.bulk_concentrations[0][Self::bulk_field_index(WholeCellBulkField::ATP)]
-                    .max(0.0)
-            } else if lowered.contains("adp") {
-                48.0 * cache.bulk_concentrations[0][Self::bulk_field_index(WholeCellBulkField::ADP)]
-                    .max(0.0)
-            } else if lowered.contains("glucose") {
-                40.0 * cache.bulk_concentrations[0]
-                    [Self::bulk_field_index(WholeCellBulkField::Glucose)]
-                .max(0.0)
-            } else if lowered.contains("oxygen") {
-                36.0 * cache.bulk_concentrations[0]
-                    [Self::bulk_field_index(WholeCellBulkField::Oxygen)]
-                .max(0.0)
-            } else if lowered.contains("amino") {
-                64.0 * cache.bulk_concentrations[0]
-                    [Self::bulk_field_index(WholeCellBulkField::AminoAcids)]
-                .max(0.0)
-            } else if lowered.contains("nucleotide") {
-                64.0 * cache.bulk_concentrations[0]
-                    [Self::bulk_field_index(WholeCellBulkField::Nucleotides)]
-                .max(0.0)
-            } else if lowered.contains("membrane") || lowered.contains("lipid") {
-                52.0 * cache.bulk_concentrations[0]
-                    [Self::bulk_field_index(WholeCellBulkField::MembranePrecursors)]
-                .max(0.0)
-            } else {
-                basal_abundance.max(0.0)
-            }
+            basal_abundance.max(0.0)
         };
         anchor.clamp(0.0, 4096.0)
     }
@@ -5206,6 +5212,7 @@ impl WholeCellSimulator {
             }
             return;
         }
+        self.normalize_runtime_species_bulk_fields();
         let Some(assets) = self.organism_assets.clone() else {
             self.organism_species.clear();
             return;
@@ -5252,7 +5259,6 @@ impl WholeCellSimulator {
                     species.bulk_field,
                     species.spatial_scope,
                     species.patch_domain,
-                    &species.id,
                     species.basal_abundance,
                     &spatial_cache,
                 ),
@@ -7973,6 +7979,7 @@ impl WholeCellSimulator {
         self.chromosome_state = saved.chromosome_state.clone();
         self.membrane_division_state = saved.membrane_division_state.clone();
         self.organism_species = saved.organism_species.clone();
+        self.normalize_runtime_species_bulk_fields();
         self.organism_reactions = saved.organism_reactions.clone();
         self.complex_assembly = saved.complex_assembly;
         self.named_complexes = saved.named_complexes.clone();
@@ -11257,6 +11264,57 @@ mod tests {
         assert!(sim.glucose_mm > baseline_glucose);
         assert!(sim.oxygen_mm > baseline_oxygen);
         assert!(sim.adp_mm > baseline_adp);
+    }
+
+    #[test]
+    fn test_runtime_pool_bulk_fields_backfill_from_registry_metadata() {
+        let mut sim = WholeCellSimulator::new(WholeCellConfig::default());
+        sim.organism_process_registry = Some(WholeCellGenomeProcessRegistry {
+            organism: "test".to_string(),
+            chromosome_domains: Vec::new(),
+            species: vec![crate::whole_cell_data::WholeCellSpeciesSpec {
+                id: "custom_energy_buffer".to_string(),
+                name: "custom energy buffer".to_string(),
+                species_class: WholeCellSpeciesClass::Pool,
+                compartment: "cytosol".to_string(),
+                asset_class: WholeCellAssetClass::Energy,
+                basal_abundance: 12.0,
+                bulk_field: Some(WholeCellBulkField::ATP),
+                operon: None,
+                parent_complex: None,
+                subsystem_targets: Vec::new(),
+                spatial_scope: WholeCellSpatialScope::WellMixed,
+                patch_domain: WholeCellPatchDomain::Distributed,
+                chromosome_domain: None,
+            }],
+            reactions: Vec::new(),
+        });
+        sim.organism_species = vec![WholeCellSpeciesRuntimeState {
+            id: "custom_energy_buffer".to_string(),
+            name: "opaque pool".to_string(),
+            species_class: WholeCellSpeciesClass::Pool,
+            compartment: "cytosol".to_string(),
+            asset_class: WholeCellAssetClass::Energy,
+            basal_abundance: 12.0,
+            bulk_field: None,
+            operon: None,
+            parent_complex: None,
+            subsystem_targets: Vec::new(),
+            spatial_scope: WholeCellSpatialScope::WellMixed,
+            patch_domain: WholeCellPatchDomain::Distributed,
+            chromosome_domain: None,
+            count: 12.0,
+            anchor_count: 12.0,
+            synthesis_rate: 0.0,
+            turnover_rate: 0.0,
+        }];
+
+        sim.normalize_runtime_species_bulk_fields();
+
+        assert_eq!(
+            sim.organism_species[0].bulk_field,
+            Some(WholeCellBulkField::ATP)
+        );
     }
 
     #[test]
