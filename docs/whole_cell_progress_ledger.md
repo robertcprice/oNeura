@@ -331,6 +331,23 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Remaining blockers:
   - `some fallback family and asset inference still remains for completely unannotated legacy genes and bundles; the next slice is either explicit source coverage expansion or replacing those last heuristics with compiled semantic maps`
 
+### 2026-03-11 - Phase 7 / Organism Semantic Boundary Normalization Slice
+
+- Summary:
+  - moved legacy gene and transcription-unit semantic inference to organism parse/ingress normalization so asset class, complex family, and aggregated subsystem targets are made explicit before later compilation stages
+  - added a regression proving a sparse legacy division operon/gene spec reparses into explicit semantics at the boundary instead of relying on later compile-time name heuristics
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `asset-package and higher-level compatibility paths still retain some fallback semantic inference for legacy payloads that arrive without explicit compiled metadata`
+
 ### 2026-03-11 - Phase 5 / Explicit Chromosome Runtime Slice
 
 - Summary:

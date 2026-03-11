@@ -2115,6 +2115,51 @@ fn with_normalized_pool_metadata(mut spec: WholeCellOrganismSpec) -> WholeCellOr
     spec
 }
 
+fn normalize_gene_semantic_metadata(genes: &mut [WholeCellGenomeFeature]) {
+    for gene in genes {
+        let asset_class = gene.asset_class.unwrap_or_else(|| {
+            inferred_asset_class(gene.process_weights, &gene.subsystem_targets, &gene.gene)
+        });
+        gene.asset_class = Some(asset_class);
+        if gene.complex_family.is_none() {
+            gene.complex_family = Some(inferred_complex_family(
+                asset_class,
+                &gene.subsystem_targets,
+                &gene.gene,
+            ));
+        }
+    }
+}
+
+fn normalize_transcription_unit_semantic_metadata(spec: &mut WholeCellOrganismSpec) {
+    for unit in &mut spec.transcription_units {
+        let mut subsystem_targets = unit.subsystem_targets.clone();
+        for gene_name in &unit.genes {
+            if let Some(gene) = spec.genes.iter().find(|gene| gene.gene == *gene_name) {
+                push_unique_subsystem_targets(&mut subsystem_targets, &gene.subsystem_targets);
+            }
+        }
+        unit.subsystem_targets = subsystem_targets;
+        let asset_class = unit.asset_class.unwrap_or_else(|| {
+            inferred_asset_class(unit.process_weights, &unit.subsystem_targets, &unit.name)
+        });
+        unit.asset_class = Some(asset_class);
+        if unit.complex_family.is_none() {
+            unit.complex_family = Some(inferred_complex_family(
+                asset_class,
+                &unit.subsystem_targets,
+                &unit.name,
+            ));
+        }
+    }
+}
+
+fn with_normalized_semantic_metadata(mut spec: WholeCellOrganismSpec) -> WholeCellOrganismSpec {
+    normalize_gene_semantic_metadata(&mut spec.genes);
+    normalize_transcription_unit_semantic_metadata(&mut spec);
+    spec
+}
+
 fn with_normalized_asset_pool_metadata(
     mut package: WholeCellGenomeAssetPackage,
 ) -> WholeCellGenomeAssetPackage {
@@ -2810,7 +2855,9 @@ fn gene_complex_family(
 }
 
 pub fn compile_genome_asset_package(spec: &WholeCellOrganismSpec) -> WholeCellGenomeAssetPackage {
-    let spec = with_compiled_chromosome_domains(with_normalized_pool_metadata(spec.clone()));
+    let spec = with_compiled_chromosome_domains(with_normalized_semantic_metadata(
+        with_normalized_pool_metadata(spec.clone()),
+    ));
     let mut gene_to_operon = HashMap::<String, String>::new();
     let mut operons = Vec::new();
 
@@ -4247,7 +4294,9 @@ fn build_program_spec_from_organism(
     organism: WholeCellOrganismSpec,
     source_dataset: Option<String>,
 ) -> Result<WholeCellProgramSpec, String> {
-    let organism = with_compiled_chromosome_domains(with_normalized_pool_metadata(organism));
+    let organism = with_compiled_chromosome_domains(with_normalized_semantic_metadata(
+        with_normalized_pool_metadata(organism),
+    ));
     let assets = compile_genome_asset_package(&organism);
     let process_registry = compile_genome_process_registry(&assets);
     let mut spec = WholeCellProgramSpec {
@@ -4451,7 +4500,7 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
     };
 
     Ok(with_compiled_chromosome_domains(
-        with_normalized_pool_metadata(WholeCellOrganismSpec {
+        with_normalized_semantic_metadata(with_normalized_pool_metadata(WholeCellOrganismSpec {
             organism: manifest
                 .organism
                 .clone()
@@ -4465,7 +4514,7 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
             pools,
             genes,
             transcription_units,
-        }),
+        })),
     ))
 }
 
@@ -4589,6 +4638,7 @@ pub fn bundled_syn3a_program_spec_json() -> &'static str {
 pub fn parse_organism_spec_json(spec_json: &str) -> Result<WholeCellOrganismSpec, String> {
     serde_json::from_str::<WholeCellOrganismSpec>(spec_json)
         .map(with_normalized_pool_metadata)
+        .map(with_normalized_semantic_metadata)
         .map(with_compiled_chromosome_domains)
         .map_err(|error| format!("failed to parse organism spec: {error}"))
 }
@@ -5021,6 +5071,60 @@ mod tests {
         assert_eq!(protein.asset_class, WholeCellAssetClass::QualityControl);
         assert_eq!(complex.asset_class, WholeCellAssetClass::QualityControl);
         assert_eq!(complex.family, WholeCellAssemblyFamily::ChaperoneClient);
+    }
+
+    #[test]
+    fn parse_organism_spec_json_backfills_legacy_semantic_metadata_at_boundary() {
+        let mut organism = bundled_syn3a_organism_spec().expect("bundled organism");
+        let division_gene = organism
+            .genes
+            .iter_mut()
+            .find(|gene| gene.gene == "ftsz_ring_polymerization_core")
+            .expect("division gene");
+        division_gene.asset_class = None;
+        division_gene.complex_family = None;
+
+        let division_unit = organism
+            .transcription_units
+            .iter_mut()
+            .find(|unit| unit.name == "division_ring_operon")
+            .expect("division unit");
+        division_unit.subsystem_targets.clear();
+        division_unit.asset_class = None;
+        division_unit.complex_family = None;
+
+        let json = serde_json::to_string(&organism).expect("serialize organism");
+        let reparsed = parse_organism_spec_json(&json).expect("parse organism");
+        let reparsed_gene = reparsed
+            .genes
+            .iter()
+            .find(|gene| gene.gene == "ftsz_ring_polymerization_core")
+            .expect("reparsed gene");
+        let reparsed_unit = reparsed
+            .transcription_units
+            .iter()
+            .find(|unit| unit.name == "division_ring_operon")
+            .expect("reparsed unit");
+
+        assert_eq!(
+            reparsed_gene.asset_class,
+            Some(WholeCellAssetClass::Constriction)
+        );
+        assert_eq!(
+            reparsed_gene.complex_family,
+            Some(WholeCellAssemblyFamily::Divisome)
+        );
+        assert_eq!(
+            reparsed_unit.asset_class,
+            Some(WholeCellAssetClass::Constriction)
+        );
+        assert_eq!(
+            reparsed_unit.complex_family,
+            Some(WholeCellAssemblyFamily::Divisome)
+        );
+        assert!(reparsed_unit
+            .subsystem_targets
+            .contains(&Syn3ASubsystemPreset::FtsZSeptumRing));
     }
 
     #[test]
