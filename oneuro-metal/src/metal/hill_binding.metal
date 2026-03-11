@@ -48,6 +48,9 @@ constant uint NT_ACETYLCHOLINE = 3;
 constant uint NT_GABA          = 4;
 constant uint NT_GLUTAMATE     = 5;
 constant uint NT_COUNT         = 6;
+constant float REST_ACH        = 50.0f;
+constant float REST_GABA       = 200.0f;
+constant float REST_GLU        = 500.0f;
 
 // ---------------------------------------------------------------------------
 // Params
@@ -83,9 +86,9 @@ kernel void hill_binding(
     if (alive[gid] == 0) return;
 
     uint base = gid * NT_COUNT;
-    float glutamate = nt_conc[base + NT_GLUTAMATE];
-    float gaba      = nt_conc[base + NT_GABA];
-    float ach       = nt_conc[base + NT_ACETYLCHOLINE];
+    float glutamate = max(nt_conc[base + NT_GLUTAMATE] - REST_GLU, 0.0f);
+    float gaba      = max(nt_conc[base + NT_GABA] - REST_GABA, 0.0f);
+    float ach       = max(nt_conc[base + NT_ACETYLCHOLINE] - REST_ACH, 0.0f);
 
     // Compute receptor open fractions via Hill equation
     ampa_open[gid]  = hill(glutamate, AMPA_EC50,  AMPA_HILL);

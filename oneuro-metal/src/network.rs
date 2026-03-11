@@ -87,6 +87,10 @@ pub struct MolecularBrain {
     pub time: f32,
     /// Total simulation steps executed.
     pub step_count: u64,
+    /// Base maximal conductances for the eight channel families (mS/cm²).
+    pub channel_g_max: [f32; IonChannelType::COUNT],
+    /// Leak reversal potential used for the passive potassium-like channel (mV).
+    pub kleak_reversal_mv: f32,
     /// Effective membrane capacitance used by voltage integration (µF/cm²).
     pub membrane_capacitance_uf: f32,
     /// Spike threshold for threshold-crossing detection (mV).
@@ -165,6 +169,17 @@ impl MolecularBrain {
             dt: DEFAULT_DT,
             time: 0.0,
             step_count: 0,
+            channel_g_max: [
+                NAV_G_MAX,
+                KV_G_MAX,
+                KLEAK_G_MAX,
+                CAV_G_MAX,
+                NMDA_G_MAX,
+                AMPA_G_MAX,
+                GABAA_G_MAX,
+                NACHR_G_MAX,
+            ],
+            kleak_reversal_mv: KLEAK_E_REV,
             membrane_capacitance_uf: DEFAULT_C_M,
             spike_threshold_mv: AP_THRESHOLD,
             refractory_period_ms: REFRACTORY_PERIOD,
@@ -368,6 +383,8 @@ impl MolecularBrain {
                 gpu_neurons,
                 dt,
                 global_bias,
+                &self.channel_g_max,
+                self.kleak_reversal_mv,
                 self.membrane_capacitance_uf,
                 self.spike_threshold_mv,
                 self.refractory_period_ms,
@@ -408,6 +425,8 @@ impl MolecularBrain {
             &mut self.neurons,
             dt,
             global_bias,
+            &self.channel_g_max,
+            self.kleak_reversal_mv,
             self.membrane_capacitance_uf,
             self.spike_threshold_mv,
             self.refractory_period_ms,
@@ -549,6 +568,8 @@ impl MolecularBrain {
                     gpu_neurons,
                     self.dt,
                     0.0,
+                    &self.channel_g_max,
+                    self.kleak_reversal_mv,
                     self.membrane_capacitance_uf,
                     self.spike_threshold_mv,
                     self.refractory_period_ms,

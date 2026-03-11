@@ -38,6 +38,8 @@ struct Params {
     uint  neuron_count;
     float dt;
     float global_bias;
+    float channel_g_max[8];
+    float kleak_reversal_mv;
     float membrane_capacitance_uf;
     float spike_threshold_mv;
     float refractory_period_ms;
@@ -100,18 +102,18 @@ kernel void membrane_euler(
     float m2h_cav = m_cav * m_cav * h_cav;                   // Ca_v: m^2 h
 
     // --- Channel currents ---
-    float I_Nav   = G_NAV   * cs_nav   * m3h_nav          * (V - E_NA);
-    float I_Kv    = G_KV    * cs_kv    * n4_kv             * (V - E_K);
-    float I_Kleak = G_KLEAK * cs_kleak                     * (V - E_K);
-    float I_Cav   = G_CAV   * cs_cav   * m2h_cav          * (V - E_CA);
+    float I_Nav   = params.channel_g_max[0] * cs_nav   * m3h_nav * (V - E_NA);
+    float I_Kv    = params.channel_g_max[1] * cs_kv    * n4_kv   * (V - E_K);
+    float I_Kleak = params.channel_g_max[2] * cs_kleak           * (V - params.kleak_reversal_mv);
+    float I_Cav   = params.channel_g_max[3] * cs_cav   * m2h_cav * (V - E_CA);
 
     // Mg^2+ block for NMDA
     float mg_block = 1.0f / (1.0f + 1.0f * exp(-0.062f * V) / 3.57f);
 
-    float I_AMPA  = G_AMPA  * cs_ampa  * ampa_open[gid]                * (V - E_EXC);
-    float I_NMDA  = G_NMDA  * cs_nmda  * nmda_open[gid] * mg_block     * (V - E_EXC);
-    float I_GabaA = G_GABAA * cs_gabaa * gabaa_open[gid]               * (V - E_INH);
-    float I_nAChR = G_NACHR * cs_nachr * nachr_open[gid]               * (V - E_EXC);
+    float I_AMPA  = params.channel_g_max[5] * cs_ampa  * ampa_open[gid]            * (V - E_EXC);
+    float I_NMDA  = params.channel_g_max[4] * cs_nmda  * nmda_open[gid] * mg_block * (V - E_EXC);
+    float I_GabaA = params.channel_g_max[6] * cs_gabaa * gabaa_open[gid]           * (V - E_INH);
+    float I_nAChR = params.channel_g_max[7] * cs_nachr * nachr_open[gid]           * (V - E_EXC);
 
     // --- Total current ---
     float I_total = I_Nav + I_Kv + I_Kleak + I_Cav

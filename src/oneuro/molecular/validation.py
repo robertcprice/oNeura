@@ -232,6 +232,12 @@ class _ValidationBrain:
     def set_refractory_period(self, refractory_period_ms: float) -> None:
         """Optionally tune refractory period."""
 
+    def set_channel_g_max(self, channel_idx: int, g_max: float) -> None:
+        """Optionally tune a base channel-family maximal conductance."""
+
+    def set_kleak_reversal(self, reversal_mv: float) -> None:
+        """Optionally tune the passive leak reversal potential."""
+
 
 class _TorchValidationBrain(_ValidationBrain):
     """Validation wrapper over the PyTorch backend."""
@@ -403,6 +409,14 @@ class _MetalValidationBrain(_ValidationBrain):
         if hasattr(self.inner, "set_refractory_period"):
             self.inner.set_refractory_period(float(refractory_period_ms))
 
+    def set_channel_g_max(self, channel_idx: int, g_max: float) -> None:
+        if hasattr(self.inner, "set_channel_g_max"):
+            self.inner.set_channel_g_max(int(channel_idx), float(g_max))
+
+    def set_kleak_reversal(self, reversal_mv: float) -> None:
+        if hasattr(self.inner, "set_kleak_reversal"):
+            self.inner.set_kleak_reversal(float(reversal_mv))
+
 
 def _resolve_validation_backend(device: str) -> str:
     """Choose the validation backend for a requested device string."""
@@ -452,9 +466,12 @@ def _apply_cortical_validation_profile(brain: _ValidationBrain) -> None:
     """Bias the assay toward a cortical regular-spiking regime."""
     if not brain.is_metal:
         return
-    brain.set_membrane_capacitance(6.0)
+    brain.set_membrane_capacitance(7.0)
     brain.set_spike_threshold(-42.0)
     brain.set_refractory_period(2.5)
+    brain.set_kleak_reversal(-65.0)
+    brain.set_channel_g_max(0, 90.0)  # Na_v
+    brain.set_channel_g_max(1, 19.0)  # K_v
 
 
 def _probe_backend(device: str) -> ValidationBackendInfo:

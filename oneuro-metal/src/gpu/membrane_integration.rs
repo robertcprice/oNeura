@@ -22,6 +22,8 @@ struct MembraneParams {
     neuron_count: u32,
     dt: f32,
     global_bias: f32,
+    channel_g_max: [f32; 8],
+    kleak_reversal_mv: f32,
     membrane_capacitance_uf: f32,
     spike_threshold_mv: f32,
     refractory_period_ms: f32,
@@ -43,6 +45,8 @@ pub fn dispatch_membrane_integration(
     neurons: &MetalNeuronState,
     dt: f32,
     global_bias: f32,
+    channel_g_max: &[f32; 8],
+    kleak_reversal_mv: f32,
     membrane_capacitance_uf: f32,
     spike_threshold_mv: f32,
     refractory_period_ms: f32,
@@ -54,6 +58,8 @@ pub fn dispatch_membrane_integration(
         neurons,
         dt,
         global_bias,
+        channel_g_max,
+        kleak_reversal_mv,
         membrane_capacitance_uf,
         spike_threshold_mv,
         refractory_period_ms,
@@ -68,6 +74,8 @@ pub fn encode_membrane_integration(
     neurons: &MetalNeuronState,
     dt: f32,
     global_bias: f32,
+    channel_g_max: &[f32; 8],
+    kleak_reversal_mv: f32,
     membrane_capacitance_uf: f32,
     spike_threshold_mv: f32,
     refractory_period_ms: f32,
@@ -81,6 +89,8 @@ pub fn encode_membrane_integration(
         neuron_count: neurons.count as u32,
         dt,
         global_bias,
+        channel_g_max: *channel_g_max,
+        kleak_reversal_mv,
         membrane_capacitance_uf,
         spike_threshold_mv,
         refractory_period_ms,
@@ -128,6 +138,8 @@ pub fn dispatch_membrane_integration(
     neurons: &mut NeuronArrays,
     dt: f32,
     global_bias: f32,
+    channel_g_max: &[f32; 8],
+    kleak_reversal_mv: f32,
     membrane_capacitance_uf: f32,
     spike_threshold_mv: f32,
     refractory_period_ms: f32,
@@ -136,6 +148,8 @@ pub fn dispatch_membrane_integration(
         neurons,
         dt,
         global_bias,
+        channel_g_max,
+        kleak_reversal_mv,
         membrane_capacitance_uf,
         spike_threshold_mv,
         refractory_period_ms,
@@ -150,12 +164,12 @@ pub fn cpu_membrane_integration(
     neurons: &mut NeuronArrays,
     dt: f32,
     global_bias: f32,
+    channel_g_max: &[f32; 8],
+    kleak_reversal_mv: f32,
     membrane_capacitance_uf: f32,
     spike_threshold_mv: f32,
     refractory_period_ms: f32,
 ) {
-    use crate::constants::*;
-
     for i in 0..neurons.count {
         if neurons.alive[i] == 0 {
             continue;
@@ -173,19 +187,31 @@ pub fn cpu_membrane_integration(
         let m2h_ca = neurons.cav_m[i].powi(2) * neurons.cav_h[i]; // Ca_v: m^2 h
 
         // Voltage-gated channel currents
-        let i_nav = NAV_G_MAX * cs[0] * m3h * (v - NAV_E_REV);
-        let i_kv = KV_G_MAX * cs[1] * n4 * (v - KV_E_REV);
-        let i_kleak = KLEAK_G_MAX * cs[2] * (v - KLEAK_E_REV);
-        let i_cav = CAV_G_MAX * cs[3] * m2h_ca * (v - CAV_E_REV);
+        let i_nav = channel_g_max[0] * cs[0] * m3h * (v - crate::constants::NAV_E_REV);
+        let i_kv = channel_g_max[1] * cs[1] * n4 * (v - crate::constants::KV_E_REV);
+        let i_kleak = channel_g_max[2] * cs[2] * (v - kleak_reversal_mv);
+        let i_cav = channel_g_max[3] * cs[3] * m2h_ca * (v - crate::constants::CAV_E_REV);
 
         // Mg2+ block for NMDA
-        let mg_block = 1.0 / (1.0 + NMDA_MG_CONC_MM * (-0.062 * v).exp() / 3.57);
+        let mg_block =
+            1.0 / (1.0 + crate::constants::NMDA_MG_CONC_MM * (-0.062 * v).exp() / 3.57);
 
         // Ligand-gated channel currents
-        let i_ampa = AMPA_G_MAX * cs[5] * neurons.ampa_open[i] * (v - AMPA_E_REV);
-        let i_nmda = NMDA_G_MAX * cs[4] * neurons.nmda_open[i] * mg_block * (v - NMDA_E_REV);
-        let i_gabaa = GABAA_G_MAX * cs[6] * neurons.gabaa_open[i] * (v - GABAA_E_REV);
-        let i_nachr = NACHR_G_MAX * cs[7] * neurons.nachr_open[i] * (v - NACHR_E_REV);
+        let i_ampa =
+            channel_g_max[5] * cs[5] * neurons.ampa_open[i] * (v - crate::constants::AMPA_E_REV);
+        let i_nmda = channel_g_max[4]
+            * cs[4]
+            * neurons.nmda_open[i]
+            * mg_block
+            * (v - crate::constants::NMDA_E_REV);
+        let i_gabaa = channel_g_max[6]
+            * cs[6]
+            * neurons.gabaa_open[i]
+            * (v - crate::constants::GABAA_E_REV);
+        let i_nachr = channel_g_max[7]
+            * cs[7]
+            * neurons.nachr_open[i]
+            * (v - crate::constants::NACHR_E_REV);
 
         // Total ionic current
         let i_total = i_nav + i_kv + i_kleak + i_cav + i_ampa + i_nmda + i_gabaa + i_nachr;
@@ -198,7 +224,8 @@ pub fn cpu_membrane_integration(
 
         // Euler integration: dV/dt = (-I_ion + I_ext) / C_m
         let dv = (-i_total + i_ext) / membrane_capacitance_uf.max(0.1) * dt;
-        let v_new = (v + dv).clamp(VOLTAGE_MIN, VOLTAGE_MAX);
+        let v_new =
+            (v + dv).clamp(crate::constants::VOLTAGE_MIN, crate::constants::VOLTAGE_MAX);
 
         // Refractory timer countdown
         let mut ref_timer = neurons.refractory_timer[i] - dt;

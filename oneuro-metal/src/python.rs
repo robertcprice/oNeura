@@ -1060,6 +1060,29 @@ impl PyMolecularBrain {
         Ok(())
     }
 
+    /// Override the base maximal conductance for a channel family (mS/cm²).
+    fn set_channel_g_max(&mut self, channel: usize, g_max: f32) -> PyResult<()> {
+        if channel >= IonChannelType::COUNT {
+            return Err(PyValueError::new_err("Channel index out of range (0-7)"));
+        }
+        if !g_max.is_finite() || g_max < 0.0 {
+            return Err(PyValueError::new_err(
+                "channel g_max must be a finite nonnegative value",
+            ));
+        }
+        self.inner.channel_g_max[channel] = g_max;
+        Ok(())
+    }
+
+    /// Set the reversal potential for the passive leak channel (mV).
+    fn set_kleak_reversal(&mut self, reversal_mv: f32) -> PyResult<()> {
+        if !reversal_mv.is_finite() {
+            return Err(PyValueError::new_err("leak reversal must be finite"));
+        }
+        self.inner.kleak_reversal_mv = reversal_mv;
+        Ok(())
+    }
+
     /// Force an explicit host shadow sync from the resident GPU buffers.
     fn sync_shadow_from_gpu(&mut self) {
         self.inner.sync_shadow_from_gpu();

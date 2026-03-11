@@ -96,6 +96,9 @@ pub fn cpu_receptor_binding(neurons: &mut NeuronArrays) {
     const GABAA_HILL: f32 = 2.0;
     const NACHR_EC50: f32 = 30.0;
     const NACHR_HILL: f32 = 1.8;
+    const REST_GLU: f32 = 500.0;
+    const REST_GABA: f32 = 200.0;
+    const REST_ACH: f32 = 50.0;
 
     for i in 0..neurons.count {
         if neurons.alive[i] == 0 {
@@ -103,9 +106,9 @@ pub fn cpu_receptor_binding(neurons: &mut NeuronArrays) {
         }
 
         let nt = &neurons.nt_conc[i];
-        let glutamate = nt[NTType::Glutamate.index()];
-        let gaba = nt[NTType::GABA.index()];
-        let ach = nt[NTType::Acetylcholine.index()];
+        let glutamate = (nt[NTType::Glutamate.index()] - REST_GLU).max(0.0);
+        let gaba = (nt[NTType::GABA.index()] - REST_GABA).max(0.0);
+        let ach = (nt[NTType::Acetylcholine.index()] - REST_ACH).max(0.0);
 
         neurons.ampa_open[i] = hill(glutamate, AMPA_EC50, AMPA_HILL);
         neurons.nmda_open[i] = hill(glutamate, NMDA_EC50, NMDA_HILL);
