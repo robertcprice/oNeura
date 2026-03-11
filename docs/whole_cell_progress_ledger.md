@@ -373,3 +373,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `membrane precursor ownership now runs through compiled patch-local reactions, but ATP, nucleotide, amino, and broader compartment-local chemistry still need to be pushed onto the same generic compiled-locality path`
+
+### 2026-03-11 - Phase 7 / Compiled Localized Cofactor Pools Slice
+
+- Summary:
+  - added compiled localized ATP, amino-acid, and nucleotide pool species plus localized transfer/turnover reactions, so compartment-local support chemistry is now emitted from the organism process registry instead of staying implicit behind only global bulk pools
+  - rewired localized transcription, translation, degradation, stress-response, and repair reactions to consume or release those localized support pools directly when their compiled `spatial_scope` or `patch_domain` is not global, so local chemistry now follows the same generic compiled-locality path as the reactions that need it
+  - extended the native runtime with generic localized-pool hinting and a nucleoid-local transfer regression test, so localized support pools pull mass into active local domains through shared drive fields and shared locality primitives instead of another membrane-only special case
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q bundled_syn3a_process_registry_compiles_from_assets --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_localized_pool_transfer_moves_nucleotides_into_nucleoid_track --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `localized support pools now exist for ATP, amino acids, and nucleotides, but membrane patch chemistry still has a dedicated path and broader chromosome-local execution still needs more reactions to consume compiled local pools instead of global fallbacks`
