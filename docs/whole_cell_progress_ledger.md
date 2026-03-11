@@ -458,3 +458,25 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiled assembly now consumes localized ATP, but broader chromosome-local execution still needs more chromosome-coupled reactions and solver updates to depend on compiled local pools rather than global scalar fallbacks`
+
+### 2026-03-11 - Phase 7 / Chromosome-Local Expression Support Slice
+
+- Summary:
+  - added `localized_nucleoid_atp_pool_mm()` and blended nucleoid-local ATP into the rule-context energy signal so chromosome-coupled control signals respond to local energetic state instead of leaning only on global ATP and membrane-adjacent support
+  - updated organism expression support to derive chromosome-localized supply, energy support, and nucleotide support from nucleoid-local ATP and nucleotide pools before scoring transcription units, which makes replication-cycle and other chromosome-coupled units track compiled local chemistry more directly
+  - added a regression that biases ATP into nucleoid voxels versus pole voxels and verifies higher support and effective activity for the `replication_cycle_operon` under the nucleoid-loaded state
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_nucleoid_atp_localization_biases_replication_unit_support --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_nucleoid_localization_biases_nucleotide_signal --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_organism_expression_state_responds_to_energy_and_load_stress --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `chromosome-coupled expression now reads nucleoid-local ATP and nucleotide state, but more chromosome-linked reactions still need to move onto compiled local pools and away from residual global scalar support paths`
