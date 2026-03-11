@@ -7,6 +7,13 @@ except ImportError:  # pragma: no cover - optional native extension
 
 from .artifacts import WholeCellArtifactIngestor, WholeCellArtifactSummary
 from .adapters import MC4DAdapter, MC4DDependencyStatus, MC4DRunConfig
+from .assets import (
+    CompiledOrganismBundle,
+    available_bundles,
+    compile_bundle_manifest,
+    compile_named_bundle,
+    write_compiled_bundle,
+)
 from .architecture import (
     CouplingStage,
     ExternalTool,
@@ -38,6 +45,7 @@ from .state import CellCompartment, ChromosomeState, GeometryState, WholeCellSta
 
 __all__ = [
     "CellCompartment",
+    "CompiledOrganismBundle",
     "ChromosomeState",
     "GeometryState",
     "WholeCellArtifactIngestor",
@@ -74,7 +82,11 @@ __all__ = [
     "WholeCellProvenance",
     "WholeCellRuntimeManifest",
     "WholeCellState",
+    "available_bundles",
+    "compile_bundle_manifest",
+    "compile_named_bundle",
     "syn3a_reference_program",
     "syn3a_reference_manifest",
     "syn3a_minimal_state",
+    "write_compiled_bundle",
 ]

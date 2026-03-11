@@ -1,0 +1,6 @@
+##gff-version 3
+mgen_minimal_demo	oNeuro	gene	120	540	.	+	.	ID=energy_module;gene=energy_module;Name=energy_module
+mgen_minimal_demo	oNeuro	gene	760	1190	.	+	.	ID=ribosome_module;gene=ribosome_module;Name=ribosome_module
+mgen_minimal_demo	oNeuro	gene	1250	1680	.	-	.	ID=transport_module;gene=transport_module;Name=transport_module
+mgen_minimal_demo	oNeuro	gene	2400	3010	.	+	.	ID=division_module;gene=division_module;Name=division_module
+

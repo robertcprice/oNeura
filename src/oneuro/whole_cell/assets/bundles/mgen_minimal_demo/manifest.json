@@ -1,0 +1,11 @@
+{
+  "organism": "Mgen-minimal-demo",
+  "source_dataset": "mgen_minimal_demo",
+  "metadata_json": "metadata.json",
+  "genome_fasta": "genome.fasta",
+  "gene_features_gff": "features.gff3",
+  "gene_products_json": "gene_products.json",
+  "transcription_units_json": "transcription_units.json",
+  "pools_json": "pools.json"
+}
+

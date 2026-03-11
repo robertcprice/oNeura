@@ -40,3 +40,29 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `none for Phase 0 contract freeze; next execution slice is Phase 1 organism compiler ingestion`
+
+### 2026-03-11 - Phase 1 / Work Packages 8-19
+
+- Summary:
+  - added a manifest-driven Python organism bundle compiler that emits whole-cell organism specs and derived genome asset packages against the frozen Rust contract, with Syn3A compiling through a declared source bundle and a second demo organism exercising FASTA and GFF ingestion
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/__init__.py`
+  - `src/oneuro/whole_cell/assets/__init__.py`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/manifest.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/manifest.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/metadata.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/genome.fasta`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/features.gff3`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/gene_products.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/transcription_units.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/pools.json`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py tests/test_whole_cell.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `native Rust ingestion of these source bundles is still the next step; the current compiler is a POC that targets the frozen Rust contract`

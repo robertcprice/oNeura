@@ -1,0 +1,7 @@
+[
+  { "species": "ATP", "concentration_mm": 1.1, "count": 6400.0 },
+  { "species": "amino_acids", "concentration_mm": 0.85, "count": 5200.0 },
+  { "species": "nucleotides", "concentration_mm": 0.72, "count": 4100.0 },
+  { "species": "membrane_precursors", "concentration_mm": 0.31, "count": 1600.0 },
+  { "species": "oxygen", "concentration_mm": 0.78, "count": 1900.0 }
+]

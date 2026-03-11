@@ -1,0 +1,18 @@
+{
+  "organism": "Mgen-minimal-demo",
+  "origin_bp": 180,
+  "terminus_bp": 3090,
+  "geometry": {
+    "radius_nm": 185.0,
+    "chromosome_radius_fraction": 0.57,
+    "membrane_fraction": 0.23
+  },
+  "composition": {
+    "dry_mass_fg": 118.0,
+    "gc_fraction": 0.32,
+    "protein_fraction": 0.55,
+    "rna_fraction": 0.23,
+    "lipid_fraction": 0.12
+  }
+}
+

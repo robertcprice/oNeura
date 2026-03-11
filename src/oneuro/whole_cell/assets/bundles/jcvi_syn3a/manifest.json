@@ -1,0 +1,5 @@
+{
+  "organism": "JCVI-syn3A",
+  "source_dataset": "bundled_syn3a_organism_spec",
+  "organism_spec_json": "../../../../../../oneuro-metal/specs/whole_cell_syn3a_organism.json"
+}

@@ -1,0 +1,71 @@
+[
+  {
+    "gene": "energy_module",
+    "essential": true,
+    "basal_expression": 1.05,
+    "translation_cost": 1.1,
+    "nucleotide_cost": 0.9,
+    "process_weights": {
+      "energy": 1.0,
+      "transcription": 0.1,
+      "translation": 0.2,
+      "replication": 0.05,
+      "segregation": 0.03,
+      "membrane": 0.8,
+      "constriction": 0.02
+    },
+    "subsystem_targets": ["AtpSynthaseMembraneBand"]
+  },
+  {
+    "gene": "ribosome_module",
+    "essential": true,
+    "basal_expression": 1.12,
+    "translation_cost": 1.18,
+    "nucleotide_cost": 0.78,
+    "process_weights": {
+      "energy": 0.18,
+      "transcription": 0.45,
+      "translation": 1.0,
+      "replication": 0.06,
+      "segregation": 0.03,
+      "membrane": 0.04,
+      "constriction": 0.02
+    },
+    "subsystem_targets": ["RibosomePolysomeCluster"]
+  },
+  {
+    "gene": "transport_module",
+    "essential": false,
+    "basal_expression": 0.88,
+    "translation_cost": 0.84,
+    "nucleotide_cost": 0.7,
+    "process_weights": {
+      "energy": 0.22,
+      "transcription": 0.18,
+      "translation": 0.22,
+      "replication": 0.04,
+      "segregation": 0.04,
+      "membrane": 0.72,
+      "constriction": 0.08
+    },
+    "subsystem_targets": ["AtpSynthaseMembraneBand", "FtsZSeptumRing"]
+  },
+  {
+    "gene": "division_module",
+    "essential": true,
+    "basal_expression": 0.93,
+    "translation_cost": 0.9,
+    "nucleotide_cost": 0.74,
+    "process_weights": {
+      "energy": 0.16,
+      "transcription": 0.18,
+      "translation": 0.24,
+      "replication": 0.1,
+      "segregation": 0.22,
+      "membrane": 0.7,
+      "constriction": 1.0
+    },
+    "subsystem_targets": ["FtsZSeptumRing"]
+  }
+]
+
