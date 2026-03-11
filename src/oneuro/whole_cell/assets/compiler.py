@@ -334,6 +334,16 @@ def _compile_genome_asset_package(spec: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
+    protein_semantics = [
+        {
+            "id": protein["id"],
+            "asset_class": protein["asset_class"],
+            "subsystem_targets": list(protein.get("subsystem_targets", [])),
+        }
+        for protein in proteins
+        if protein.get("asset_class")
+    ]
+
     complexes = []
     for operon in operons:
         components = []
@@ -409,6 +419,7 @@ def _compile_genome_asset_package(spec: Dict[str, Any]) -> Dict[str, Any]:
         "operon_semantics": operon_semantics,
         "rnas": rnas,
         "proteins": proteins,
+        "protein_semantics": protein_semantics,
         "complex_semantics": complex_semantics,
         "complexes": complexes,
         "pools": list(spec.get("pools", [])),

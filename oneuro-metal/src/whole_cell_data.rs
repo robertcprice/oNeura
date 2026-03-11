@@ -371,6 +371,14 @@ pub struct WholeCellProteinProductSpec {
     pub subsystem_targets: Vec<Syn3ASubsystemPreset>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WholeCellProteinSemanticSpec {
+    pub id: String,
+    pub asset_class: WholeCellAssetClass,
+    #[serde(default)]
+    pub subsystem_targets: Vec<Syn3ASubsystemPreset>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WholeCellComplexComponentSpec {
     pub protein_id: String,
@@ -450,6 +458,8 @@ pub struct WholeCellGenomeAssetPackage {
     pub rnas: Vec<WholeCellRnaProductSpec>,
     #[serde(default)]
     pub proteins: Vec<WholeCellProteinProductSpec>,
+    #[serde(default)]
+    pub protein_semantics: Vec<WholeCellProteinSemanticSpec>,
     #[serde(default)]
     pub complex_semantics: Vec<WholeCellComplexSemanticSpec>,
     #[serde(default)]
@@ -2234,6 +2244,21 @@ fn compile_complex_semantic_specs(
     semantics
 }
 
+fn compile_protein_semantic_specs(
+    proteins: &[WholeCellProteinProductSpec],
+) -> Vec<WholeCellProteinSemanticSpec> {
+    let mut semantics: Vec<WholeCellProteinSemanticSpec> = proteins
+        .iter()
+        .map(|protein| WholeCellProteinSemanticSpec {
+            id: protein.id.clone(),
+            asset_class: protein.asset_class,
+            subsystem_targets: protein.subsystem_targets.clone(),
+        })
+        .collect();
+    semantics.sort_by(|left, right| left.id.cmp(&right.id));
+    semantics
+}
+
 fn normalize_asset_package_semantic_metadata(package: &mut WholeCellGenomeAssetPackage) {
     let mut operon_targets = HashMap::<String, Vec<Syn3ASubsystemPreset>>::new();
     for protein in &package.proteins {
@@ -2400,6 +2425,54 @@ fn normalize_asset_package_semantic_metadata(package: &mut WholeCellGenomeAssetP
                 complex.division_coupled =
                     matches!(complex.family, WholeCellAssemblyFamily::Divisome);
             }
+        }
+    }
+
+    let mut protein_semantics_by_id: HashMap<String, WholeCellProteinSemanticSpec> = package
+        .protein_semantics
+        .iter()
+        .cloned()
+        .map(|semantic| (semantic.id.clone(), semantic))
+        .collect();
+    for protein in &package.proteins {
+        let semantic = protein_semantics_by_id
+            .entry(protein.id.clone())
+            .or_insert_with(|| WholeCellProteinSemanticSpec {
+                id: protein.id.clone(),
+                asset_class: protein.asset_class,
+                subsystem_targets: Vec::new(),
+            });
+        if matches!(semantic.asset_class, WholeCellAssetClass::Generic) {
+            semantic.asset_class = protein.asset_class;
+        }
+        push_unique_subsystem_targets(&mut semantic.subsystem_targets, &protein.subsystem_targets);
+    }
+    let mut protein_semantics = protein_semantics_by_id
+        .into_values()
+        .collect::<Vec<WholeCellProteinSemanticSpec>>();
+    protein_semantics.sort_by(|left, right| left.id.cmp(&right.id));
+    package.protein_semantics = protein_semantics;
+
+    let protein_semantic_map: HashMap<String, (Vec<Syn3ASubsystemPreset>, WholeCellAssetClass)> =
+        package
+            .protein_semantics
+            .iter()
+            .map(|semantic| {
+                (
+                    semantic.id.clone(),
+                    (semantic.subsystem_targets.clone(), semantic.asset_class),
+                )
+            })
+            .collect();
+
+    for protein in &mut package.proteins {
+        if let Some((subsystem_targets, asset_class)) = protein_semantic_map.get(&protein.id) {
+            if protein.subsystem_targets.is_empty() {
+                protein.subsystem_targets = subsystem_targets.clone();
+            } else {
+                push_unique_subsystem_targets(&mut protein.subsystem_targets, subsystem_targets);
+            }
+            protein.asset_class = *asset_class;
         }
     }
 
@@ -3316,17 +3389,22 @@ pub fn compile_genome_asset_package(spec: &WholeCellOrganismSpec) -> WholeCellGe
         });
     }
 
+    let operon_semantics = compile_operon_semantic_specs(&operons);
+    let protein_semantics = compile_protein_semantic_specs(&proteins);
+    let complex_semantics = compile_complex_semantic_specs(&complexes);
+
     WholeCellGenomeAssetPackage {
         organism: spec.organism.clone(),
         chromosome_length_bp: spec.chromosome_length_bp.max(1),
         origin_bp: spec.origin_bp.min(spec.chromosome_length_bp.max(1)),
         terminus_bp: spec.terminus_bp.min(spec.chromosome_length_bp.max(1)),
         chromosome_domains: spec.chromosome_domains.clone(),
-        operon_semantics: compile_operon_semantic_specs(&operons),
+        operon_semantics,
         operons,
         rnas,
         proteins,
-        complex_semantics: compile_complex_semantic_specs(&complexes),
+        protein_semantics,
+        complex_semantics,
         complexes,
         pools: spec.pools.clone(),
     }
@@ -5184,6 +5262,7 @@ mod tests {
             organism.chromosome_domains.len()
         );
         assert_eq!(assets.operon_semantics.len(), assets.operons.len());
+        assert_eq!(assets.protein_semantics.len(), assets.proteins.len());
         assert_eq!(assets.complex_semantics.len(), assets.complexes.len());
         assert_eq!(assets.rnas.len(), organism.genes.len());
         assert_eq!(assets.proteins.len(), organism.genes.len());
@@ -5893,6 +5972,38 @@ mod tests {
             reparsed_complex.division_coupled,
             reparsed_semantic.division_coupled
         );
+    }
+
+    #[test]
+    fn parse_genome_asset_package_json_backfills_legacy_protein_semantics() {
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let protein = package
+            .proteins
+            .iter_mut()
+            .find(|protein| protein.operon == "division_ring_operon")
+            .expect("division protein");
+        let expected_id = protein.id.clone();
+        protein.operon = "opaque_protein_operon_alpha".to_string();
+        protein.subsystem_targets.clear();
+        protein.asset_class = WholeCellAssetClass::Generic;
+
+        let json = serde_json::to_string(&package).expect("serialize package");
+        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed_protein = reparsed
+            .proteins
+            .iter()
+            .find(|protein| protein.id == expected_id)
+            .expect("reparsed protein");
+        let reparsed_semantic = reparsed
+            .protein_semantics
+            .iter()
+            .find(|semantic| semantic.id == expected_id)
+            .expect("reparsed protein semantic");
+
+        assert_eq!(reparsed_protein.asset_class, reparsed_semantic.asset_class);
+        for target in &reparsed_semantic.subsystem_targets {
+            assert!(reparsed_protein.subsystem_targets.contains(target));
+        }
     }
 
     #[test]

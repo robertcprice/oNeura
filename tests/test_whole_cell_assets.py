@@ -35,6 +35,9 @@ def test_compile_syn3a_bundle_matches_current_runtime_shape():
     assert len(bundle.genome_asset_package["operon_semantics"]) == len(
         bundle.genome_asset_package["operons"]
     )
+    assert len(bundle.genome_asset_package["protein_semantics"]) == len(
+        bundle.genome_asset_package["proteins"]
+    )
     assert len(bundle.genome_asset_package["complex_semantics"]) == len(
         bundle.genome_asset_package["complexes"]
     )
@@ -46,6 +49,10 @@ def test_compile_syn3a_bundle_matches_current_runtime_shape():
     assert all(
         semantic.get("asset_class") and semantic.get("complex_family")
         for semantic in bundle.genome_asset_package["operon_semantics"]
+    )
+    assert all(
+        semantic.get("asset_class")
+        for semantic in bundle.genome_asset_package["protein_semantics"]
     )
     assert all(
         semantic.get("asset_class") and semantic.get("family")
@@ -73,6 +80,9 @@ def test_compile_demo_bundle_from_fasta_and_gff_sources(tmp_path):
     assert len(bundle.genome_asset_package["operon_semantics"]) == len(
         bundle.genome_asset_package["operons"]
     )
+    assert len(bundle.genome_asset_package["protein_semantics"]) == len(
+        bundle.genome_asset_package["proteins"]
+    )
     assert len(bundle.genome_asset_package["complex_semantics"]) == len(
         bundle.genome_asset_package["complexes"]
     )
@@ -84,6 +94,10 @@ def test_compile_demo_bundle_from_fasta_and_gff_sources(tmp_path):
     assert all(
         semantic.get("asset_class") and semantic.get("complex_family")
         for semantic in bundle.genome_asset_package["operon_semantics"]
+    )
+    assert all(
+        semantic.get("asset_class")
+        for semantic in bundle.genome_asset_package["protein_semantics"]
     )
     assert all(
         semantic.get("asset_class") and semantic.get("family")

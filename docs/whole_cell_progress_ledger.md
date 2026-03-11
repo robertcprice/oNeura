@@ -879,3 +879,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `complex semantics are now explicit at the asset-package layer, but fully unannotated source bundles still require ingress-time semantic recovery for genes and transcription units before those compiled maps exist, so expanding explicit upstream source annotations remains the next removal target`
+
+### 2026-03-11 - Phase 7 / Protein Semantic Map Slice
+
+- Summary:
+  - compiled an explicit `protein_semantics` map into genome asset packages so per-protein asset class and subsystem targeting are carried directly in package metadata instead of being restored only through operon-level semantics
+  - made native asset-package normalization treat that protein map as authoritative for sparse protein restoration while still backfilling it from existing compiled proteins for legacy payloads that do not yet include the field
+  - aligned the Python bundle compiler and bundle-contract tests with the new protein semantic metadata, and added a regression showing that a sparse package with an opaque protein operon still restores protein semantics from the explicit product map
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `protein, operon, and complex semantics are now explicit at the asset-package layer, but the upstream structured bundle sources can still omit semantic annotations entirely, so the next removal target remains richer explicit source-side semantic coverage for genes and transcription units before ingress normalization has to infer anything`
