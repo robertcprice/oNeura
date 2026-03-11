@@ -1,13 +1,14 @@
 """Electrophysiology-style validation protocols for the molecular GPU backend.
 
-The goal here is not to assert that the simulator already matches a specific
-cell class perfectly. Instead, this module provides repeatable measurements for
-core single-neuron and synaptic behaviors so the model can be benchmarked and
-tuned against reference physiology over time.
+This module provides repeatable measurements for core single-neuron and
+synaptic behaviors, plus comparisons against literature-derived reference
+profiles. The emphasis is benchmarkability: measurements should be stable and
+easy to rerun as the model is tuned.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -43,6 +44,17 @@ class ValidationCheck:
 
 
 @dataclass
+class TargetCellProfile:
+    """Reference physiology profile derived from published measurements."""
+
+    key: str
+    name: str
+    source_label: str
+    source_url: str
+    targets: Dict[str, ReferenceRange]
+
+
+@dataclass
 class CurrentClampMetrics:
     """Current-clamp style measurements for a single model neuron."""
 
@@ -55,6 +67,10 @@ class CurrentClampMetrics:
     fi_curve_hz: Dict[float, float] = field(default_factory=dict)
     first_spike_threshold_mv: Optional[float] = None
     first_spike_peak_mv: Optional[float] = None
+    first_spike_half_width_ms: Optional[float] = None
+    first_spike_ahp_amplitude_mv: Optional[float] = None
+    adaptation_probe_current_ua: Optional[float] = None
+    frequency_adaptation_ratio: Optional[float] = None
     absolute_refractory_ms: Optional[float] = None
 
 
@@ -92,6 +108,9 @@ class ValidationReport:
     inhibitory_synapse: SynapticResponseMetrics
     plasticity: PlasticityMetrics
     checks: List[ValidationCheck] = field(default_factory=list)
+    reference_profiles: List[TargetCellProfile] = field(default_factory=list)
+    reference_comparisons: Dict[str, List[ValidationCheck]] = field(default_factory=dict)
+    reference_suggestions: Dict[str, List[str]] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -100,6 +119,12 @@ class ValidationReport:
             if target is None:
                 continue
             check["target"] = dict(target)
+        for key, checks in data.get("reference_comparisons", {}).items():
+            for check in checks:
+                target = check.get("target")
+                if target is None:
+                    continue
+                check["target"] = dict(target)
         return data
 
 
@@ -107,6 +132,35 @@ DEFAULT_REFERENCE_WINDOWS: Dict[str, ReferenceRange] = {
     "resting_potential_mv": ReferenceRange(-80.0, -55.0, "mV"),
     "first_spike_threshold_mv": ReferenceRange(-50.0, -15.0, "mV"),
     "absolute_refractory_ms": ReferenceRange(1.0, 5.0, "ms"),
+}
+
+REFERENCE_PROFILES: Dict[str, TargetCellProfile] = {
+    "l5_regular_spiking_pyramidal": TargetCellProfile(
+        key="l5_regular_spiking_pyramidal",
+        name="Layer 5 Regular-Spiking Pyramidal",
+        source_label="van Aerde & Feldmeyer 2015 / postrhinal regular-spiking pyramidal",
+        source_url="https://pmc.ncbi.nlm.nih.gov/articles/PMC4563020/",
+        targets={
+            "resting_potential_mv": ReferenceRange(-66.0, -60.0, "mV"),
+            "membrane_tau_ms": ReferenceRange(48.0, 60.0, "ms"),
+            "first_spike_threshold_mv": ReferenceRange(-49.0, -37.0, "mV"),
+            "first_spike_half_width_ms": ReferenceRange(2.0, 3.0, "ms"),
+            "first_spike_ahp_amplitude_mv": ReferenceRange(5.0, 8.0, "mV"),
+            "frequency_adaptation_ratio": ReferenceRange(0.20, 0.40, "ratio"),
+        },
+    ),
+    "neocortical_pyramidal_wt": TargetCellProfile(
+        key="neocortical_pyramidal_wt",
+        name="Neocortical Pyramidal WT",
+        source_label="Hedrich et al. 2014 / WT pyramidal neurons",
+        source_url="https://pmc.ncbi.nlm.nih.gov/articles/PMC4036256/",
+        targets={
+            "resting_potential_mv": ReferenceRange(-60.0, -56.0, "mV"),
+            "first_spike_threshold_mv": ReferenceRange(-35.0, -29.0, "mV"),
+            "first_spike_half_width_ms": ReferenceRange(1.8, 2.4, "ms"),
+            "frequency_adaptation_ratio": ReferenceRange(0.75, 0.95, "ratio"),
+        },
+    ),
 }
 
 
@@ -155,6 +209,194 @@ def _first_crossing_time_ms(
         if value >= target:
             return float((idx + 1) * dt_ms)
     return None
+
+
+def _extract_first_spike_shape(
+    voltage_trace: Sequence[float],
+    prev_trace: Sequence[float],
+    fired_trace: Sequence[bool],
+    dt_ms: float,
+) -> Dict[str, Optional[float]]:
+    """Estimate threshold, peak, half-width, and AHP from the first spike."""
+    first_idx = next((idx for idx, fired in enumerate(fired_trace) if fired), None)
+    if first_idx is None:
+        return {
+            "threshold_mv": None,
+            "peak_mv": None,
+            "half_width_ms": None,
+            "ahp_amplitude_mv": None,
+        }
+
+    threshold_mv = float(prev_trace[first_idx])
+    search_end = min(len(voltage_trace), first_idx + 40)
+    spike_window = list(voltage_trace[first_idx:search_end])
+    if not spike_window:
+        return {
+            "threshold_mv": threshold_mv,
+            "peak_mv": None,
+            "half_width_ms": None,
+            "ahp_amplitude_mv": None,
+        }
+
+    peak_mv = float(max(spike_window))
+    peak_idx = first_idx + spike_window.index(peak_mv)
+    half_width_ms = None
+    half_level = threshold_mv + 0.5 * (peak_mv - threshold_mv)
+
+    rise_cross = None
+    for idx in range(max(0, first_idx - 20), peak_idx):
+        left = float(voltage_trace[idx])
+        right = float(voltage_trace[idx + 1])
+        if left < half_level <= right:
+            rise_cross = idx + 1
+    fall_cross = None
+    for idx in range(peak_idx, min(len(voltage_trace) - 1, peak_idx + 80)):
+        left = float(voltage_trace[idx])
+        right = float(voltage_trace[idx + 1])
+        if left >= half_level > right:
+            fall_cross = idx + 1
+            break
+    if rise_cross is not None and fall_cross is not None and fall_cross > rise_cross:
+        half_width_ms = float((fall_cross - rise_cross) * dt_ms)
+
+    ahp_window = voltage_trace[peak_idx : min(len(voltage_trace), peak_idx + 120)]
+    ahp_amplitude_mv = None
+    if ahp_window:
+        min_after_spike = float(min(ahp_window))
+        ahp_amplitude_mv = float(threshold_mv - min_after_spike)
+
+    return {
+        "threshold_mv": threshold_mv,
+        "peak_mv": peak_mv,
+        "half_width_ms": half_width_ms,
+        "ahp_amplitude_mv": ahp_amplitude_mv,
+    }
+
+
+def _compute_frequency_adaptation_ratio(
+    fired_trace: Sequence[bool],
+    dt_ms: float,
+) -> Optional[float]:
+    """Compute adaptation as the 4th-interval frequency over the 2nd-interval frequency."""
+    spike_steps = [idx for idx, fired in enumerate(fired_trace) if fired]
+    if len(spike_steps) < 5:
+        return None
+    intervals_ms = [(spike_steps[i + 1] - spike_steps[i]) * dt_ms for i in range(len(spike_steps) - 1)]
+    if len(intervals_ms) < 4 or intervals_ms[1] <= 0.0 or intervals_ms[3] <= 0.0:
+        return None
+    freq2 = 1000.0 / intervals_ms[1]
+    freq4 = 1000.0 / intervals_ms[3]
+    return float(freq4 / max(freq2, 1e-6))
+
+
+def _report_metric_value(report: ValidationReport, metric_name: str) -> Optional[float]:
+    """Extract a named scalar metric from a validation report."""
+    if hasattr(report.current_clamp, metric_name):
+        value = getattr(report.current_clamp, metric_name)
+        return None if value is None else float(value)
+    if hasattr(report.excitatory_synapse, metric_name):
+        value = getattr(report.excitatory_synapse, metric_name)
+        return None if value is None else float(value)
+    if hasattr(report.inhibitory_synapse, metric_name):
+        value = getattr(report.inhibitory_synapse, metric_name)
+        return None if value is None else float(value)
+    if hasattr(report.plasticity, metric_name):
+        value = getattr(report.plasticity, metric_name)
+        return None if value is None else float(value)
+    return None
+
+
+def compare_report_to_profile(
+    report: ValidationReport,
+    profile: TargetCellProfile,
+) -> List[ValidationCheck]:
+    """Compare a measured report against one reference profile."""
+    checks: List[ValidationCheck] = []
+    for metric_name, target in profile.targets.items():
+        value = _report_metric_value(report, metric_name)
+        checks.append(
+            ValidationCheck(
+                name=metric_name,
+                value=value,
+                unit=target.unit,
+                target=target,
+                passed=target.contains(value),
+                note=f"Reference profile: {profile.name}",
+            )
+        )
+    return checks
+
+
+def generate_calibration_suggestions(
+    report: ValidationReport,
+    profile: TargetCellProfile,
+) -> List[str]:
+    """Generate coarse parameter-tuning suggestions from profile mismatches."""
+    suggestions: List[str] = []
+
+    tau = report.current_clamp.membrane_tau_ms
+    tau_target = profile.targets.get("membrane_tau_ms")
+    if tau is not None and tau_target is not None:
+        if tau < tau_target.lower:
+            suggestions.append(
+                "Increase membrane time constant by raising capacitance or reducing leak conductance."
+            )
+        elif tau > tau_target.upper:
+            suggestions.append(
+                "Decrease membrane time constant by lowering capacitance or increasing leak conductance."
+            )
+
+    threshold = report.current_clamp.first_spike_threshold_mv
+    threshold_target = profile.targets.get("first_spike_threshold_mv")
+    if threshold is not None and threshold_target is not None:
+        if threshold > threshold_target.upper:
+            suggestions.append(
+                "Make spike initiation more excitable by increasing sodium activation or reducing outward current near threshold."
+            )
+        elif threshold < threshold_target.lower:
+            suggestions.append(
+                "Make spike initiation less excitable by reducing sodium drive or increasing outward current near threshold."
+            )
+
+    half_width = report.current_clamp.first_spike_half_width_ms
+    half_width_target = profile.targets.get("first_spike_half_width_ms")
+    if half_width is not None and half_width_target is not None:
+        if half_width < half_width_target.lower:
+            suggestions.append(
+                "Broaden spikes by increasing capacitance or weakening fast potassium repolarization."
+            )
+        elif half_width > half_width_target.upper:
+            suggestions.append(
+                "Narrow spikes by strengthening repolarizing potassium conductance or reducing capacitance."
+            )
+
+    ahp = report.current_clamp.first_spike_ahp_amplitude_mv
+    ahp_target = profile.targets.get("first_spike_ahp_amplitude_mv")
+    if ahp is not None and ahp_target is not None:
+        if ahp > ahp_target.upper:
+            suggestions.append(
+                "Reduce after-hyperpolarization depth by weakening fast/slow potassium currents after spikes."
+            )
+        elif ahp < ahp_target.lower:
+            suggestions.append(
+                "Increase after-hyperpolarization depth with stronger repolarizing potassium currents."
+            )
+
+    adaptation = report.current_clamp.frequency_adaptation_ratio
+    adaptation_target = profile.targets.get("frequency_adaptation_ratio")
+    if adaptation is not None and adaptation_target is not None:
+        if adaptation > adaptation_target.upper:
+            suggestions.append(
+                "Add stronger spike-frequency adaptation, such as a slow potassium or calcium-dependent adaptation current."
+            )
+        elif adaptation < adaptation_target.lower:
+            suggestions.append(
+                "Reduce adaptation strength so late-spike frequency remains closer to early-spike frequency."
+            )
+
+    if not suggestions:
+        suggestions.append("Measured metrics fall within the current target windows.")
+    return suggestions
 
 
 def measure_current_clamp(
@@ -230,14 +472,30 @@ def measure_current_clamp(
 
     first_spike_threshold_mv = None
     first_spike_peak_mv = None
+    first_spike_half_width_ms = None
+    first_spike_ahp_amplitude_mv = None
+    adaptation_probe_current_ua = None
+    frequency_adaptation_ratio = None
     if rheobase_current is not None:
         rheo = traces[rheobase_current]
-        for idx, fired in enumerate(rheo["pulse_fired"]):
-            if fired:
-                first_spike_threshold_mv = float(rheo["pulse_prev"][idx])
-                peak_window = rheo["pulse_trace"][idx : idx + 20]
-                first_spike_peak_mv = float(max(peak_window)) if peak_window else None
-                break
+        spike_shape = _extract_first_spike_shape(
+            rheo["pulse_trace"],
+            rheo["pulse_prev"],
+            rheo["pulse_fired"],
+            dt_ms=0.1,
+        )
+        first_spike_threshold_mv = spike_shape["threshold_mv"]
+        first_spike_peak_mv = spike_shape["peak_mv"]
+        first_spike_half_width_ms = spike_shape["half_width_ms"]
+        first_spike_ahp_amplitude_mv = spike_shape["ahp_amplitude_mv"]
+
+    for current in current_candidates_ua:
+        payload = traces[float(current)]
+        ratio = _compute_frequency_adaptation_ratio(payload["pulse_fired"], dt_ms=0.1)
+        if ratio is not None:
+            adaptation_probe_current_ua = float(current)
+            frequency_adaptation_ratio = ratio
+            break
 
     # Double-pulse refractory probe.
     refractory_ms = None
@@ -282,6 +540,10 @@ def measure_current_clamp(
         fi_curve_hz=fi_curve_hz,
         first_spike_threshold_mv=first_spike_threshold_mv,
         first_spike_peak_mv=first_spike_peak_mv,
+        first_spike_half_width_ms=first_spike_half_width_ms,
+        first_spike_ahp_amplitude_mv=first_spike_ahp_amplitude_mv,
+        adaptation_probe_current_ua=adaptation_probe_current_ua,
+        frequency_adaptation_ratio=frequency_adaptation_ratio,
         absolute_refractory_ms=refractory_ms,
     )
 
@@ -435,6 +697,39 @@ def _build_validation_checks(report: ValidationReport) -> List[ValidationCheck]:
             ),
         ),
         ValidationCheck(
+            name="first_spike_half_width_ms",
+            value=report.current_clamp.first_spike_half_width_ms,
+            unit="ms",
+            target=None,
+            passed=(
+                report.current_clamp.first_spike_half_width_ms is not None
+                and report.current_clamp.first_spike_half_width_ms > 0.05
+            ),
+            note="First spike should have a measurable nonzero half-width.",
+        ),
+        ValidationCheck(
+            name="first_spike_ahp_amplitude_mv",
+            value=report.current_clamp.first_spike_ahp_amplitude_mv,
+            unit="mV",
+            target=None,
+            passed=(
+                report.current_clamp.first_spike_ahp_amplitude_mv is not None
+                and report.current_clamp.first_spike_ahp_amplitude_mv > 1.0
+            ),
+            note="The first spike should be followed by an after-hyperpolarization.",
+        ),
+        ValidationCheck(
+            name="frequency_adaptation_ratio",
+            value=report.current_clamp.frequency_adaptation_ratio,
+            unit="ratio",
+            target=None,
+            passed=(
+                report.current_clamp.frequency_adaptation_ratio is None
+                or report.current_clamp.frequency_adaptation_ratio > 0.0
+            ),
+            note="When enough spikes are available, the adaptation ratio should be positive.",
+        ),
+        ValidationCheck(
             name="excitatory_peak_delta_mv",
             value=report.excitatory_synapse.peak_delta_mv,
             unit="mV",
@@ -490,5 +785,24 @@ def run_validation_suite(device: str = "cpu") -> ValidationReport:
         plasticity=measure_dopamine_gated_plasticity(device=device),
     )
     report.checks = _build_validation_checks(report)
+    report.reference_profiles = list(REFERENCE_PROFILES.values())
+    report.reference_comparisons = {
+        profile.key: compare_report_to_profile(report, profile)
+        for profile in report.reference_profiles
+    }
+    report.reference_suggestions = {
+        profile.key: generate_calibration_suggestions(report, profile)
+        for profile in report.reference_profiles
+    }
     return report
 
+
+def main() -> int:
+    """CLI entry point for printing the validation suite as JSON."""
+    payload = run_validation_suite(device="cpu").to_dict()
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

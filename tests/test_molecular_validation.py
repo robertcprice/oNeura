@@ -23,6 +23,10 @@ def test_current_clamp_metrics_capture_basic_excitable_cell_behavior():
     assert 0.5 <= metrics.rheobase_current_ua <= 8.0
     assert metrics.first_spike_threshold_mv is not None
     assert -50.0 <= metrics.first_spike_threshold_mv <= -15.0
+    assert metrics.first_spike_half_width_ms is not None
+    assert metrics.first_spike_half_width_ms > 0.05
+    assert metrics.first_spike_ahp_amplitude_mv is not None
+    assert metrics.first_spike_ahp_amplitude_mv > 1.0
     assert metrics.absolute_refractory_ms is not None
     assert 1.0 <= metrics.absolute_refractory_ms <= 5.0
     assert any(rate > 0.0 for rate in metrics.fi_curve_hz.values())
@@ -54,5 +58,11 @@ def test_validation_suite_exposes_serializable_checks():
     payload = report.to_dict()
 
     assert payload["checks"]
+    assert payload["reference_profiles"]
+    assert payload["reference_comparisons"]
+    assert payload["reference_suggestions"]
     assert any(check["passed"] for check in payload["checks"])
+    assert "l5_regular_spiking_pyramidal" in payload["reference_comparisons"]
+    assert "neocortical_pyramidal_wt" in payload["reference_comparisons"]
+    assert payload["reference_suggestions"]["l5_regular_spiking_pyramidal"]
     assert math.isfinite(payload["current_clamp"]["resting_potential_mv"])
