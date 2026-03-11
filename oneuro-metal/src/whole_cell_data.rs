@@ -255,6 +255,18 @@ pub enum WholeCellAssetClass {
     Generic,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WholeCellBulkField {
+    ATP,
+    ADP,
+    Glucose,
+    Oxygen,
+    AminoAcids,
+    Nucleotides,
+    MembranePrecursors,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WholeCellOperonSpec {
     pub name: String,
@@ -351,8 +363,11 @@ pub enum WholeCellSpeciesClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WholeCellReactionClass {
+    PoolTransport,
     Transcription,
     Translation,
+    RnaDegradation,
+    ProteinDegradation,
     SubunitPoolFormation,
     ComplexNucleation,
     ComplexElongation,
@@ -368,6 +383,8 @@ pub struct WholeCellSpeciesSpec {
     pub compartment: String,
     pub asset_class: WholeCellAssetClass,
     pub basal_abundance: f32,
+    #[serde(default)]
+    pub bulk_field: Option<WholeCellBulkField>,
     #[serde(default)]
     pub operon: Option<String>,
     #[serde(default)]
@@ -416,6 +433,8 @@ pub struct WholeCellSpeciesRuntimeState {
     pub compartment: String,
     pub asset_class: WholeCellAssetClass,
     pub basal_abundance: f32,
+    #[serde(default)]
+    pub bulk_field: Option<WholeCellBulkField>,
     #[serde(default)]
     pub operon: Option<String>,
     #[serde(default)]
@@ -468,6 +487,8 @@ pub struct WholeCellGenomeProcessRegistrySummary {
     pub reaction_count: usize,
     pub transcription_reaction_count: usize,
     pub translation_reaction_count: usize,
+    pub transport_reaction_count: usize,
+    pub degradation_reaction_count: usize,
     pub assembly_reaction_count: usize,
     pub turnover_reaction_count: usize,
 }
@@ -516,6 +537,22 @@ impl From<&WholeCellGenomeProcessRegistry> for WholeCellGenomeProcessRegistrySum
             .iter()
             .filter(|reaction| reaction.reaction_class == WholeCellReactionClass::Translation)
             .count();
+        let transport_reaction_count = registry
+            .reactions
+            .iter()
+            .filter(|reaction| reaction.reaction_class == WholeCellReactionClass::PoolTransport)
+            .count();
+        let degradation_reaction_count = registry
+            .reactions
+            .iter()
+            .filter(|reaction| {
+                matches!(
+                    reaction.reaction_class,
+                    WholeCellReactionClass::RnaDegradation
+                        | WholeCellReactionClass::ProteinDegradation
+                )
+            })
+            .count();
         let assembly_reaction_count = registry
             .reactions
             .iter()
@@ -545,6 +582,8 @@ impl From<&WholeCellGenomeProcessRegistry> for WholeCellGenomeProcessRegistrySum
             reaction_count: registry.reactions.len(),
             transcription_reaction_count,
             translation_reaction_count,
+            transport_reaction_count,
+            degradation_reaction_count,
             assembly_reaction_count,
             turnover_reaction_count,
         }
@@ -564,6 +603,7 @@ pub fn initialize_runtime_species_state(
             compartment: species.compartment.clone(),
             asset_class: species.asset_class,
             basal_abundance: species.basal_abundance.max(0.0),
+            bulk_field: species.bulk_field,
             operon: species.operon.clone(),
             parent_complex: species.parent_complex.clone(),
             subsystem_targets: species.subsystem_targets.clone(),
@@ -1409,6 +1449,61 @@ fn canonical_species_fragment(name: &str) -> String {
     fragment.trim_matches('_').to_string()
 }
 
+fn infer_pool_bulk_field(species_name: &str) -> Option<WholeCellBulkField> {
+    let lowered = species_name.trim().to_ascii_lowercase();
+    if lowered == "atp" {
+        Some(WholeCellBulkField::ATP)
+    } else if lowered == "adp" {
+        Some(WholeCellBulkField::ADP)
+    } else if lowered.contains("glucose") {
+        Some(WholeCellBulkField::Glucose)
+    } else if lowered.contains("oxygen") {
+        Some(WholeCellBulkField::Oxygen)
+    } else if lowered.contains("amino") {
+        Some(WholeCellBulkField::AminoAcids)
+    } else if lowered.contains("nucleotide") {
+        Some(WholeCellBulkField::Nucleotides)
+    } else if lowered.contains("membrane") || lowered.contains("lipid") {
+        Some(WholeCellBulkField::MembranePrecursors)
+    } else {
+        None
+    }
+}
+
+fn transport_asset_class_for_bulk_field(field: WholeCellBulkField) -> WholeCellAssetClass {
+    match field {
+        WholeCellBulkField::ATP
+        | WholeCellBulkField::ADP
+        | WholeCellBulkField::Glucose
+        | WholeCellBulkField::Oxygen => WholeCellAssetClass::Energy,
+        WholeCellBulkField::AminoAcids => WholeCellAssetClass::Translation,
+        WholeCellBulkField::Nucleotides => WholeCellAssetClass::Replication,
+        WholeCellBulkField::MembranePrecursors => WholeCellAssetClass::Membrane,
+    }
+}
+
+fn bulk_field_supports_transport(field: WholeCellBulkField) -> bool {
+    matches!(
+        field,
+        WholeCellBulkField::Glucose
+            | WholeCellBulkField::Oxygen
+            | WholeCellBulkField::AminoAcids
+            | WholeCellBulkField::Nucleotides
+            | WholeCellBulkField::MembranePrecursors
+    )
+}
+
+fn bulk_field_transport_rate(field: WholeCellBulkField) -> f32 {
+    match field {
+        WholeCellBulkField::Glucose => 0.12,
+        WholeCellBulkField::Oxygen => 0.16,
+        WholeCellBulkField::AminoAcids => 0.08,
+        WholeCellBulkField::Nucleotides => 0.07,
+        WholeCellBulkField::MembranePrecursors => 0.05,
+        WholeCellBulkField::ATP | WholeCellBulkField::ADP => 0.0,
+    }
+}
+
 fn pool_species_id(species: &str) -> String {
     format!("pool_{}", canonical_species_fragment(species))
 }
@@ -1610,6 +1705,7 @@ pub fn compile_genome_process_registry(
 
     for pool in &package.pools {
         let species_name = pool.species.clone();
+        let bulk_field = infer_pool_bulk_field(&species_name);
         let asset_class = if species_name.to_ascii_lowercase().contains("membrane")
             || species_name.to_ascii_lowercase().contains("lipid")
         {
@@ -1641,6 +1737,7 @@ pub fn compile_genome_process_registry(
             asset_class,
             basal_abundance: (pool.count.max(0.0) + 24.0 * pool.concentration_mm.max(0.0))
                 .clamp(0.0, 4096.0),
+            bulk_field,
             operon: None,
             parent_complex: None,
             subsystem_targets: Vec::new(),
@@ -1659,6 +1756,7 @@ pub fn compile_genome_process_registry(
             compartment: compartment.to_string(),
             asset_class: rna.asset_class,
             basal_abundance: rna.basal_abundance.max(0.0),
+            bulk_field: None,
             operon: Some(rna.operon.clone()),
             parent_complex: None,
             subsystem_targets: Vec::new(),
@@ -1675,6 +1773,7 @@ pub fn compile_genome_process_registry(
             compartment: compartment.to_string(),
             asset_class: protein.asset_class,
             basal_abundance: protein.basal_abundance.max(0.0),
+            bulk_field: None,
             operon: Some(protein.operon.clone()),
             parent_complex: None,
             subsystem_targets: protein.subsystem_targets.clone(),
@@ -1697,6 +1796,7 @@ pub fn compile_genome_process_registry(
             asset_class: complex.asset_class,
             basal_abundance: (complex.basal_abundance.max(0.0) * total_stoichiometry.sqrt())
                 .clamp(0.0, 2048.0),
+            bulk_field: None,
             operon: Some(complex.operon.clone()),
             parent_complex: Some(complex.id.clone()),
             subsystem_targets: complex.subsystem_targets.clone(),
@@ -1709,6 +1809,7 @@ pub fn compile_genome_process_registry(
             asset_class: complex.asset_class,
             basal_abundance: (0.10 * complex.basal_abundance.max(0.0) * total_stoichiometry.sqrt())
                 .clamp(0.0, 512.0),
+            bulk_field: None,
             operon: Some(complex.operon.clone()),
             parent_complex: Some(complex.id.clone()),
             subsystem_targets: complex.subsystem_targets.clone(),
@@ -1721,6 +1822,7 @@ pub fn compile_genome_process_registry(
             asset_class: complex.asset_class,
             basal_abundance: (0.08 * complex.basal_abundance.max(0.0) * total_stoichiometry.sqrt())
                 .clamp(0.0, 512.0),
+            bulk_field: None,
             operon: Some(complex.operon.clone()),
             parent_complex: Some(complex.id.clone()),
             subsystem_targets: complex.subsystem_targets.clone(),
@@ -1732,9 +1834,34 @@ pub fn compile_genome_process_registry(
             compartment: compartment.to_string(),
             asset_class: complex.asset_class,
             basal_abundance: complex.basal_abundance.max(0.0),
+            bulk_field: None,
             operon: Some(complex.operon.clone()),
             parent_complex: Some(complex.id.clone()),
             subsystem_targets: complex.subsystem_targets.clone(),
+        });
+    }
+
+    for pool in &package.pools {
+        let pool_id = pool_species_id(&pool.species);
+        let Some(field) = infer_pool_bulk_field(&pool.species) else {
+            continue;
+        };
+        if !bulk_field_supports_transport(field) {
+            continue;
+        }
+        reactions.push(WholeCellReactionSpec {
+            id: format!("{}_transport", canonical_species_fragment(&pool_id)),
+            name: format!("{} transport", pool.species),
+            reaction_class: WholeCellReactionClass::PoolTransport,
+            asset_class: transport_asset_class_for_bulk_field(field),
+            nominal_rate: bulk_field_transport_rate(field),
+            catalyst: None,
+            reactants: Vec::new(),
+            products: vec![WholeCellReactionParticipantSpec {
+                species_id: pool_id,
+                stoichiometry: 1.0,
+            }],
+            subsystem_targets: Vec::new(),
         });
     }
 
@@ -1797,6 +1924,56 @@ pub fn compile_genome_process_registry(
                 species_id: protein.id.clone(),
                 stoichiometry: 1.0,
             }],
+            subsystem_targets: protein.subsystem_targets.clone(),
+        });
+    }
+
+    for rna in &package.rnas {
+        let mut products = Vec::new();
+        if let Some(species_id) = nucleotide_pool.as_ref() {
+            products.push(WholeCellReactionParticipantSpec {
+                species_id: species_id.clone(),
+                stoichiometry: (rna.length_nt.max(1) as f32 / 36.0).max(1.0),
+            });
+        }
+        reactions.push(WholeCellReactionSpec {
+            id: format!("{}_degradation", canonical_species_fragment(&rna.id)),
+            name: format!("{} degradation", rna.id),
+            reaction_class: WholeCellReactionClass::RnaDegradation,
+            asset_class: WholeCellAssetClass::Homeostasis,
+            nominal_rate: (0.010 + 0.0025 * (rna.length_nt.max(1) as f32 / 120.0).sqrt())
+                .clamp(0.005, 4.0),
+            catalyst: None,
+            reactants: vec![WholeCellReactionParticipantSpec {
+                species_id: rna.id.clone(),
+                stoichiometry: 1.0,
+            }],
+            products,
+            subsystem_targets: Vec::new(),
+        });
+    }
+
+    for protein in &package.proteins {
+        let mut products = Vec::new();
+        if let Some(species_id) = amino_pool.as_ref() {
+            products.push(WholeCellReactionParticipantSpec {
+                species_id: species_id.clone(),
+                stoichiometry: (protein.aa_length.max(1) as f32 / 18.0).max(1.0),
+            });
+        }
+        reactions.push(WholeCellReactionSpec {
+            id: format!("{}_degradation", canonical_species_fragment(&protein.id)),
+            name: format!("{} degradation", protein.id),
+            reaction_class: WholeCellReactionClass::ProteinDegradation,
+            asset_class: WholeCellAssetClass::QualityControl,
+            nominal_rate: (0.008 + 0.0020 * (protein.aa_length.max(1) as f32 / 90.0).sqrt())
+                .clamp(0.004, 4.0),
+            catalyst: None,
+            reactants: vec![WholeCellReactionParticipantSpec {
+                species_id: protein.id.clone(),
+                stoichiometry: 1.0,
+            }],
+            products,
             subsystem_targets: protein.subsystem_targets.clone(),
         });
     }
@@ -2603,8 +2780,16 @@ mod tests {
         assert!(summary.assembly_intermediate_species_count >= package.complexes.len() * 3);
         assert!(summary.transcription_reaction_count >= package.operons.len());
         assert!(summary.translation_reaction_count >= package.proteins.len());
+        assert!(summary.transport_reaction_count >= 3);
+        assert_eq!(
+            summary.degradation_reaction_count,
+            package.rnas.len() + package.proteins.len()
+        );
         assert!(summary.assembly_reaction_count >= package.complexes.len() * 4);
         assert_eq!(summary.turnover_reaction_count, package.complexes.len());
+        assert!(registry.species.iter().any(|species| {
+            species.id == "pool_glucose" && species.bulk_field == Some(WholeCellBulkField::Glucose)
+        }));
         assert!(registry
             .species
             .iter()
@@ -2613,6 +2798,18 @@ mod tests {
             .species
             .iter()
             .any(|species| species.id == "ribosome_biogenesis_operon_complex_subunit_pool"));
+        assert!(registry
+            .reactions
+            .iter()
+            .any(|reaction| reaction.reaction_class == WholeCellReactionClass::PoolTransport));
+        assert!(registry
+            .reactions
+            .iter()
+            .any(|reaction| reaction.reaction_class == WholeCellReactionClass::RnaDegradation));
+        assert!(registry
+            .reactions
+            .iter()
+            .any(|reaction| reaction.reaction_class == WholeCellReactionClass::ProteinDegradation));
         assert!(registry
             .reactions
             .iter()
