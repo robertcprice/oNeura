@@ -584,3 +584,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiled chromosome domains now survive localized pool execution, but the compiler still emits generic nucleoid-track pool species and reactions rather than explicitly domain-scoped localized pool assets`
+
+### 2026-03-11 - Phase 7 / Domain-Scoped Localized Pool Compiler Slice
+
+- Summary:
+  - widened localized-pool compiler identity to carry optional compiled `chromosome_domain` ownership and emit explicit domain-scoped nucleoid-local pool species plus localized transfer/turnover reactions instead of collapsing chromosome-local chemistry into one anonymous nucleoid-track pool
+  - constrained domain-scoping to chromosome-local and nucleoid-local pool requests so membrane and septum pool assets stay generic while chromosome-local chemistry now preserves the compiled domain boundary all the way from registry generation into runtime execution
+  - added regressions that require bundled Syn3A to compile domain-scoped nucleoid-track nucleotide pools and matching localized transfer/turnover reactions, keeping the new ownership path under native test coverage
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_rdme_drive_fields_follow_compiled_chromosome_domains --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiled chromosome domains now shape localized pool asset generation, but broader localized support-pool chemistry and per-domain reaction ownership still need to move off generic fallback pools and onto richer compiled chromosome-domain datasets`

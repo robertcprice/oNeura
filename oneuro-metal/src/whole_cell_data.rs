@@ -2244,16 +2244,40 @@ fn localized_pool_locality_display_name(
     }
 }
 
+fn normalized_chromosome_domain_id(chromosome_domain: Option<&str>) -> Option<String> {
+    chromosome_domain
+        .map(str::trim)
+        .filter(|domain_id| !domain_id.is_empty())
+        .map(str::to_string)
+}
+
+fn localized_pool_domain_fragment(chromosome_domain: Option<&str>) -> Option<String> {
+    normalized_chromosome_domain_id(chromosome_domain).map(|domain_id| {
+        let fragment = canonical_species_fragment(&domain_id);
+        if fragment.is_empty() {
+            "chromosome_domain".to_string()
+        } else {
+            fragment
+        }
+    })
+}
+
 fn localized_pool_species_id(
     field: WholeCellBulkField,
     spatial_scope: WholeCellSpatialScope,
     patch_domain: WholeCellPatchDomain,
+    chromosome_domain: Option<&str>,
 ) -> String {
-    format!(
+    let base = format!(
         "pool_{}_{}",
         localized_pool_locality_fragment(spatial_scope, patch_domain),
         bulk_field_fragment(field)
-    )
+    );
+    if let Some(domain_fragment) = localized_pool_domain_fragment(chromosome_domain) {
+        format!("{base}_{domain_fragment}")
+    } else {
+        base
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2268,17 +2292,31 @@ fn register_localized_pool_request(
             WholeCellBulkField,
             WholeCellSpatialScope,
             WholeCellPatchDomain,
+            Option<String>,
         ),
         LocalizedPoolRequest,
     >,
     field: WholeCellBulkField,
     spatial_scope: WholeCellSpatialScope,
     patch_domain: WholeCellPatchDomain,
+    chromosome_domain: Option<&str>,
     signal_seed: f32,
     weight: f32,
     subsystem_targets: &[Syn3ASubsystemPreset],
 ) -> String {
-    let key = (field, spatial_scope, patch_domain);
+    let chromosome_domain = if patch_domain == WholeCellPatchDomain::NucleoidTrack
+        || spatial_scope == WholeCellSpatialScope::NucleoidLocal
+    {
+        normalized_chromosome_domain_id(chromosome_domain)
+    } else {
+        None
+    };
+    let key = (
+        field,
+        spatial_scope,
+        patch_domain,
+        chromosome_domain.clone(),
+    );
     let entry = requests.entry(key).or_default();
     entry.signal += (0.30 + 0.24 * signal_seed.max(0.0).sqrt()) * weight.max(0.05);
     for target in subsystem_targets {
@@ -2286,7 +2324,12 @@ fn register_localized_pool_request(
             entry.subsystem_targets.push(*target);
         }
     }
-    localized_pool_species_id(field, spatial_scope, patch_domain)
+    localized_pool_species_id(
+        field,
+        spatial_scope,
+        patch_domain,
+        chromosome_domain.as_deref(),
+    )
 }
 
 fn complex_stage_species_id(complex_id: &str, stage: &str) -> String {
@@ -2733,6 +2776,7 @@ pub fn compile_genome_process_registry(
             WholeCellBulkField,
             WholeCellSpatialScope,
             WholeCellPatchDomain,
+            Option<String>,
         ),
         LocalizedPoolRequest,
     > = HashMap::new();
@@ -2754,6 +2798,7 @@ pub fn compile_genome_process_registry(
          field: WholeCellBulkField,
          spatial_scope: WholeCellSpatialScope,
          patch_domain: WholeCellPatchDomain,
+         chromosome_domain: Option<&str>,
          signal_seed: f32,
          asset_class: WholeCellAssetClass,
          subsystem_targets: &[Syn3ASubsystemPreset]| {
@@ -2775,6 +2820,7 @@ pub fn compile_genome_process_registry(
                 field,
                 spatial_scope,
                 patch_domain,
+                chromosome_domain,
                 signal_seed,
                 weight,
                 subsystem_targets,
@@ -2995,6 +3041,7 @@ pub fn compile_genome_process_registry(
     }
 
     for operon in &package.operons {
+        let operon_chromosome_domain = operon_domain(&operon.name);
         let operon_asset_class = inferred_asset_class(
             operon.process_weights,
             &Vec::<Syn3ASubsystemPreset>::new(),
@@ -3015,6 +3062,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::Nucleotides,
                     operon_spatial_scope,
                     operon_patch_domain,
+                    operon_chromosome_domain.as_deref(),
                     operon_signal_seed,
                     operon_asset_class,
                     &[],
@@ -3045,7 +3093,7 @@ pub fn compile_genome_process_registry(
                 subsystem_targets: Vec::new(),
                 spatial_scope: operon_spatial_scope,
                 patch_domain: operon_patch_domain,
-                chromosome_domain: operon_domain(&operon.name),
+                chromosome_domain: operon_chromosome_domain.clone(),
             });
         }
 
@@ -3057,6 +3105,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::ATP,
                     operon_spatial_scope,
                     operon_patch_domain,
+                    operon_chromosome_domain.as_deref(),
                     operon_signal_seed,
                     operon_asset_class,
                     &[],
@@ -3071,6 +3120,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::AminoAcids,
                     operon_spatial_scope,
                     operon_patch_domain,
+                    operon_chromosome_domain.as_deref(),
                     operon_signal_seed,
                     operon_asset_class,
                     &[],
@@ -3102,11 +3152,13 @@ pub fn compile_genome_process_registry(
             subsystem_targets: Vec::new(),
             spatial_scope: operon_spatial_scope,
             patch_domain: operon_patch_domain,
-            chromosome_domain: operon_domain(&operon.name),
+            chromosome_domain: operon_chromosome_domain,
         });
     }
 
     for protein in &package.proteins {
+        let protein_chromosome_domain =
+            gene_domain(&protein.gene).or_else(|| operon_domain(&protein.operon));
         let protein_compartment =
             registry_compartment_for_asset_class(protein.asset_class, &protein.subsystem_targets);
         let protein_spatial_scope = registry_spatial_scope(
@@ -3132,6 +3184,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::AminoAcids,
                     protein_spatial_scope,
                     protein_patch_domain,
+                    protein_chromosome_domain.as_deref(),
                     protein_signal_seed,
                     protein.asset_class,
                     &protein.subsystem_targets,
@@ -3155,12 +3208,12 @@ pub fn compile_genome_process_registry(
             subsystem_targets: protein.subsystem_targets.clone(),
             spatial_scope: protein_spatial_scope,
             patch_domain: protein_patch_domain,
-            chromosome_domain: gene_domain(&protein.gene)
-                .or_else(|| operon_domain(&protein.operon)),
+            chromosome_domain: protein_chromosome_domain,
         });
     }
 
     for rna in &package.rnas {
+        let rna_chromosome_domain = operon_domain(&rna.operon);
         let rna_compartment = registry_compartment_for_asset_class(
             rna.asset_class,
             &Vec::<Syn3ASubsystemPreset>::new(),
@@ -3176,6 +3229,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::Nucleotides,
                     rna_spatial_scope,
                     rna_patch_domain,
+                    rna_chromosome_domain.as_deref(),
                     (rna.length_nt.max(1) as f32 / 36.0).max(1.0),
                     rna.asset_class,
                     &[],
@@ -3200,11 +3254,13 @@ pub fn compile_genome_process_registry(
             subsystem_targets: Vec::new(),
             spatial_scope: rna_spatial_scope,
             patch_domain: rna_patch_domain,
-            chromosome_domain: operon_domain(&rna.operon),
+            chromosome_domain: rna_chromosome_domain,
         });
     }
 
     for protein in &package.proteins {
+        let protein_chromosome_domain =
+            gene_domain(&protein.gene).or_else(|| operon_domain(&protein.operon));
         let protein_compartment =
             registry_compartment_for_asset_class(protein.asset_class, &protein.subsystem_targets);
         let protein_spatial_scope = registry_spatial_scope(
@@ -3226,6 +3282,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::AminoAcids,
                     protein_spatial_scope,
                     protein_patch_domain,
+                    protein_chromosome_domain.as_deref(),
                     (protein.aa_length.max(1) as f32 / 18.0).max(1.0),
                     protein.asset_class,
                     &protein.subsystem_targets,
@@ -3250,12 +3307,12 @@ pub fn compile_genome_process_registry(
             subsystem_targets: protein.subsystem_targets.clone(),
             spatial_scope: protein_spatial_scope,
             patch_domain: protein_patch_domain,
-            chromosome_domain: gene_domain(&protein.gene)
-                .or_else(|| operon_domain(&protein.operon)),
+            chromosome_domain: protein_chromosome_domain,
         });
     }
 
     for complex in &package.complexes {
+        let complex_chromosome_domain = operon_domain(&complex.operon);
         let complex_compartment =
             registry_compartment_for_asset_class(complex.asset_class, &complex.subsystem_targets);
         let complex_spatial_scope = registry_spatial_scope(
@@ -3283,6 +3340,7 @@ pub fn compile_genome_process_registry(
                 WholeCellBulkField::ATP,
                 complex_spatial_scope,
                 complex_patch_domain,
+                complex_chromosome_domain.as_deref(),
                 assembly_energy_signal,
                 complex.asset_class,
                 &complex.subsystem_targets,
@@ -3329,7 +3387,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: complex.subsystem_targets.clone(),
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
-            chromosome_domain: operon_domain(&complex.operon),
+            chromosome_domain: complex_chromosome_domain.clone(),
         });
         let mut nucleation_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: subunit_pool_id.clone(),
@@ -3364,7 +3422,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: complex.subsystem_targets.clone(),
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
-            chromosome_domain: operon_domain(&complex.operon),
+            chromosome_domain: complex_chromosome_domain.clone(),
         });
         let mut elongation_reactants = vec![
             WholeCellReactionParticipantSpec {
@@ -3405,7 +3463,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: complex.subsystem_targets.clone(),
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
-            chromosome_domain: operon_domain(&complex.operon),
+            chromosome_domain: complex_chromosome_domain.clone(),
         });
         let mut maturation_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: elongation_id.clone(),
@@ -3442,7 +3500,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: complex.subsystem_targets.clone(),
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
-            chromosome_domain: operon_domain(&complex.operon),
+            chromosome_domain: complex_chromosome_domain.clone(),
         });
         let mut repair_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: subunit_pool_id.clone(),
@@ -3455,6 +3513,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::ATP,
                     complex_spatial_scope,
                     complex_patch_domain,
+                    complex_chromosome_domain.as_deref(),
                     total_stoichiometry.max(1.0),
                     complex.asset_class,
                     &complex.subsystem_targets,
@@ -3469,6 +3528,7 @@ pub fn compile_genome_process_registry(
                     WholeCellBulkField::AminoAcids,
                     complex_spatial_scope,
                     complex_patch_domain,
+                    complex_chromosome_domain.as_deref(),
                     total_stoichiometry.max(1.0),
                     complex.asset_class,
                     &complex.subsystem_targets,
@@ -3499,7 +3559,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: complex.subsystem_targets.clone(),
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
-            chromosome_domain: operon_domain(&complex.operon),
+            chromosome_domain: complex_chromosome_domain.clone(),
         });
         let mut turnover_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: mature_id,
@@ -3534,7 +3594,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: complex.subsystem_targets.clone(),
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
-            chromosome_domain: operon_domain(&complex.operon),
+            chromosome_domain: complex_chromosome_domain,
         });
     }
 
@@ -3564,6 +3624,7 @@ pub fn compile_genome_process_registry(
                 *field,
                 species_spec.spatial_scope,
                 species_spec.patch_domain,
+                species_spec.chromosome_domain.as_deref(),
                 signal_seed,
                 *weight,
                 &species_spec.subsystem_targets,
@@ -3593,6 +3654,7 @@ pub fn compile_genome_process_registry(
                 WholeCellBulkField::MembranePrecursors,
                 species_spec.spatial_scope,
                 species_spec.patch_domain,
+                species_spec.chromosome_domain.as_deref(),
                 signal_seed,
                 membrane_weight,
                 &species_spec.subsystem_targets,
@@ -3622,6 +3684,7 @@ pub fn compile_genome_process_registry(
                 *field,
                 reaction_spec.spatial_scope,
                 reaction_spec.patch_domain,
+                reaction_spec.chromosome_domain.as_deref(),
                 signal_seed,
                 *weight,
                 &reaction_spec.subsystem_targets,
@@ -3649,6 +3712,7 @@ pub fn compile_genome_process_registry(
                 WholeCellBulkField::MembranePrecursors,
                 reaction_spec.spatial_scope,
                 reaction_spec.patch_domain,
+                reaction_spec.chromosome_domain.as_deref(),
                 signal_seed,
                 membrane_weight,
                 &reaction_spec.subsystem_targets,
@@ -3656,8 +3720,8 @@ pub fn compile_genome_process_registry(
         }
     }
 
-    let mut localized_pool_keys = localized_pool_requests.keys().copied().collect::<Vec<_>>();
-    localized_pool_keys.sort_by_key(|(field, spatial_scope, patch_domain)| {
+    let mut localized_pool_keys = localized_pool_requests.keys().cloned().collect::<Vec<_>>();
+    localized_pool_keys.sort_by_key(|(field, spatial_scope, patch_domain, chromosome_domain)| {
         (
             match field {
                 WholeCellBulkField::ATP => 0usize,
@@ -3681,22 +3745,41 @@ pub fn compile_genome_process_registry(
                 WholeCellPatchDomain::PolarPatch => 3usize,
                 WholeCellPatchDomain::NucleoidTrack => 4usize,
             },
+            chromosome_domain.clone().unwrap_or_default(),
         )
     });
-    for (field, spatial_scope, patch_domain) in localized_pool_keys {
+    for (field, spatial_scope, patch_domain, chromosome_domain) in localized_pool_keys {
         let Some((global_species_id, global_pool)) = global_pools_by_field.get(&field) else {
             continue;
         };
-        let Some(request) = localized_pool_requests.get(&(field, spatial_scope, patch_domain))
-        else {
+        let Some(request) = localized_pool_requests.get(&(
+            field,
+            spatial_scope,
+            patch_domain,
+            chromosome_domain.clone(),
+        )) else {
             continue;
         };
-        let species_id = localized_pool_species_id(field, spatial_scope, patch_domain);
-        let species_name = format!(
-            "{} {} pool",
-            localized_pool_locality_display_name(spatial_scope, patch_domain),
-            bulk_field_display_name(field)
+        let species_id = localized_pool_species_id(
+            field,
+            spatial_scope,
+            patch_domain,
+            chromosome_domain.as_deref(),
         );
+        let species_name = if let Some(domain_id) = chromosome_domain.as_deref() {
+            format!(
+                "{} {} {} pool",
+                domain_id,
+                localized_pool_locality_display_name(spatial_scope, patch_domain),
+                bulk_field_display_name(field)
+            )
+        } else {
+            format!(
+                "{} {} pool",
+                localized_pool_locality_display_name(spatial_scope, patch_domain),
+                bulk_field_display_name(field)
+            )
+        };
         let target_signal = request.signal.max(0.5);
         let basal_abundance = (global_pool.count.max(0.0)
             + 24.0 * global_pool.concentration_mm.max(0.0))
@@ -3725,7 +3808,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: request.subsystem_targets.clone(),
             spatial_scope,
             patch_domain,
-            chromosome_domain: None,
+            chromosome_domain: chromosome_domain.clone(),
         });
         reactions.push(WholeCellReactionSpec {
             id: format!(
@@ -3750,7 +3833,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: request.subsystem_targets.clone(),
             spatial_scope,
             patch_domain,
-            chromosome_domain: None,
+            chromosome_domain: chromosome_domain.clone(),
         });
         reactions.push(WholeCellReactionSpec {
             id: format!(
@@ -3775,7 +3858,7 @@ pub fn compile_genome_process_registry(
             subsystem_targets: request.subsystem_targets.clone(),
             spatial_scope,
             patch_domain,
-            chromosome_domain: None,
+            chromosome_domain: chromosome_domain.clone(),
         });
     }
 
@@ -4701,10 +4784,12 @@ mod tests {
             .species
             .iter()
             .any(|species| species.id == "pool_septum_patch_atp"));
-        assert!(registry
-            .species
-            .iter()
-            .any(|species| species.id == "pool_nucleoid_track_nucleotides"));
+        assert!(registry.species.iter().any(|species| {
+            species.patch_domain == WholeCellPatchDomain::NucleoidTrack
+                && species.bulk_field == Some(WholeCellBulkField::Nucleotides)
+                && species.chromosome_domain.is_some()
+                && species.id.starts_with("pool_nucleoid_track_nucleotides_")
+        }));
         assert!(registry.reactions.iter().any(|reaction| {
             reaction.reaction_class == WholeCellReactionClass::LocalizedPoolTransfer
                 && reaction.patch_domain == WholeCellPatchDomain::MembraneBand
@@ -4726,6 +4811,21 @@ mod tests {
         assert!(registry.reactions.iter().any(|reaction| {
             reaction.reaction_class == WholeCellReactionClass::LocalizedPoolTurnover
                 && reaction.patch_domain == WholeCellPatchDomain::NucleoidTrack
+                && reaction.chromosome_domain.is_some()
+                && reaction
+                    .reactants
+                    .iter()
+                    .any(|participant| participant.species_id.starts_with("pool_nucleoid_track_"))
+        }));
+        assert!(registry.reactions.iter().any(|reaction| {
+            reaction.reaction_class == WholeCellReactionClass::LocalizedPoolTransfer
+                && reaction.patch_domain == WholeCellPatchDomain::NucleoidTrack
+                && reaction.chromosome_domain.is_some()
+                && reaction.products.iter().any(|participant| {
+                    participant
+                        .species_id
+                        .starts_with("pool_nucleoid_track_nucleotides_")
+                })
         }));
         assert!(registry.reactions.iter().any(|reaction| {
             matches!(
@@ -4736,10 +4836,11 @@ mod tests {
                     | WholeCellReactionClass::ComplexMaturation
                     | WholeCellReactionClass::ComplexTurnover
             ) && reaction.patch_domain == WholeCellPatchDomain::NucleoidTrack
-                && reaction
-                    .reactants
-                    .iter()
-                    .any(|participant| participant.species_id == "pool_nucleoid_track_atp")
+                && reaction.reactants.iter().any(|participant| {
+                    participant
+                        .species_id
+                        .starts_with("pool_nucleoid_track_atp")
+                })
         }));
     }
 
