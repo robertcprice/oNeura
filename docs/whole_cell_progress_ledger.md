@@ -419,3 +419,22 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `membrane precursor localization now uses the generic localized-pool path, but membrane-only runtime hints/classes still exist for backward compatibility and broader chromosome-local execution still needs more compiled reactions to consume local pools instead of global fallbacks`
+
+### 2026-03-11 - Phase 7 / Generic Legacy Membrane Runtime Hint Slice
+
+- Summary:
+  - removed the dedicated membrane-only runtime hint calculation from the reaction update path and routed legacy `membrane_patch_transfer` / `membrane_patch_turnover` reactions through the same generic localized-pool hinting used by the compiled localized support reactions
+  - kept the legacy reaction classes available for backward-compatible state loading, but collapsed their control logic onto the shared locality machinery so the runtime no longer needs a second membrane-specific controller to keep old payloads working
+  - revalidated the Rust whole-cell suites and Python whole-cell tests after the runtime unification so the compatibility path now rides on the same generic locality behavior as the new compiled registry
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the runtime now shares one locality-control path for new and legacy localized support reactions, but the remaining Phase 7 work is broader chromosome-local execution and eventually dropping the legacy membrane-only reaction enums once saved-state compatibility is formally versioned`

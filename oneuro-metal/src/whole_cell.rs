@@ -5098,129 +5098,6 @@ impl WholeCellSimulator {
         > = HashMap::new();
         let mut stress_relief: HashMap<String, f32> = HashMap::new();
         let mut metabolic_load_relief = 0.0f32;
-        let band_precursors = Self::saturating_signal(
-            self.localized_membrane_band_precursor_pool_mm(),
-            0.45,
-        );
-        let pole_precursors =
-            Self::saturating_signal(self.localized_polar_precursor_pool_mm(), 0.35);
-        let septum_precursors = Self::saturating_signal(
-            self.spatial_species_mean(
-                IntracellularSpecies::MembranePrecursors,
-                IntracellularSpatialField::SeptumZone,
-            ),
-            0.40,
-        );
-        let band_source = self.localized_drive_mean(
-            WholeCellRdmeDriveField::MembraneSource,
-            IntracellularSpatialField::MembraneBandZone,
-        );
-        let pole_source = self.localized_drive_mean(
-            WholeCellRdmeDriveField::MembraneSource,
-            IntracellularSpatialField::PoleZone,
-        );
-        let septum_source = self.localized_drive_mean(
-            WholeCellRdmeDriveField::MembraneSource,
-            IntracellularSpatialField::SeptumZone,
-        );
-        let band_demand = self.localized_drive_mean(
-            WholeCellRdmeDriveField::MembraneDemand,
-            IntracellularSpatialField::MembraneBandZone,
-        );
-        let pole_demand = self.localized_drive_mean(
-            WholeCellRdmeDriveField::MembraneDemand,
-            IntracellularSpatialField::PoleZone,
-        );
-        let septum_demand = self.localized_drive_mean(
-            WholeCellRdmeDriveField::MembraneDemand,
-            IntracellularSpatialField::SeptumZone,
-        );
-        let band_crowding = self.localized_drive_mean(
-            WholeCellRdmeDriveField::Crowding,
-            IntracellularSpatialField::MembraneBandZone,
-        );
-        let pole_crowding = self.localized_drive_mean(
-            WholeCellRdmeDriveField::Crowding,
-            IntracellularSpatialField::PoleZone,
-        );
-        let septum_crowding = self.localized_drive_mean(
-            WholeCellRdmeDriveField::Crowding,
-            IntracellularSpatialField::SeptumZone,
-        );
-        let patch_transfer_hints = [
-            1.0,
-            Self::finite_scale(
-                0.22
-                    + 0.55 * self.membrane_division_state.band_turnover_pressure
-                    + 0.28 * band_demand
-                    + 0.20 * band_source
-                    + 0.18 * expression.membrane_support
-                    - 0.16 * band_crowding
-                    - 0.22 * band_precursors,
-                1.0,
-                0.05,
-                2.6,
-            ),
-            Self::finite_scale(
-                0.26
-                    + 0.58 * self.membrane_division_state.septum_turnover_pressure
-                    + 0.30 * septum_demand
-                    + 0.20 * septum_source
-                    + 0.20 * expression.process_scales.constriction
-                    - 0.15 * septum_crowding
-                    - 0.18 * septum_precursors,
-                1.0,
-                0.05,
-                2.8,
-            ),
-            Self::finite_scale(
-                0.18
-                    + 0.42 * self.membrane_division_state.pole_turnover_pressure
-                    + 0.24 * pole_demand
-                    + 0.16 * pole_source
-                    + 0.16 * expression.membrane_support
-                    - 0.12 * pole_crowding
-                    - 0.20 * pole_precursors,
-                1.0,
-                0.05,
-                2.4,
-            ),
-            0.25,
-        ];
-        let patch_turnover_hints = [
-            1.0,
-            Self::finite_scale(
-                0.18
-                    + 0.48 * self.membrane_division_state.band_turnover_pressure
-                    + 0.18 * band_crowding
-                    - 0.20 * band_source
-                    - 0.16 * band_precursors,
-                1.0,
-                0.05,
-                2.2,
-            ),
-            Self::finite_scale(
-                0.22
-                    + 0.54 * self.membrane_division_state.septum_turnover_pressure
-                    + 0.18 * septum_crowding
-                    - 0.22 * septum_source
-                    - 0.14 * septum_precursors,
-                1.0,
-                0.05,
-                2.4,
-            ),
-            Self::finite_scale(
-                0.16
-                    + 0.40 * self.membrane_division_state.pole_turnover_pressure
-                    + 0.14 * pole_crowding
-                    - 0.18 * pole_source
-                    - 0.16 * pole_precursors,
-                1.0,
-                0.05,
-                2.0,
-            ),
-            0.18,
-        ];
 
         for reaction_index in 0..self.organism_reactions.len() {
             let reaction = &self.organism_reactions[reaction_index];
@@ -5305,10 +5182,12 @@ impl WholeCellSimulator {
                 WholeCellReactionClass::LocalizedPoolTurnover => {
                     self.localized_pool_turnover_hint(reaction, &species_state, &spatial_cache)
                 }
-                WholeCellReactionClass::MembranePatchTransfer => patch_transfer_hints
-                    [Self::patch_domain_index(reaction_patch_domain)],
-                WholeCellReactionClass::MembranePatchTurnover => patch_turnover_hints
-                    [Self::patch_domain_index(reaction_patch_domain)],
+                WholeCellReactionClass::MembranePatchTransfer => {
+                    self.localized_pool_transfer_hint(reaction, &species_state, &spatial_cache)
+                }
+                WholeCellReactionClass::MembranePatchTurnover => {
+                    self.localized_pool_turnover_hint(reaction, &species_state, &spatial_cache)
+                }
                 WholeCellReactionClass::Transcription => {
                     Self::finite_scale(1.0 + 0.12 * transcription_flux.max(0.0), 1.0, 0.75, 2.5)
                 }
