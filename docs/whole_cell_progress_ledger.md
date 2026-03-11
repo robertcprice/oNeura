@@ -856,3 +856,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `operon semantics are now explicit at the asset-package layer, but older bundle sources still rely on ingress-time semantic recovery when annotations are missing entirely, so the next de-hardcoding step is expanding explicit source coverage for gene/operon semantics and removing more of those compatibility fills`
+
+### 2026-03-11 - Phase 7 / Complex Semantic Map Slice
+
+- Summary:
+  - compiled an explicit `complex_semantics` map into genome asset packages so complex family, targeting, and coupling flags are carried as first-class metadata instead of being recovered indirectly from operons during asset normalization
+  - made native asset-package normalization treat that complex map as authoritative for complex semantic restoration while still backfilling it from existing compiled complexes for legacy payloads that do not yet include the field
+  - aligned the Python bundle compiler and bundle-contract tests with the new complex semantic metadata, and added a regression showing that a sparse package with an opaque complex operon still restores complex behavior from the explicit semantic map
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `complex semantics are now explicit at the asset-package layer, but fully unannotated source bundles still require ingress-time semantic recovery for genes and transcription units before those compiled maps exist, so expanding explicit upstream source annotations remains the next removal target`

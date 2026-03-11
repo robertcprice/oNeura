@@ -35,6 +35,9 @@ def test_compile_syn3a_bundle_matches_current_runtime_shape():
     assert len(bundle.genome_asset_package["operon_semantics"]) == len(
         bundle.genome_asset_package["operons"]
     )
+    assert len(bundle.genome_asset_package["complex_semantics"]) == len(
+        bundle.genome_asset_package["complexes"]
+    )
     assert {"a_t_p", "amino_acids", "nucleotides", "membrane_precursors"} <= bulk_fields
     assert any(unit.get("asset_class") for unit in transcription_units)
     assert any(unit.get("complex_family") for unit in transcription_units)
@@ -43,6 +46,10 @@ def test_compile_syn3a_bundle_matches_current_runtime_shape():
     assert all(
         semantic.get("asset_class") and semantic.get("complex_family")
         for semantic in bundle.genome_asset_package["operon_semantics"]
+    )
+    assert all(
+        semantic.get("asset_class") and semantic.get("family")
+        for semantic in bundle.genome_asset_package["complex_semantics"]
     )
     assert "organism_spec_json" in bundle.source_hashes
 
@@ -66,6 +73,9 @@ def test_compile_demo_bundle_from_fasta_and_gff_sources(tmp_path):
     assert len(bundle.genome_asset_package["operon_semantics"]) == len(
         bundle.genome_asset_package["operons"]
     )
+    assert len(bundle.genome_asset_package["complex_semantics"]) == len(
+        bundle.genome_asset_package["complexes"]
+    )
     assert {"a_t_p", "amino_acids", "nucleotides", "membrane_precursors"} <= bulk_fields
     assert all(unit.get("asset_class") for unit in transcription_units)
     assert all(unit.get("complex_family") for unit in transcription_units)
@@ -74,6 +84,10 @@ def test_compile_demo_bundle_from_fasta_and_gff_sources(tmp_path):
     assert all(
         semantic.get("asset_class") and semantic.get("complex_family")
         for semantic in bundle.genome_asset_package["operon_semantics"]
+    )
+    assert all(
+        semantic.get("asset_class") and semantic.get("family")
+        for semantic in bundle.genome_asset_package["complex_semantics"]
     )
     assert "genome_fasta" in bundle.source_hashes
     assert "gene_features_gff" in bundle.source_hashes

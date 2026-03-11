@@ -385,6 +385,20 @@ def _compile_genome_asset_package(spec: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
+    complex_semantics = [
+        {
+            "id": complex["id"],
+            "asset_class": complex["asset_class"],
+            "family": complex["family"],
+            "subsystem_targets": list(complex.get("subsystem_targets", [])),
+            "membrane_inserted": bool(complex.get("membrane_inserted", False)),
+            "chromosome_coupled": bool(complex.get("chromosome_coupled", False)),
+            "division_coupled": bool(complex.get("division_coupled", False)),
+        }
+        for complex in complexes
+        if complex.get("asset_class") and complex.get("family")
+    ]
+
     return {
         "organism": spec["organism"],
         "chromosome_length_bp": int(spec["chromosome_length_bp"]),
@@ -395,6 +409,7 @@ def _compile_genome_asset_package(spec: Dict[str, Any]) -> Dict[str, Any]:
         "operon_semantics": operon_semantics,
         "rnas": rnas,
         "proteins": proteins,
+        "complex_semantics": complex_semantics,
         "complexes": complexes,
         "pools": list(spec.get("pools", [])),
     }

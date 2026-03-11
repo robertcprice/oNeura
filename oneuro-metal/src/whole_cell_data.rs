@@ -400,6 +400,22 @@ pub struct WholeCellComplexSpec {
     pub division_coupled: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WholeCellComplexSemanticSpec {
+    pub id: String,
+    pub asset_class: WholeCellAssetClass,
+    #[serde(default = "default_assembly_family")]
+    pub family: WholeCellAssemblyFamily,
+    #[serde(default)]
+    pub subsystem_targets: Vec<Syn3ASubsystemPreset>,
+    #[serde(default)]
+    pub membrane_inserted: bool,
+    #[serde(default)]
+    pub chromosome_coupled: bool,
+    #[serde(default)]
+    pub division_coupled: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WholeCellAssemblyFamily {
@@ -434,6 +450,8 @@ pub struct WholeCellGenomeAssetPackage {
     pub rnas: Vec<WholeCellRnaProductSpec>,
     #[serde(default)]
     pub proteins: Vec<WholeCellProteinProductSpec>,
+    #[serde(default)]
+    pub complex_semantics: Vec<WholeCellComplexSemanticSpec>,
     #[serde(default)]
     pub complexes: Vec<WholeCellComplexSpec>,
     #[serde(default)]
@@ -2197,6 +2215,25 @@ fn compile_operon_semantic_specs(
     semantics
 }
 
+fn compile_complex_semantic_specs(
+    complexes: &[WholeCellComplexSpec],
+) -> Vec<WholeCellComplexSemanticSpec> {
+    let mut semantics: Vec<WholeCellComplexSemanticSpec> = complexes
+        .iter()
+        .map(|complex| WholeCellComplexSemanticSpec {
+            id: complex.id.clone(),
+            asset_class: complex.asset_class,
+            family: complex.family,
+            subsystem_targets: complex.subsystem_targets.clone(),
+            membrane_inserted: complex.membrane_inserted,
+            chromosome_coupled: complex.chromosome_coupled,
+            division_coupled: complex.division_coupled,
+        })
+        .collect();
+    semantics.sort_by(|left, right| left.id.cmp(&right.id));
+    semantics
+}
+
 fn normalize_asset_package_semantic_metadata(package: &mut WholeCellGenomeAssetPackage) {
     let mut operon_targets = HashMap::<String, Vec<Syn3ASubsystemPreset>>::new();
     for protein in &package.proteins {
@@ -2363,6 +2400,89 @@ fn normalize_asset_package_semantic_metadata(package: &mut WholeCellGenomeAssetP
                 complex.division_coupled =
                     matches!(complex.family, WholeCellAssemblyFamily::Divisome);
             }
+        }
+    }
+
+    let mut complex_semantics_by_id: HashMap<String, WholeCellComplexSemanticSpec> = package
+        .complex_semantics
+        .iter()
+        .cloned()
+        .map(|semantic| (semantic.id.clone(), semantic))
+        .collect();
+    for complex in &package.complexes {
+        let semantic = complex_semantics_by_id
+            .entry(complex.id.clone())
+            .or_insert_with(|| WholeCellComplexSemanticSpec {
+                id: complex.id.clone(),
+                asset_class: complex.asset_class,
+                family: complex.family,
+                subsystem_targets: Vec::new(),
+                membrane_inserted: complex.membrane_inserted,
+                chromosome_coupled: complex.chromosome_coupled,
+                division_coupled: complex.division_coupled,
+            });
+        if matches!(semantic.asset_class, WholeCellAssetClass::Generic) {
+            semantic.asset_class = complex.asset_class;
+        }
+        if matches!(semantic.family, WholeCellAssemblyFamily::Generic) {
+            semantic.family = complex.family;
+        }
+        push_unique_subsystem_targets(&mut semantic.subsystem_targets, &complex.subsystem_targets);
+    }
+    let mut complex_semantics = complex_semantics_by_id
+        .into_values()
+        .collect::<Vec<WholeCellComplexSemanticSpec>>();
+    complex_semantics.sort_by(|left, right| left.id.cmp(&right.id));
+    package.complex_semantics = complex_semantics;
+
+    let complex_semantic_map: HashMap<
+        String,
+        (
+            Vec<Syn3ASubsystemPreset>,
+            WholeCellAssetClass,
+            WholeCellAssemblyFamily,
+            bool,
+            bool,
+            bool,
+        ),
+    > = package
+        .complex_semantics
+        .iter()
+        .map(|semantic| {
+            (
+                semantic.id.clone(),
+                (
+                    semantic.subsystem_targets.clone(),
+                    semantic.asset_class,
+                    semantic.family,
+                    semantic.membrane_inserted,
+                    semantic.chromosome_coupled,
+                    semantic.division_coupled,
+                ),
+            )
+        })
+        .collect();
+
+    for complex in &mut package.complexes {
+        if let Some((
+            subsystem_targets,
+            asset_class,
+            family,
+            membrane_inserted,
+            chromosome_coupled,
+            division_coupled,
+        )) = complex_semantic_map.get(&complex.id)
+        {
+            if complex.subsystem_targets.is_empty() {
+                complex.subsystem_targets = subsystem_targets.clone();
+            } else {
+                push_unique_subsystem_targets(&mut complex.subsystem_targets, subsystem_targets);
+            }
+            complex.asset_class = *asset_class;
+            complex.family = *family;
+            complex.membrane_inserted = *membrane_inserted;
+            complex.chromosome_coupled = *chromosome_coupled;
+            complex.division_coupled = *division_coupled;
         }
     }
 }
@@ -3206,6 +3326,7 @@ pub fn compile_genome_asset_package(spec: &WholeCellOrganismSpec) -> WholeCellGe
         operons,
         rnas,
         proteins,
+        complex_semantics: compile_complex_semantic_specs(&complexes),
         complexes,
         pools: spec.pools.clone(),
     }
@@ -5063,6 +5184,7 @@ mod tests {
             organism.chromosome_domains.len()
         );
         assert_eq!(assets.operon_semantics.len(), assets.operons.len());
+        assert_eq!(assets.complex_semantics.len(), assets.complexes.len());
         assert_eq!(assets.rnas.len(), organism.genes.len());
         assert_eq!(assets.proteins.len(), organism.genes.len());
         assert!(assets.complexes.len() >= 4);
@@ -5721,6 +5843,55 @@ mod tests {
         assert_eq!(
             reparsed_complex.membrane_inserted,
             expected_membrane_inserted
+        );
+    }
+
+    #[test]
+    fn parse_genome_asset_package_json_backfills_legacy_complex_semantics() {
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let complex = package
+            .complexes
+            .iter_mut()
+            .find(|complex| complex.operon == "division_ring_operon")
+            .expect("division complex");
+        let expected_id = complex.id.clone();
+        complex.operon = "opaque_complex_operon_alpha".to_string();
+        complex.subsystem_targets.clear();
+        complex.asset_class = WholeCellAssetClass::Generic;
+        complex.family = WholeCellAssemblyFamily::Generic;
+        complex.membrane_inserted = false;
+        complex.chromosome_coupled = false;
+        complex.division_coupled = false;
+
+        let json = serde_json::to_string(&package).expect("serialize package");
+        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed_complex = reparsed
+            .complexes
+            .iter()
+            .find(|complex| complex.id == expected_id)
+            .expect("reparsed complex");
+        let reparsed_semantic = reparsed
+            .complex_semantics
+            .iter()
+            .find(|semantic| semantic.id == expected_id)
+            .expect("reparsed complex semantic");
+
+        assert_eq!(reparsed_complex.asset_class, reparsed_semantic.asset_class);
+        assert_eq!(reparsed_complex.family, reparsed_semantic.family);
+        for target in &reparsed_semantic.subsystem_targets {
+            assert!(reparsed_complex.subsystem_targets.contains(target));
+        }
+        assert_eq!(
+            reparsed_complex.membrane_inserted,
+            reparsed_semantic.membrane_inserted
+        );
+        assert_eq!(
+            reparsed_complex.chromosome_coupled,
+            reparsed_semantic.chromosome_coupled
+        );
+        assert_eq!(
+            reparsed_complex.division_coupled,
+            reparsed_semantic.division_coupled
         );
     }
 
