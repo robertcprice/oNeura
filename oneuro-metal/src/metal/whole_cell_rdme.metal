@@ -14,11 +14,6 @@ struct Params {
     float voxel_size_nm;
     float dt;
     float metabolic_load;
-    float energy_local_sink;
-    float nucleotide_local_sink;
-    float membrane_local_source;
-    float membrane_local_sink;
-    float crowding_penalty;
 };
 
 inline float diffusion_coeff(uint species) {
@@ -53,9 +48,9 @@ inline float local_diffusion_scale(
     float membrane_adjacency,
     float septum_zone,
     float nucleoid_occupancy,
-    constant Params& params
+    float local_crowding
 ) {
-    float crowding_pressure = max(0.0f, 1.0f - clamp(params.crowding_penalty, 0.35f, 1.10f));
+    float crowding_pressure = clamp(local_crowding, 0.0f, 1.6f);
     float base = 1.0f;
     switch (species) {
         case 0: base = 1.0f - 0.12f * septum_zone - 0.20f * nucleoid_occupancy; break;
@@ -63,7 +58,7 @@ inline float local_diffusion_scale(
         case 2: base = 1.0f - 0.08f * septum_zone - 0.28f * nucleoid_occupancy; break;
         default: base = 0.82f + 0.12f * membrane_adjacency - 0.14f * septum_zone; break;
     }
-    return clamp(base - crowding_pressure * (0.18f + 0.22f * nucleoid_occupancy), 0.18f, 1.35f);
+    return clamp(base - crowding_pressure * (0.12f + 0.22f * nucleoid_occupancy), 0.18f, 1.35f);
 }
 
 inline float local_source_scale(
@@ -71,20 +66,32 @@ inline float local_source_scale(
     float membrane_adjacency,
     float septum_zone,
     float nucleoid_occupancy,
-    constant Params& params
+    float local_energy_source,
+    float local_membrane_source,
+    float local_crowding
 ) {
     switch (species) {
         case 0:
-            return clamp(0.90f + 0.10f * membrane_adjacency + 0.10f * septum_zone, 0.30f, 1.60f);
+            return clamp(
+                0.80f
+                    + 0.14f * membrane_adjacency
+                    + 0.08f * septum_zone
+                    + 0.22f * local_energy_source
+                    - 0.06f * local_crowding,
+                0.25f,
+                1.80f
+            );
         case 1:
-            return clamp(0.94f + 0.06f * (1.0f - nucleoid_occupancy), 0.30f, 1.40f);
+            return clamp(0.90f + 0.08f * (1.0f - nucleoid_occupancy) - 0.05f * local_crowding, 0.30f, 1.50f);
         case 2:
-            return clamp(0.88f + 0.18f * nucleoid_occupancy, 0.30f, 1.55f);
+            return clamp(0.82f + 0.18f * nucleoid_occupancy - 0.04f * local_crowding, 0.30f, 1.55f);
         default:
             return clamp(
-                0.55f + params.membrane_local_source * (0.30f * membrane_adjacency + 0.50f * septum_zone),
+                0.44f
+                    + local_membrane_source * (0.26f * membrane_adjacency + 0.54f * septum_zone)
+                    - 0.04f * local_crowding,
                 0.20f,
-                1.80f
+                1.90f
             );
     }
 }
@@ -94,28 +101,48 @@ inline float local_sink_scale(
     float membrane_adjacency,
     float septum_zone,
     float nucleoid_occupancy,
+    float local_atp_demand,
+    float local_amino_demand,
+    float local_nucleotide_demand,
+    float local_membrane_demand,
+    float local_crowding,
     constant Params& params
 ) {
     switch (species) {
         case 0:
             return clamp(
-                0.82f
-                    + params.energy_local_sink * (0.20f * membrane_adjacency + 0.22f * septum_zone)
-                    + 0.18f * nucleoid_occupancy,
+                0.72f
+                    + local_atp_demand * (0.24f * membrane_adjacency + 0.20f * septum_zone)
+                    + 0.18f * nucleoid_occupancy
+                    + 0.10f * local_crowding
+                    + 0.08f * max(params.metabolic_load, 0.1f),
                 0.20f,
                 2.20f
             );
         case 1:
-            return clamp(0.90f + 0.16f * nucleoid_occupancy + 0.10f * septum_zone, 0.20f, 1.80f);
+            return clamp(
+                0.80f
+                    + local_amino_demand * (0.28f + 0.18f * nucleoid_occupancy + 0.10f * septum_zone)
+                    + 0.08f * local_crowding
+                    + 0.05f * max(params.metabolic_load, 0.1f),
+                0.20f,
+                1.90f
+            );
         case 2:
             return clamp(
-                0.76f + params.nucleotide_local_sink * (0.44f * nucleoid_occupancy) + 0.12f * septum_zone,
+                0.70f
+                    + local_nucleotide_demand * (0.44f * nucleoid_occupancy + 0.12f * septum_zone)
+                    + 0.06f * local_crowding
+                    + 0.05f * max(params.metabolic_load, 0.1f),
                 0.20f,
                 2.20f
             );
         default:
             return clamp(
-                0.34f + params.membrane_local_sink * (0.30f * membrane_adjacency + 0.56f * septum_zone),
+                0.26f
+                    + local_membrane_demand * (0.30f * membrane_adjacency + 0.58f * septum_zone)
+                    + 0.08f * local_crowding
+                    + 0.04f * max(params.metabolic_load, 0.1f),
                 0.10f,
                 2.40f
             );
@@ -126,7 +153,8 @@ kernel void whole_cell_rdme_kernel(
     device const float* grid_in  [[buffer(0)]],
     device       float* grid_out [[buffer(1)]],
     device const float* field_in [[buffer(2)]],
-    constant     Params& params  [[buffer(3)]],
+    device const float* drive_in [[buffer(3)]],
+    constant     Params& params  [[buffer(4)]],
     uint         gid             [[thread_position_in_grid]]
 ) {
     uint X = params.x_dim;
@@ -147,6 +175,14 @@ kernel void whole_cell_rdme_kernel(
     float membrane_adjacency = clamp(field_in[gid], 0.0f, 1.0f);
     float septum_zone = clamp(field_in[field_offset + gid], 0.0f, 1.0f);
     float nucleoid_occupancy = clamp(field_in[2 * field_offset + gid], 0.0f, 1.0f);
+    uint drive_offset = total_voxels;
+    float local_energy_source = clamp(drive_in[gid], 0.0f, 2.5f);
+    float local_atp_demand = clamp(drive_in[drive_offset + gid], 0.0f, 2.5f);
+    float local_amino_demand = clamp(drive_in[2 * drive_offset + gid], 0.0f, 2.5f);
+    float local_nucleotide_demand = clamp(drive_in[3 * drive_offset + gid], 0.0f, 2.5f);
+    float local_membrane_source = clamp(drive_in[4 * drive_offset + gid], 0.0f, 2.5f);
+    float local_membrane_demand = clamp(drive_in[5 * drive_offset + gid], 0.0f, 2.5f);
+    float local_crowding = clamp(drive_in[6 * drive_offset + gid], 0.0f, 1.6f);
 
     for (uint species = 0; species < SPECIES_COUNT; species++) {
         uint base = species * total_voxels;
@@ -162,11 +198,30 @@ kernel void whole_cell_rdme_kernel(
 
         float laplacian = right + left + up + down + front + back - 6.0f * c;
         float coeff = diffusion_coeff(species) / dx2 * params.dt
-            * local_diffusion_scale(species, membrane_adjacency, septum_zone, nucleoid_occupancy, params);
+            * local_diffusion_scale(species, membrane_adjacency, septum_zone, nucleoid_occupancy, local_crowding);
         float source = basal_source(species) * params.dt
-            * local_source_scale(species, membrane_adjacency, septum_zone, nucleoid_occupancy, params);
+            * local_source_scale(
+                species,
+                membrane_adjacency,
+                septum_zone,
+                nucleoid_occupancy,
+                local_energy_source,
+                local_membrane_source,
+                local_crowding
+            );
         float sink = basal_sink(species) * params.dt * load
-            * local_sink_scale(species, membrane_adjacency, septum_zone, nucleoid_occupancy, params)
+            * local_sink_scale(
+                species,
+                membrane_adjacency,
+                septum_zone,
+                nucleoid_occupancy,
+                local_atp_demand,
+                local_amino_demand,
+                local_nucleotide_demand,
+                local_membrane_demand,
+                local_crowding,
+                params
+            )
             * c;
         float updated = c + coeff * laplacian + source - sink;
         grid_out[idx] = max(0.0f, updated);

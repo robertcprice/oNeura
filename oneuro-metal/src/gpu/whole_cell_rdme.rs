@@ -85,27 +85,46 @@ const FIELD_ORDER: [IntracellularSpatialField; IntracellularSpatialField::COUNT]
     IntracellularSpatialField::NucleoidOccupancy,
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum WholeCellRdmeDriveField {
+    EnergySource = 0,
+    AtpDemand = 1,
+    AminoDemand = 2,
+    NucleotideDemand = 3,
+    MembraneSource = 4,
+    MembraneDemand = 5,
+    Crowding = 6,
+}
+
+impl WholeCellRdmeDriveField {
+    pub const COUNT: usize = 7;
+
+    pub fn index(self) -> usize {
+        self as usize
+    }
+}
+
+#[cfg(test)]
+const DRIVE_FIELD_ORDER: [WholeCellRdmeDriveField; WholeCellRdmeDriveField::COUNT] = [
+    WholeCellRdmeDriveField::EnergySource,
+    WholeCellRdmeDriveField::AtpDemand,
+    WholeCellRdmeDriveField::AminoDemand,
+    WholeCellRdmeDriveField::NucleotideDemand,
+    WholeCellRdmeDriveField::MembraneSource,
+    WholeCellRdmeDriveField::MembraneDemand,
+    WholeCellRdmeDriveField::Crowding,
+];
+
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct WholeCellRdmeContext {
     pub metabolic_load: f32,
-    pub energy_local_sink: f32,
-    pub nucleotide_local_sink: f32,
-    pub membrane_local_source: f32,
-    pub membrane_local_sink: f32,
-    pub crowding_penalty: f32,
 }
 
 impl Default for WholeCellRdmeContext {
     fn default() -> Self {
-        Self {
-            metabolic_load: 1.0,
-            energy_local_sink: 1.0,
-            nucleotide_local_sink: 1.0,
-            membrane_local_source: 1.0,
-            membrane_local_sink: 1.0,
-            crowding_penalty: 1.0,
-        }
+        Self { metabolic_load: 1.0 }
     }
 }
 
@@ -340,6 +359,76 @@ impl IntracellularSpatialState {
     }
 }
 
+pub struct WholeCellRdmeDriveState {
+    x_dim: usize,
+    y_dim: usize,
+    z_dim: usize,
+    fields: Vec<f32>,
+}
+
+impl WholeCellRdmeDriveState {
+    pub fn new(x_dim: usize, y_dim: usize, z_dim: usize) -> Self {
+        let total = WholeCellRdmeDriveField::COUNT * x_dim * y_dim * z_dim;
+        Self {
+            x_dim,
+            y_dim,
+            z_dim,
+            fields: vec![0.0; total],
+        }
+    }
+
+    pub fn total_voxels(&self) -> usize {
+        self.x_dim * self.y_dim * self.z_dim
+    }
+
+    fn field_range(&self, field: WholeCellRdmeDriveField) -> Range<usize> {
+        let total_voxels = self.total_voxels();
+        let start = field.index() * total_voxels;
+        start..start + total_voxels
+    }
+
+    pub fn clone_field(&self, field: WholeCellRdmeDriveField) -> Vec<f32> {
+        self.fields[self.field_range(field)].to_vec()
+    }
+
+    pub fn field_slice(&self, field: WholeCellRdmeDriveField) -> &[f32] {
+        &self.fields[self.field_range(field)]
+    }
+
+    pub fn weighted_mean(&self, field: WholeCellRdmeDriveField, weights: &[f32]) -> f32 {
+        let values = self.field_slice(field);
+        if values.len() != weights.len() {
+            return 0.0;
+        }
+        let mut weighted_sum = 0.0;
+        let mut weight_total = 0.0;
+        for (&value, &weight) in values.iter().zip(weights.iter()) {
+            let clamped = weight.max(0.0);
+            weighted_sum += value * clamped;
+            weight_total += clamped;
+        }
+        if weight_total <= 1.0e-6 {
+            0.0
+        } else {
+            weighted_sum / weight_total
+        }
+    }
+
+    pub fn set_field(&mut self, field: WholeCellRdmeDriveField, values: &[f32]) -> Result<(), String> {
+        let expected = self.total_voxels();
+        if values.len() != expected {
+            return Err(format!(
+                "drive field length mismatch: expected {}, got {}",
+                expected,
+                values.len()
+            ));
+        }
+        let range = self.field_range(field);
+        self.fields[range].copy_from_slice(values);
+        Ok(())
+    }
+}
+
 /// Params struct matching the Metal shader constant buffer.
 #[repr(C)]
 struct WholeCellRdmeParams {
@@ -349,11 +438,6 @@ struct WholeCellRdmeParams {
     voxel_size_nm: f32,
     dt: f32,
     metabolic_load: f32,
-    energy_local_sink: f32,
-    nucleotide_local_sink: f32,
-    membrane_local_source: f32,
-    membrane_local_sink: f32,
-    crowding_penalty: f32,
 }
 
 fn local_diffusion_scale(
@@ -361,9 +445,9 @@ fn local_diffusion_scale(
     membrane_adjacency: f32,
     septum_zone: f32,
     nucleoid_occupancy: f32,
-    context: WholeCellRdmeContext,
+    local_crowding: f32,
 ) -> f32 {
-    let crowding_pressure = (1.0 - context.crowding_penalty.clamp(0.35, 1.10)).max(0.0);
+    let crowding_pressure = local_crowding.clamp(0.0, 1.6);
     let base = match species {
         IntracellularSpecies::ATP => 1.0 - 0.12 * septum_zone - 0.20 * nucleoid_occupancy,
         IntracellularSpecies::AminoAcids => 1.0 - 0.10 * septum_zone - 0.24 * nucleoid_occupancy,
@@ -372,7 +456,7 @@ fn local_diffusion_scale(
             0.82 + 0.12 * membrane_adjacency - 0.14 * septum_zone
         }
     };
-    (base - crowding_pressure * (0.18 + 0.22 * nucleoid_occupancy)).clamp(0.18, 1.35)
+    (base - crowding_pressure * (0.12 + 0.22 * nucleoid_occupancy)).clamp(0.18, 1.35)
 }
 
 fn local_source_scale(
@@ -380,19 +464,31 @@ fn local_source_scale(
     membrane_adjacency: f32,
     septum_zone: f32,
     nucleoid_occupancy: f32,
-    context: WholeCellRdmeContext,
+    local_energy_source: f32,
+    local_membrane_source: f32,
+    local_crowding: f32,
 ) -> f32 {
     match species {
         IntracellularSpecies::ATP => {
-            (0.90 + 0.10 * membrane_adjacency + 0.10 * septum_zone).clamp(0.30, 1.60)
+            (0.80
+                + 0.14 * membrane_adjacency
+                + 0.08 * septum_zone
+                + 0.22 * local_energy_source
+                - 0.06 * local_crowding)
+                .clamp(0.25, 1.80)
         }
         IntracellularSpecies::AminoAcids => {
-            (0.94 + 0.06 * (1.0 - nucleoid_occupancy)).clamp(0.30, 1.40)
+            (0.90 + 0.08 * (1.0 - nucleoid_occupancy) - 0.05 * local_crowding).clamp(0.30, 1.50)
         }
-        IntracellularSpecies::Nucleotides => (0.88 + 0.18 * nucleoid_occupancy).clamp(0.30, 1.55),
-        IntracellularSpecies::MembranePrecursors => (0.55
-            + context.membrane_local_source * (0.30 * membrane_adjacency + 0.50 * septum_zone))
-            .clamp(0.20, 1.80),
+        IntracellularSpecies::Nucleotides => {
+            (0.82 + 0.18 * nucleoid_occupancy - 0.04 * local_crowding).clamp(0.30, 1.55)
+        }
+        IntracellularSpecies::MembranePrecursors => {
+            (0.44
+                + local_membrane_source * (0.26 * membrane_adjacency + 0.54 * septum_zone)
+                - 0.04 * local_crowding)
+                .clamp(0.18, 1.90)
+        }
     }
 }
 
@@ -401,22 +497,33 @@ fn local_sink_scale(
     membrane_adjacency: f32,
     septum_zone: f32,
     nucleoid_occupancy: f32,
+    local_atp_demand: f32,
+    local_amino_demand: f32,
+    local_nucleotide_demand: f32,
+    local_membrane_demand: f32,
+    local_crowding: f32,
     context: WholeCellRdmeContext,
 ) -> f32 {
     match species {
-        IntracellularSpecies::ATP => (0.82
-            + context.energy_local_sink * (0.20 * membrane_adjacency + 0.22 * septum_zone)
-            + 0.18 * nucleoid_occupancy)
+        IntracellularSpecies::ATP => (0.72
+            + local_atp_demand * (0.24 * membrane_adjacency + 0.20 * septum_zone + 0.16 * nucleoid_occupancy)
+            + 0.10 * local_crowding
+            + 0.08 * context.metabolic_load.max(0.1))
             .clamp(0.20, 2.20),
-        IntracellularSpecies::AminoAcids => {
-            (0.90 + 0.16 * nucleoid_occupancy + 0.10 * septum_zone).clamp(0.20, 1.80)
-        }
-        IntracellularSpecies::Nucleotides => (0.76
-            + context.nucleotide_local_sink * (0.44 * nucleoid_occupancy)
-            + 0.12 * septum_zone)
+        IntracellularSpecies::AminoAcids => (0.80
+            + local_amino_demand * (0.28 + 0.18 * nucleoid_occupancy + 0.10 * septum_zone)
+            + 0.08 * local_crowding
+            + 0.05 * context.metabolic_load.max(0.1))
+            .clamp(0.20, 1.90),
+        IntracellularSpecies::Nucleotides => (0.70
+            + local_nucleotide_demand * (0.44 * nucleoid_occupancy + 0.12 * septum_zone)
+            + 0.06 * local_crowding
+            + 0.05 * context.metabolic_load.max(0.1))
             .clamp(0.20, 2.20),
-        IntracellularSpecies::MembranePrecursors => (0.34
-            + context.membrane_local_sink * (0.30 * membrane_adjacency + 0.56 * septum_zone))
+        IntracellularSpecies::MembranePrecursors => (0.26
+            + local_membrane_demand * (0.30 * membrane_adjacency + 0.58 * septum_zone)
+            + 0.08 * local_crowding
+            + 0.04 * context.metabolic_load.max(0.1))
             .clamp(0.10, 2.40),
     }
 }
@@ -427,6 +534,7 @@ pub fn dispatch_whole_cell_rdme(
     gpu: &GpuContext,
     lattice: &mut IntracellularLattice,
     spatial: &IntracellularSpatialState,
+    drive: &WholeCellRdmeDriveState,
     dt: f32,
     context: WholeCellRdmeContext,
 ) {
@@ -439,6 +547,7 @@ pub fn dispatch_whole_cell_rdme(
         let buf_grid_in = gpu.buffer_from_slice(&lattice.current);
         let buf_grid_out = gpu.buffer_from_slice(&lattice.next);
         let buf_fields = gpu.buffer_from_slice(&spatial.fields);
+        let buf_drive = gpu.buffer_from_slice(&drive.fields);
 
         let params = WholeCellRdmeParams {
             x_dim: lattice.x_dim as u32,
@@ -447,11 +556,6 @@ pub fn dispatch_whole_cell_rdme(
             voxel_size_nm: lattice.voxel_size_nm,
             dt: sub_dt,
             metabolic_load: context.metabolic_load,
-            energy_local_sink: context.energy_local_sink,
-            nucleotide_local_sink: context.nucleotide_local_sink,
-            membrane_local_source: context.membrane_local_source,
-            membrane_local_sink: context.membrane_local_sink,
-            crowding_penalty: context.crowding_penalty,
         };
         let param_bytes = unsafe {
             std::slice::from_raw_parts(
@@ -462,8 +566,13 @@ pub fn dispatch_whole_cell_rdme(
 
         gpu.dispatch_1d(
             &gpu.pipelines.whole_cell_rdme,
-            &[(&buf_grid_in, 0), (&buf_grid_out, 0), (&buf_fields, 0)],
-            Some((param_bytes, 3)),
+            &[
+                (&buf_grid_in, 0),
+                (&buf_grid_out, 0),
+                (&buf_fields, 0),
+                (&buf_drive, 0),
+            ],
+            Some((param_bytes, 4)),
             total_voxels,
         );
 
@@ -482,16 +591,18 @@ pub fn dispatch_whole_cell_rdme(
     _gpu: &super::GpuContext,
     lattice: &mut IntracellularLattice,
     spatial: &IntracellularSpatialState,
+    drive: &WholeCellRdmeDriveState,
     dt: f32,
     context: WholeCellRdmeContext,
 ) {
-    cpu_whole_cell_rdme(lattice, spatial, dt, context);
+    cpu_whole_cell_rdme(lattice, spatial, drive, dt, context);
 }
 
 /// CPU reference implementation of the intracellular RDME step.
 pub fn cpu_whole_cell_rdme(
     lattice: &mut IntracellularLattice,
     spatial: &IntracellularSpatialState,
+    drive: &WholeCellRdmeDriveState,
     dt: f32,
     context: WholeCellRdmeContext,
 ) {
@@ -519,6 +630,20 @@ pub fn cpu_whole_cell_rdme(
                 &spatial.fields[spatial.field_range(IntracellularSpatialField::SeptumZone)];
             let nucleoid_field =
                 &spatial.fields[spatial.field_range(IntracellularSpatialField::NucleoidOccupancy)];
+            let energy_source_field =
+                &drive.fields[drive.field_range(WholeCellRdmeDriveField::EnergySource)];
+            let atp_demand_field =
+                &drive.fields[drive.field_range(WholeCellRdmeDriveField::AtpDemand)];
+            let amino_demand_field =
+                &drive.fields[drive.field_range(WholeCellRdmeDriveField::AminoDemand)];
+            let nucleotide_demand_field =
+                &drive.fields[drive.field_range(WholeCellRdmeDriveField::NucleotideDemand)];
+            let membrane_source_field =
+                &drive.fields[drive.field_range(WholeCellRdmeDriveField::MembraneSource)];
+            let membrane_demand_field =
+                &drive.fields[drive.field_range(WholeCellRdmeDriveField::MembraneDemand)];
+            let crowding_field =
+                &drive.fields[drive.field_range(WholeCellRdmeDriveField::Crowding)];
 
             next.par_iter_mut().enumerate().for_each(|(gid, out)| {
                 let z = gid / (y_dim * x_dim);
@@ -563,25 +688,39 @@ pub fn cpu_whole_cell_rdme(
                 let membrane_adjacency = membrane_field[gid].clamp(0.0, 1.0);
                 let septum_zone = septum_field[gid].clamp(0.0, 1.0);
                 let nucleoid_occupancy = nucleoid_field[gid].clamp(0.0, 1.0);
+                let local_energy_source = energy_source_field[gid].clamp(0.0, 2.5);
+                let local_atp_demand = atp_demand_field[gid].clamp(0.0, 2.5);
+                let local_amino_demand = amino_demand_field[gid].clamp(0.0, 2.5);
+                let local_nucleotide_demand = nucleotide_demand_field[gid].clamp(0.0, 2.5);
+                let local_membrane_source = membrane_source_field[gid].clamp(0.0, 2.5);
+                let local_membrane_demand = membrane_demand_field[gid].clamp(0.0, 2.5);
+                let local_crowding = crowding_field[gid].clamp(0.0, 1.6);
                 let diffusion_scale = local_diffusion_scale(
                     species,
                     membrane_adjacency,
                     septum_zone,
                     nucleoid_occupancy,
-                    context,
+                    local_crowding,
                 );
                 let source_scale = local_source_scale(
                     species,
                     membrane_adjacency,
                     septum_zone,
                     nucleoid_occupancy,
-                    context,
+                    local_energy_source,
+                    local_membrane_source,
+                    local_crowding,
                 );
                 let sink_scale = local_sink_scale(
                     species,
                     membrane_adjacency,
                     septum_zone,
                     nucleoid_occupancy,
+                    local_atp_demand,
+                    local_amino_demand,
+                    local_nucleotide_demand,
+                    local_membrane_demand,
+                    local_crowding,
                     context,
                 );
                 let updated = c + coeff * diffusion_scale * laplacian + source * source_scale
@@ -601,6 +740,7 @@ mod tests {
     fn cpu_rdme_substeps_keep_default_dt_finite() {
         let mut lattice = IntracellularLattice::new(24, 24, 12, 20.0);
         let mut spatial = IntracellularSpatialState::new(24, 24, 12);
+        let mut drive = WholeCellRdmeDriveState::new(24, 24, 12);
         lattice.fill_species(IntracellularSpecies::ATP, 1.2);
         lattice.fill_species(IntracellularSpecies::AminoAcids, 0.95);
         lattice.fill_species(IntracellularSpecies::Nucleotides, 0.80);
@@ -610,11 +750,16 @@ mod tests {
             let values = vec![0.25; lattice.total_voxels()];
             spatial.set_field(field, &values).expect("spatial field");
         }
+        for field in DRIVE_FIELD_ORDER {
+            let values = vec![0.10; lattice.total_voxels()];
+            drive.set_field(field, &values).expect("drive field");
+        }
 
         for _ in 0..32 {
             cpu_whole_cell_rdme(
                 &mut lattice,
                 &spatial,
+                &drive,
                 0.25,
                 WholeCellRdmeContext::default(),
             );

@@ -306,3 +306,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiled locality now flows through registry and runtime reaction ownership, but membrane patch reactions, richer compartment scopes, and broader chromosome-local chemistry still need to be pushed onto the same primitive-driven path`
+
+### 2026-03-11 - Phase 7 / Patch-Local RDME Drive Slice
+
+- Summary:
+  - replaced the coarse RDME sink/source scalar handoff with dynamic local drive fields for energy source, ATP demand, amino demand, nucleotide demand, membrane source, membrane demand, and crowding
+  - built those drive fields from compiled species/reaction ownership plus patch-local chemistry site reports, so membrane and chromosome chemistry now feed the lattice through localized primitive fields instead of a few global knobs
+  - extended the native Rust and Metal RDME paths to consume those per-voxel drive fields and added scope-aware validation for the new compiled-source / compiled-demand behavior
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/gpu/whole_cell_rdme.rs`
+  - `oneuro-metal/src/metal/whole_cell_rdme.metal`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `RDME now sees compiled and patch-local drive fields, but richer compartment types, explicit membrane patch turnover chemistry, and broader chromosome-local species ownership still need to be moved off the remaining coarse rule channels`

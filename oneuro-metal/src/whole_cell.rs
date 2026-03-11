@@ -14,6 +14,7 @@ use crate::gpu;
 use crate::gpu::whole_cell_rdme::{
     cpu_whole_cell_rdme, dispatch_whole_cell_rdme, IntracellularLattice, IntracellularSpatialField,
     IntracellularSpatialState, IntracellularSpecies, WholeCellRdmeContext,
+    WholeCellRdmeDriveField, WholeCellRdmeDriveState,
 };
 use crate::substrate_ir::{
     ScalarBranch, ScalarContext, ScalarFactor, ScalarRule, EMPTY_SCALAR_BRANCH, EMPTY_SCALAR_FACTOR,
@@ -23,7 +24,8 @@ use crate::whole_cell_data::{
     bundled_syn3a_program_spec_json, compile_genome_asset_package, compile_genome_process_registry,
     compile_program_spec_from_bundle_manifest_path, derive_organism_profile,
     initialize_runtime_reaction_state, initialize_runtime_species_state, parse_program_spec_json,
-    parse_saved_state_json, saved_state_to_json, WholeCellAssemblyFamily, WholeCellBulkField,
+    parse_saved_state_json, saved_state_to_json, WholeCellAssemblyFamily, WholeCellAssetClass,
+    WholeCellBulkField,
     WholeCellChromosomeForkDirection, WholeCellChromosomeForkState, WholeCellChromosomeLocusState,
     WholeCellChromosomeState, WholeCellComplexAssemblyState, WholeCellComplexSpec,
     WholeCellContractSchema, WholeCellGenomeAssetPackage, WholeCellGenomeAssetSummary,
@@ -1314,6 +1316,7 @@ pub struct WholeCellSimulator {
     gpu: Option<GpuContext>,
     lattice: IntracellularLattice,
     spatial_fields: IntracellularSpatialState,
+    rdme_drive_fields: WholeCellRdmeDriveState,
     time_ms: f32,
     step_count: u64,
     atp_mm: f32,
@@ -3760,6 +3763,359 @@ impl WholeCellSimulator {
         }
         species.count.max(0.0)
             * Self::spatial_scope_overlap(cache, species.spatial_scope, preferred_scope)
+    }
+
+    fn rdme_scope_weights<'a>(
+        &'a self,
+        scope: WholeCellSpatialScope,
+        uniform_weights: &'a [f32],
+    ) -> &'a [f32] {
+        if let Some(field) = Self::spatial_scope_field(scope) {
+            self.spatial_fields.field_slice(field)
+        } else {
+            uniform_weights
+        }
+    }
+
+    fn accumulate_normalized_signal(target: &mut [f32], weights: &[f32], amplitude: f32) {
+        if !amplitude.is_finite() || amplitude.abs() <= 1.0e-6 || target.len() != weights.len() {
+            return;
+        }
+        let weight_sum = weights
+            .iter()
+            .map(|weight| weight.max(0.0))
+            .sum::<f32>()
+            .max(1.0e-6);
+        let mean_scale = target.len() as f32 / weight_sum;
+        for (value, weight) in target.iter_mut().zip(weights.iter()) {
+            *value += amplitude * weight.max(0.0) * mean_scale;
+        }
+    }
+
+    fn accumulate_patch_signal(
+        target: &mut [f32],
+        x_dim: usize,
+        y_dim: usize,
+        z_dim: usize,
+        center_x: usize,
+        center_y: usize,
+        center_z: usize,
+        radius: usize,
+        amplitude: f32,
+    ) {
+        if !amplitude.is_finite() || amplitude.abs() <= 1.0e-6 || target.is_empty() {
+            return;
+        }
+        let radius = radius.max(1) as isize;
+        let sigma = (radius as f32 * 0.65).max(0.75);
+        let x_start = center_x.saturating_sub(radius as usize);
+        let y_start = center_y.saturating_sub(radius as usize);
+        let z_start = center_z.saturating_sub(radius as usize);
+        let x_end = (center_x + radius as usize + 1).min(x_dim);
+        let y_end = (center_y + radius as usize + 1).min(y_dim);
+        let z_end = (center_z + radius as usize + 1).min(z_dim);
+        let mut weighted_indices = Vec::new();
+        let mut weight_total = 0.0f32;
+        for z in z_start..z_end {
+            for y in y_start..y_end {
+                for x in x_start..x_end {
+                    let dx = x as isize - center_x as isize;
+                    let dy = y as isize - center_y as isize;
+                    let dz = z as isize - center_z as isize;
+                    let dist2 = (dx * dx + dy * dy + dz * dz) as f32;
+                    if dist2 > (radius * radius) as f32 {
+                        continue;
+                    }
+                    let weight = (-0.5 * dist2 / (sigma * sigma)).exp().max(1.0e-4);
+                    let gid = z * y_dim * x_dim + y * x_dim + x;
+                    weighted_indices.push((gid, weight));
+                    weight_total += weight;
+                }
+            }
+        }
+        if weight_total <= 1.0e-6 {
+            return;
+        }
+        let mean_scale = weighted_indices.len() as f32 / weight_total;
+        for (gid, weight) in weighted_indices {
+            target[gid] += amplitude * weight * mean_scale;
+        }
+    }
+
+    fn species_crowding_weight(species_class: WholeCellSpeciesClass) -> f32 {
+        match species_class {
+            WholeCellSpeciesClass::Pool => 0.0,
+            WholeCellSpeciesClass::Rna => 0.10,
+            WholeCellSpeciesClass::Protein => 0.14,
+            WholeCellSpeciesClass::ComplexSubunitPool => 0.18,
+            WholeCellSpeciesClass::ComplexNucleationIntermediate => 0.22,
+            WholeCellSpeciesClass::ComplexElongationIntermediate => 0.24,
+            WholeCellSpeciesClass::ComplexMature => 0.28,
+        }
+    }
+
+    fn reaction_flux_signal(reaction: &WholeCellReactionRuntimeState) -> f32 {
+        let fallback = reaction.nominal_rate.max(0.0)
+            * reaction.reactant_satisfaction.max(0.0)
+            * reaction.catalyst_support.max(0.0)
+            * 0.08;
+        reaction.current_flux.max(fallback).clamp(0.0, 12.0).sqrt().clamp(0.0, 2.5)
+    }
+
+    fn clamp_signal_field(values: &mut [f32], max_value: f32) {
+        for value in values {
+            *value = value.clamp(0.0, max_value);
+        }
+    }
+
+    fn refresh_rdme_drive_fields(&mut self) {
+        let total_voxels = self.lattice.total_voxels();
+        if total_voxels == 0 {
+            return;
+        }
+
+        let uniform_weights = vec![1.0; total_voxels];
+        let mut energy_source = vec![0.0; total_voxels];
+        let mut atp_demand = vec![0.0; total_voxels];
+        let mut amino_demand = vec![0.0; total_voxels];
+        let mut nucleotide_demand = vec![0.0; total_voxels];
+        let mut membrane_source = vec![0.0; total_voxels];
+        let mut membrane_demand = vec![0.0; total_voxels];
+        let mut crowding = vec![0.0; total_voxels];
+
+        let species_by_id = self
+            .organism_species
+            .iter()
+            .map(|species| (species.id.clone(), species))
+            .collect::<HashMap<_, _>>();
+
+        for species in &self.organism_species {
+            let weights = self.rdme_scope_weights(species.spatial_scope, &uniform_weights);
+            let anchor = species
+                .anchor_count
+                .max(species.basal_abundance)
+                .max(1.0);
+            let abundance_signal = (species.count.max(0.0) / anchor).sqrt().clamp(0.0, 2.5);
+            let crowding_signal =
+                abundance_signal * Self::species_crowding_weight(species.species_class);
+            if crowding_signal > 0.0 {
+                Self::accumulate_normalized_signal(&mut crowding, weights, crowding_signal);
+            }
+            if species.spatial_scope != WholeCellSpatialScope::WellMixed
+                && species.species_class != WholeCellSpeciesClass::Pool
+            {
+                match species.asset_class {
+                    WholeCellAssetClass::Energy => {
+                        Self::accumulate_normalized_signal(
+                            &mut energy_source,
+                            weights,
+                            0.26 * abundance_signal,
+                        );
+                    }
+                    WholeCellAssetClass::Membrane | WholeCellAssetClass::Constriction => {
+                        Self::accumulate_normalized_signal(
+                            &mut membrane_source,
+                            weights,
+                            0.22 * abundance_signal,
+                        );
+                    }
+                    WholeCellAssetClass::Replication => {
+                        Self::accumulate_normalized_signal(
+                            &mut nucleotide_demand,
+                            weights,
+                            0.16 * abundance_signal,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        for reaction in &self.organism_reactions {
+            let weights = self.rdme_scope_weights(reaction.spatial_scope, &uniform_weights);
+            let flux_signal = Self::reaction_flux_signal(reaction);
+            if flux_signal <= 0.0 {
+                continue;
+            }
+            if reaction.spatial_scope != WholeCellSpatialScope::WellMixed {
+                Self::accumulate_normalized_signal(&mut crowding, weights, 0.04 * flux_signal);
+            }
+            for participant in &reaction.reactants {
+                let Some(species) = species_by_id.get(&participant.species_id) else {
+                    continue;
+                };
+                let amplitude = flux_signal * participant.stoichiometry.max(0.0);
+                match species.bulk_field {
+                    Some(WholeCellBulkField::ATP) => {
+                        Self::accumulate_normalized_signal(&mut atp_demand, weights, amplitude);
+                    }
+                    Some(WholeCellBulkField::AminoAcids) => {
+                        Self::accumulate_normalized_signal(&mut amino_demand, weights, amplitude);
+                    }
+                    Some(WholeCellBulkField::Nucleotides) => Self::accumulate_normalized_signal(
+                        &mut nucleotide_demand,
+                        weights,
+                        amplitude,
+                    ),
+                    Some(WholeCellBulkField::MembranePrecursors) => Self::accumulate_normalized_signal(
+                        &mut membrane_demand,
+                        weights,
+                        amplitude,
+                    ),
+                    _ => {}
+                }
+            }
+            for participant in &reaction.products {
+                let Some(species) = species_by_id.get(&participant.species_id) else {
+                    continue;
+                };
+                let amplitude = flux_signal * participant.stoichiometry.max(0.0);
+                match species.bulk_field {
+                    Some(WholeCellBulkField::ATP) => Self::accumulate_normalized_signal(
+                        &mut energy_source,
+                        weights,
+                        0.85 * amplitude,
+                    ),
+                    Some(WholeCellBulkField::MembranePrecursors) => Self::accumulate_normalized_signal(
+                        &mut membrane_source,
+                        weights,
+                        amplitude,
+                    ),
+                    _ => {}
+                }
+            }
+        }
+
+        for report in &self.chemistry_site_reports {
+            let patch_scale = report.localization_score.clamp(0.0, 1.5);
+            if patch_scale <= 0.0 {
+                continue;
+            }
+            let radius = report.patch_radius.max(1);
+            let energy_source_signal =
+                patch_scale * (0.22 * report.atp_support.max(0.0) + 0.28 * report.mean_atp_flux.max(0.0));
+            let atp_demand_signal = patch_scale * report.energy_draw.max(0.0);
+            let amino_demand_signal =
+                patch_scale * (0.45 * report.substrate_draw.max(0.0) + 0.55 * report.biosynthetic_draw.max(0.0));
+            let nucleotide_signal =
+                patch_scale * (0.60 * report.biosynthetic_draw.max(0.0) + 0.35 * (1.0 - report.nucleotide_support).max(0.0));
+            let membrane_source_signal =
+                patch_scale * (0.40 * report.membrane_support.max(0.0) + 0.24 * report.assembly_stability.max(0.0));
+            let membrane_demand_signal =
+                patch_scale * (0.38 * report.assembly_turnover.max(0.0) + 0.22 * report.byproduct_load.max(0.0));
+            let crowding_signal = patch_scale
+                * (0.25 * report.assembly_occupancy.max(0.0)
+                    + 0.20 * report.byproduct_load.max(0.0)
+                    + 0.30 * (1.0 - report.demand_satisfaction).max(0.0));
+
+            Self::accumulate_patch_signal(
+                &mut energy_source,
+                self.lattice.x_dim,
+                self.lattice.y_dim,
+                self.lattice.z_dim,
+                report.site_x,
+                report.site_y,
+                report.site_z,
+                radius,
+                energy_source_signal,
+            );
+            Self::accumulate_patch_signal(
+                &mut atp_demand,
+                self.lattice.x_dim,
+                self.lattice.y_dim,
+                self.lattice.z_dim,
+                report.site_x,
+                report.site_y,
+                report.site_z,
+                radius,
+                atp_demand_signal,
+            );
+            Self::accumulate_patch_signal(
+                &mut amino_demand,
+                self.lattice.x_dim,
+                self.lattice.y_dim,
+                self.lattice.z_dim,
+                report.site_x,
+                report.site_y,
+                report.site_z,
+                radius,
+                amino_demand_signal,
+            );
+            Self::accumulate_patch_signal(
+                &mut nucleotide_demand,
+                self.lattice.x_dim,
+                self.lattice.y_dim,
+                self.lattice.z_dim,
+                report.site_x,
+                report.site_y,
+                report.site_z,
+                radius,
+                nucleotide_signal,
+            );
+            Self::accumulate_patch_signal(
+                &mut membrane_source,
+                self.lattice.x_dim,
+                self.lattice.y_dim,
+                self.lattice.z_dim,
+                report.site_x,
+                report.site_y,
+                report.site_z,
+                radius,
+                membrane_source_signal,
+            );
+            Self::accumulate_patch_signal(
+                &mut membrane_demand,
+                self.lattice.x_dim,
+                self.lattice.y_dim,
+                self.lattice.z_dim,
+                report.site_x,
+                report.site_y,
+                report.site_z,
+                radius,
+                membrane_demand_signal,
+            );
+            Self::accumulate_patch_signal(
+                &mut crowding,
+                self.lattice.x_dim,
+                self.lattice.y_dim,
+                self.lattice.z_dim,
+                report.site_x,
+                report.site_y,
+                report.site_z,
+                radius,
+                crowding_signal,
+            );
+        }
+
+        Self::clamp_signal_field(&mut energy_source, 2.5);
+        Self::clamp_signal_field(&mut atp_demand, 2.5);
+        Self::clamp_signal_field(&mut amino_demand, 2.5);
+        Self::clamp_signal_field(&mut nucleotide_demand, 2.5);
+        Self::clamp_signal_field(&mut membrane_source, 2.5);
+        Self::clamp_signal_field(&mut membrane_demand, 2.5);
+        Self::clamp_signal_field(&mut crowding, 1.6);
+
+        let _ = self
+            .rdme_drive_fields
+            .set_field(WholeCellRdmeDriveField::EnergySource, &energy_source);
+        let _ = self
+            .rdme_drive_fields
+            .set_field(WholeCellRdmeDriveField::AtpDemand, &atp_demand);
+        let _ = self
+            .rdme_drive_fields
+            .set_field(WholeCellRdmeDriveField::AminoDemand, &amino_demand);
+        let _ = self
+            .rdme_drive_fields
+            .set_field(WholeCellRdmeDriveField::NucleotideDemand, &nucleotide_demand);
+        let _ = self
+            .rdme_drive_fields
+            .set_field(WholeCellRdmeDriveField::MembraneSource, &membrane_source);
+        let _ = self
+            .rdme_drive_fields
+            .set_field(WholeCellRdmeDriveField::MembraneDemand, &membrane_demand);
+        let _ = self
+            .rdme_drive_fields
+            .set_field(WholeCellRdmeDriveField::Crowding, &crowding);
     }
 
     fn apply_bulk_field_delta(
@@ -6606,6 +6962,7 @@ impl WholeCellSimulator {
             }
         }
         self.refresh_spatial_fields();
+        self.refresh_rdme_drive_fields();
 
         self.disable_local_chemistry();
         if let Some(local) = saved.local_chemistry {
@@ -6726,6 +7083,11 @@ impl WholeCellSimulator {
                 spatial_dims.1,
                 spatial_dims.2,
             ),
+            rdme_drive_fields: WholeCellRdmeDriveState::new(
+                spatial_dims.0,
+                spatial_dims.1,
+                spatial_dims.2,
+            ),
             time_ms: 0.0,
             step_count: 0,
             atp_mm: 1.20,
@@ -6770,6 +7132,7 @@ impl WholeCellSimulator {
         simulator.membrane_division_state = simulator.seeded_membrane_division_state();
         simulator.synchronize_membrane_division_summary();
         simulator.refresh_spatial_fields();
+        simulator.refresh_rdme_drive_fields();
         simulator.refresh_organism_expression_state();
         simulator.initialize_complex_assembly_state();
         simulator.initialize_runtime_process_state();
@@ -6845,6 +7208,7 @@ impl WholeCellSimulator {
             .unwrap_or_else(|| simulator.seeded_membrane_division_state());
         simulator.synchronize_membrane_division_summary();
         simulator.refresh_spatial_fields();
+        simulator.refresh_rdme_drive_fields();
 
         simulator.disable_local_chemistry();
         if let Some(local) = local_chemistry {
@@ -7534,38 +7898,10 @@ impl WholeCellSimulator {
 
     fn rdme_stage(&mut self, dt: f32) {
         self.refresh_spatial_fields();
+        self.refresh_rdme_drive_fields();
         let effective_metabolic_load = self.effective_metabolic_load();
         let rdme_context = WholeCellRdmeContext {
             metabolic_load: effective_metabolic_load,
-            energy_local_sink: Self::finite_scale(
-                0.80 + 0.20 * self.membrane_division_state.divisome_occupancy
-                    + 0.16 * self.membrane_division_state.septum_localization,
-                1.0,
-                0.55,
-                1.85,
-            ),
-            nucleotide_local_sink: Self::finite_scale(
-                0.78 + 0.22 * self.chromosome_state.replicated_fraction
-                    + 0.18 * (1.0 - self.chromosome_state.mean_locus_accessibility).max(0.0),
-                1.0,
-                0.55,
-                1.85,
-            ),
-            membrane_local_source: Self::finite_scale(
-                0.70 + 0.20 * self.organism_expression.membrane_support
-                    + 0.10 * self.membrane_division_state.membrane_protein_insertion,
-                1.0,
-                0.45,
-                1.95,
-            ),
-            membrane_local_sink: Self::finite_scale(
-                0.62 + 0.24 * self.membrane_division_state.septum_localization
-                    + 0.14 * self.membrane_division_state.divisome_occupancy,
-                1.0,
-                0.35,
-                2.10,
-            ),
-            crowding_penalty: self.organism_expression.crowding_penalty.clamp(0.35, 1.10),
         };
         match self.backend {
             WholeCellBackend::Metal => {
@@ -7576,6 +7912,7 @@ impl WholeCellSimulator {
                             gpu,
                             &mut self.lattice,
                             &self.spatial_fields,
+                            &self.rdme_drive_fields,
                             dt,
                             rdme_context,
                         );
@@ -7583,6 +7920,7 @@ impl WholeCellSimulator {
                         cpu_whole_cell_rdme(
                             &mut self.lattice,
                             &self.spatial_fields,
+                            &self.rdme_drive_fields,
                             dt,
                             rdme_context,
                         );
@@ -7590,12 +7928,22 @@ impl WholeCellSimulator {
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    cpu_whole_cell_rdme(&mut self.lattice, &self.spatial_fields, dt, rdme_context);
+                    cpu_whole_cell_rdme(
+                        &mut self.lattice,
+                        &self.spatial_fields,
+                        &self.rdme_drive_fields,
+                        dt,
+                        rdme_context,
+                    );
                 }
             }
-            WholeCellBackend::Cpu => {
-                cpu_whole_cell_rdme(&mut self.lattice, &self.spatial_fields, dt, rdme_context)
-            }
+            WholeCellBackend::Cpu => cpu_whole_cell_rdme(
+                &mut self.lattice,
+                &self.spatial_fields,
+                &self.rdme_drive_fields,
+                dt,
+                rdme_context,
+            ),
         }
         self.sync_from_lattice();
     }
@@ -8349,6 +8697,100 @@ mod tests {
                     .membrane_division_state
                     .septal_lipid_inventory_nm2
         );
+    }
+
+    #[test]
+    fn test_rdme_drive_fields_follow_compiled_scopes() {
+        let mut sim = WholeCellSimulator::new(WholeCellConfig {
+            use_gpu: false,
+            ..WholeCellConfig::default()
+        });
+        sim.organism_species = vec![
+            WholeCellSpeciesRuntimeState {
+                id: "pool_nucleotides".to_string(),
+                name: "nucleotides".to_string(),
+                species_class: WholeCellSpeciesClass::Pool,
+                compartment: "cytosol".to_string(),
+                asset_class: WholeCellAssetClass::Replication,
+                basal_abundance: 32.0,
+                bulk_field: Some(WholeCellBulkField::Nucleotides),
+                spatial_scope: WholeCellSpatialScope::NucleoidLocal,
+                operon: None,
+                parent_complex: None,
+                subsystem_targets: Vec::new(),
+                count: 24.0,
+                anchor_count: 24.0,
+                synthesis_rate: 0.0,
+                turnover_rate: 0.0,
+            },
+            WholeCellSpeciesRuntimeState {
+                id: "atp_band_complex_mature".to_string(),
+                name: "atp band complex".to_string(),
+                species_class: WholeCellSpeciesClass::ComplexMature,
+                compartment: "membrane".to_string(),
+                asset_class: WholeCellAssetClass::Energy,
+                basal_abundance: 6.0,
+                bulk_field: None,
+                spatial_scope: WholeCellSpatialScope::MembraneAdjacent,
+                operon: Some("energy_operon".to_string()),
+                parent_complex: Some("atp_band_complex".to_string()),
+                subsystem_targets: vec![Syn3ASubsystemPreset::AtpSynthaseMembraneBand],
+                count: 6.0,
+                anchor_count: 6.0,
+                synthesis_rate: 0.0,
+                turnover_rate: 0.0,
+            },
+        ];
+        sim.organism_reactions = vec![WholeCellReactionRuntimeState {
+            id: "replication_drive".to_string(),
+            name: "replication drive".to_string(),
+            reaction_class: WholeCellReactionClass::Transcription,
+            asset_class: WholeCellAssetClass::Replication,
+            nominal_rate: 9.0,
+            catalyst: None,
+            operon: Some("replication_operon".to_string()),
+            reactants: vec![crate::whole_cell_data::WholeCellReactionParticipantSpec {
+                species_id: "pool_nucleotides".to_string(),
+                stoichiometry: 1.6,
+            }],
+            products: Vec::new(),
+            subsystem_targets: vec![Syn3ASubsystemPreset::ReplisomeTrack],
+            spatial_scope: WholeCellSpatialScope::NucleoidLocal,
+            current_flux: 6.0,
+            cumulative_extent: 0.0,
+            reactant_satisfaction: 1.0,
+            catalyst_support: 1.0,
+        }];
+
+        sim.refresh_spatial_fields();
+        sim.refresh_rdme_drive_fields();
+
+        let membrane_weights = sim
+            .spatial_fields
+            .clone_field(IntracellularSpatialField::MembraneAdjacency);
+        let nucleoid_weights = sim
+            .spatial_fields
+            .clone_field(IntracellularSpatialField::NucleoidOccupancy);
+
+        let membrane_energy = sim.rdme_drive_fields.weighted_mean(
+            WholeCellRdmeDriveField::EnergySource,
+            &membrane_weights,
+        );
+        let nucleoid_energy = sim.rdme_drive_fields.weighted_mean(
+            WholeCellRdmeDriveField::EnergySource,
+            &nucleoid_weights,
+        );
+        let nucleoid_demand = sim.rdme_drive_fields.weighted_mean(
+            WholeCellRdmeDriveField::NucleotideDemand,
+            &nucleoid_weights,
+        );
+        let membrane_demand = sim.rdme_drive_fields.weighted_mean(
+            WholeCellRdmeDriveField::NucleotideDemand,
+            &membrane_weights,
+        );
+
+        assert!(membrane_energy > nucleoid_energy);
+        assert!(nucleoid_demand > membrane_demand);
     }
 
     #[test]
