@@ -105,6 +105,8 @@ def test_compile_demo_bundle_from_fasta_and_gff_sources(tmp_path):
     )
     assert "genome_fasta" in bundle.source_hashes
     assert "gene_features_gff" in bundle.source_hashes
+    assert "gene_semantics_json" in bundle.source_hashes
+    assert "transcription_unit_semantics_json" in bundle.source_hashes
     assert Path(written["organism_spec"]).exists()
     assert Path(written["genome_assets"]).exists()
     assert Path(written["summary"]).exists()

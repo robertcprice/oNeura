@@ -902,3 +902,31 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `protein, operon, and complex semantics are now explicit at the asset-package layer, but the upstream structured bundle sources can still omit semantic annotations entirely, so the next removal target remains richer explicit source-side semantic coverage for genes and transcription units before ingress normalization has to infer anything`
+
+### 2026-03-11 - Phase 7 / Source Semantic Overlay Slice
+
+- Summary:
+  - extended the structured bundle manifest schema with explicit `gene_semantics_json` and `transcription_unit_semantics_json` sources, and taught both the Rust and Python bundle compilers to merge those semantic overlays before runtime normalization
+  - moved the demo bundle’s gene and transcription-unit semantic fields out of the mixed-purpose `gene_products.json` and `transcription_units.json` files into dedicated source-side semantic overlays, so source coverage rather than ingress inference now carries the asset class, family, and subsystem intent for that organism
+  - added stronger bundle-compiler regressions that verify the demo bundle still compiles with fully populated gene/transcription-unit semantics and that the new semantic overlay files are part of the source-hash contract
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/gene_products.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/gene_semantics.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/manifest.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/transcription_unit_semantics.json`
+  - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/transcription_units.json`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the structured bundle path now supports explicit source-side semantic overlays, but the richer upstream datasets still need broader semantic annotation coverage so ingress normalization can eventually become a compatibility-only path rather than part of the normal bundle workflow`

@@ -1,0 +1,26 @@
+[
+  {
+    "gene": "energy_module",
+    "subsystem_targets": ["AtpSynthaseMembraneBand"],
+    "asset_class": "energy",
+    "complex_family": "atp_synthase"
+  },
+  {
+    "gene": "ribosome_module",
+    "subsystem_targets": ["RibosomePolysomeCluster"],
+    "asset_class": "translation",
+    "complex_family": "ribosome"
+  },
+  {
+    "gene": "transport_module",
+    "subsystem_targets": ["AtpSynthaseMembraneBand", "FtsZSeptumRing"],
+    "asset_class": "energy",
+    "complex_family": "atp_synthase"
+  },
+  {
+    "gene": "division_module",
+    "subsystem_targets": ["FtsZSeptumRing"],
+    "asset_class": "constriction",
+    "complex_family": "divisome"
+  }
+]

@@ -1432,7 +1432,11 @@ pub struct WholeCellOrganismBundleManifest {
     #[serde(default)]
     pub gene_products_json: Option<String>,
     #[serde(default)]
+    pub gene_semantics_json: Option<String>,
+    #[serde(default)]
     pub transcription_units_json: Option<String>,
+    #[serde(default)]
+    pub transcription_unit_semantics_json: Option<String>,
     #[serde(default)]
     pub chromosome_domains_json: Option<String>,
     #[serde(default)]
@@ -1465,6 +1469,28 @@ pub struct WholeCellGeneProductAnnotation {
     pub nucleotide_cost: f32,
     #[serde(default)]
     pub process_weights: WholeCellProcessWeights,
+    #[serde(default)]
+    pub subsystem_targets: Vec<Syn3ASubsystemPreset>,
+    #[serde(default)]
+    pub asset_class: Option<WholeCellAssetClass>,
+    #[serde(default)]
+    pub complex_family: Option<WholeCellAssemblyFamily>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WholeCellGeneSemanticAnnotation {
+    pub gene: String,
+    #[serde(default)]
+    pub subsystem_targets: Vec<Syn3ASubsystemPreset>,
+    #[serde(default)]
+    pub asset_class: Option<WholeCellAssetClass>,
+    #[serde(default)]
+    pub complex_family: Option<WholeCellAssemblyFamily>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WholeCellTranscriptionUnitSemanticAnnotation {
+    pub name: String,
     #[serde(default)]
     pub subsystem_targets: Vec<Syn3ASubsystemPreset>,
     #[serde(default)]
@@ -4685,6 +4711,48 @@ fn merge_gene_product_annotations(
     }
 }
 
+fn merge_gene_semantic_annotations(
+    genes: &mut [WholeCellGenomeFeature],
+    annotations: &[WholeCellGeneSemanticAnnotation],
+) {
+    let annotation_map: HashMap<&str, &WholeCellGeneSemanticAnnotation> = annotations
+        .iter()
+        .map(|annotation| (annotation.gene.as_str(), annotation))
+        .collect();
+    for gene in genes {
+        if let Some(annotation) = annotation_map.get(gene.gene.as_str()) {
+            gene.subsystem_targets = annotation.subsystem_targets.clone();
+            if let Some(asset_class) = annotation.asset_class {
+                gene.asset_class = Some(asset_class);
+            }
+            if let Some(complex_family) = annotation.complex_family {
+                gene.complex_family = Some(complex_family);
+            }
+        }
+    }
+}
+
+fn merge_transcription_unit_semantic_annotations(
+    units: &mut [WholeCellTranscriptionUnitSpec],
+    annotations: &[WholeCellTranscriptionUnitSemanticAnnotation],
+) {
+    let annotation_map: HashMap<&str, &WholeCellTranscriptionUnitSemanticAnnotation> = annotations
+        .iter()
+        .map(|annotation| (annotation.name.as_str(), annotation))
+        .collect();
+    for unit in units {
+        if let Some(annotation) = annotation_map.get(unit.name.as_str()) {
+            unit.subsystem_targets = annotation.subsystem_targets.clone();
+            if let Some(asset_class) = annotation.asset_class {
+                unit.asset_class = Some(asset_class);
+            }
+            if let Some(complex_family) = annotation.complex_family {
+                unit.complex_family = Some(complex_family);
+            }
+        }
+    }
+}
+
 fn pool_concentration_for_field(
     pools: &[WholeCellMoleculePoolSpec],
     field: WholeCellBulkField,
@@ -4851,8 +4919,21 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
         })?;
         merge_gene_product_annotations(&mut genes, &annotations);
     }
+    if let Some(gene_semantics_json) = manifest.gene_semantics_json.as_deref() {
+        let semantics_path = resolve_manifest_relative_path(&manifest_path, gene_semantics_json)?;
+        let annotations: Vec<WholeCellGeneSemanticAnnotation> = serde_json::from_str(
+            &read_text_file(&semantics_path, "gene semantic JSON")?,
+        )
+        .map_err(|error| {
+            format!(
+                "failed to parse gene semantics {}: {error}",
+                semantics_path.display()
+            )
+        })?;
+        merge_gene_semantic_annotations(&mut genes, &annotations);
+    }
 
-    let transcription_units = if let Some(transcription_units_json) =
+    let mut transcription_units = if let Some(transcription_units_json) =
         manifest.transcription_units_json.as_deref()
     {
         let units_path = resolve_manifest_relative_path(&manifest_path, transcription_units_json)?;
@@ -4869,6 +4950,19 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
     } else {
         Vec::new()
     };
+    if let Some(unit_semantics_json) = manifest.transcription_unit_semantics_json.as_deref() {
+        let semantics_path = resolve_manifest_relative_path(&manifest_path, unit_semantics_json)?;
+        let annotations: Vec<WholeCellTranscriptionUnitSemanticAnnotation> = serde_json::from_str(
+            &read_text_file(&semantics_path, "transcription unit semantic JSON")?,
+        )
+        .map_err(|error| {
+            format!(
+                "failed to parse transcription unit semantics {}: {error}",
+                semantics_path.display()
+            )
+        })?;
+        merge_transcription_unit_semantic_annotations(&mut transcription_units, &annotations);
+    }
 
     let pools = if let Some(pools_json) = manifest.pools_json.as_deref() {
         let pools_path = resolve_manifest_relative_path(&manifest_path, pools_json)?;
@@ -6122,6 +6216,19 @@ mod tests {
         assert_eq!(organism.genes.len(), 4);
         assert_eq!(organism.transcription_units.len(), 3);
         assert!(organism.chromosome_length_bp > 1000);
+        assert!(organism.genes.iter().all(|gene| gene.asset_class.is_some()));
+        assert!(organism
+            .genes
+            .iter()
+            .all(|gene| gene.complex_family.is_some()));
+        assert!(organism
+            .transcription_units
+            .iter()
+            .all(|unit| unit.asset_class.is_some()));
+        assert!(organism
+            .transcription_units
+            .iter()
+            .all(|unit| unit.complex_family.is_some()));
         assert_eq!(assets.proteins.len(), 4);
         assert!(assets.operons.iter().any(|operon| operon.polycistronic));
         assert!(registry.species.len() > assets.proteins.len());

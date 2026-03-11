@@ -13,10 +13,7 @@
       "segregation": 0.03,
       "membrane": 0.8,
       "constriction": 0.02
-    },
-    "subsystem_targets": ["AtpSynthaseMembraneBand"],
-    "asset_class": "energy",
-    "complex_family": "atp_synthase"
+    }
   },
   {
     "gene": "ribosome_module",
@@ -32,10 +29,7 @@
       "segregation": 0.03,
       "membrane": 0.04,
       "constriction": 0.02
-    },
-    "subsystem_targets": ["RibosomePolysomeCluster"],
-    "asset_class": "translation",
-    "complex_family": "ribosome"
+    }
   },
   {
     "gene": "transport_module",
@@ -51,10 +45,7 @@
       "segregation": 0.04,
       "membrane": 0.72,
       "constriction": 0.08
-    },
-    "subsystem_targets": ["AtpSynthaseMembraneBand", "FtsZSeptumRing"],
-    "asset_class": "energy",
-    "complex_family": "atp_synthase"
+    }
   },
   {
     "gene": "division_module",
@@ -70,9 +61,6 @@
       "segregation": 0.22,
       "membrane": 0.7,
       "constriction": 1.0
-    },
-    "subsystem_targets": ["FtsZSeptumRing"],
-    "asset_class": "constriction",
-    "complex_family": "divisome"
+    }
   }
 ]

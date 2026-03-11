@@ -134,11 +134,32 @@ def _compile_structured_bundle(
         )
         or []
     )
+    transcription_unit_semantics = {
+        entry["name"]: entry
+        for entry in (
+            _load_optional_json(
+                manifest_path,
+                manifest,
+                "transcription_unit_semantics_json",
+                source_hashes,
+            )
+            or []
+        )
+    }
     gene_products = {
         entry["gene"]: entry
         for entry in (
             _load_optional_json(
                 manifest_path, manifest, "gene_products_json", source_hashes
+            )
+            or []
+        )
+    }
+    gene_semantics = {
+        entry["gene"]: entry
+        for entry in (
+            _load_optional_json(
+                manifest_path, manifest, "gene_semantics_json", source_hashes
             )
             or []
         )
@@ -165,7 +186,21 @@ def _compile_structured_bundle(
     else:
         raise ValueError("bundle manifest must define gene_features_json or gene_features_gff")
 
-    compiled_genes = [_merge_gene_annotation(gene, gene_products.get(gene["gene"], {})) for gene in genes]
+    compiled_genes = [
+        _merge_gene_annotation(
+            gene,
+            gene_products.get(gene["gene"], {}),
+            gene_semantics.get(gene["gene"], {}),
+        )
+        for gene in genes
+    ]
+    compiled_transcription_units = [
+        _merge_transcription_unit_semantics(
+            unit,
+            transcription_unit_semantics.get(unit["name"], {}),
+        )
+        for unit in transcription_units
+    ]
 
     return {
         "organism": manifest.get("organism") or metadata["organism"],
@@ -177,13 +212,14 @@ def _compile_structured_bundle(
         "chromosome_domains": [],
         "pools": pools,
         "genes": compiled_genes,
-        "transcription_units": transcription_units,
+        "transcription_units": compiled_transcription_units,
     }
 
 
 def _merge_gene_annotation(
     gene_feature: Dict[str, Any],
     gene_product: Dict[str, Any],
+    gene_semantic: Dict[str, Any],
 ) -> Dict[str, Any]:
     merged = {
         "gene": gene_feature["gene"],
@@ -195,10 +231,26 @@ def _merge_gene_annotation(
         "translation_cost": float(gene_product.get("translation_cost", 1.0)),
         "nucleotide_cost": float(gene_product.get("nucleotide_cost", 1.0)),
         "process_weights": gene_product.get("process_weights", {}),
-        "subsystem_targets": gene_product.get("subsystem_targets", []),
-        "asset_class": gene_product.get("asset_class"),
-        "complex_family": gene_product.get("complex_family"),
+        "subsystem_targets": gene_semantic.get(
+            "subsystem_targets", gene_product.get("subsystem_targets", [])
+        ),
+        "asset_class": gene_semantic.get("asset_class", gene_product.get("asset_class")),
+        "complex_family": gene_semantic.get(
+            "complex_family", gene_product.get("complex_family")
+        ),
     }
+    return merged
+
+
+def _merge_transcription_unit_semantics(
+    transcription_unit: Dict[str, Any],
+    semantic_annotation: Dict[str, Any],
+) -> Dict[str, Any]:
+    merged = dict(transcription_unit)
+    if semantic_annotation:
+        merged["subsystem_targets"] = list(semantic_annotation.get("subsystem_targets", []))
+        merged["asset_class"] = semantic_annotation.get("asset_class")
+        merged["complex_family"] = semantic_annotation.get("complex_family")
     return merged
 
 

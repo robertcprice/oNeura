@@ -1,0 +1,20 @@
+[
+  {
+    "name": "bioenergetics_operon",
+    "subsystem_targets": ["AtpSynthaseMembraneBand", "FtsZSeptumRing"],
+    "asset_class": "energy",
+    "complex_family": "atp_synthase"
+  },
+  {
+    "name": "ribosome_operon",
+    "subsystem_targets": ["RibosomePolysomeCluster"],
+    "asset_class": "translation",
+    "complex_family": "ribosome"
+  },
+  {
+    "name": "division_operon",
+    "subsystem_targets": ["FtsZSeptumRing"],
+    "asset_class": "constriction",
+    "complex_family": "divisome"
+  }
+]
