@@ -57,6 +57,7 @@ def test_validation_suite_exposes_serializable_checks():
     report = run_validation_suite(device="cpu")
     payload = report.to_dict()
 
+    assert payload["backend"]["resolved_backend"].startswith("torch:")
     assert payload["checks"]
     assert payload["reference_profiles"]
     assert payload["reference_comparisons"]

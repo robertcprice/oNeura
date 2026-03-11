@@ -22,6 +22,9 @@ struct MembraneParams {
     neuron_count: u32,
     dt: f32,
     global_bias: f32,
+    membrane_capacitance_uf: f32,
+    spike_threshold_mv: f32,
+    refractory_period_ms: f32,
 }
 
 /// Update membrane voltage on GPU (macOS/Metal).
@@ -40,9 +43,21 @@ pub fn dispatch_membrane_integration(
     neurons: &MetalNeuronState,
     dt: f32,
     global_bias: f32,
+    membrane_capacitance_uf: f32,
+    spike_threshold_mv: f32,
+    refractory_period_ms: f32,
 ) {
     let cmd = gpu.new_command_buffer();
-    encode_membrane_integration(gpu, &cmd, neurons, dt, global_bias);
+    encode_membrane_integration(
+        gpu,
+        &cmd,
+        neurons,
+        dt,
+        global_bias,
+        membrane_capacitance_uf,
+        spike_threshold_mv,
+        refractory_period_ms,
+    );
     gpu.commit_and_wait(cmd);
 }
 
@@ -53,6 +68,9 @@ pub fn encode_membrane_integration(
     neurons: &MetalNeuronState,
     dt: f32,
     global_bias: f32,
+    membrane_capacitance_uf: f32,
+    spike_threshold_mv: f32,
+    refractory_period_ms: f32,
 ) {
     let n = neurons.count as u64;
     if n == 0 {
@@ -63,6 +81,9 @@ pub fn encode_membrane_integration(
         neuron_count: neurons.count as u32,
         dt,
         global_bias,
+        membrane_capacitance_uf,
+        spike_threshold_mv,
+        refractory_period_ms,
     };
     let param_bytes = unsafe {
         std::slice::from_raw_parts(
@@ -107,15 +128,32 @@ pub fn dispatch_membrane_integration(
     neurons: &mut NeuronArrays,
     dt: f32,
     global_bias: f32,
+    membrane_capacitance_uf: f32,
+    spike_threshold_mv: f32,
+    refractory_period_ms: f32,
 ) {
-    cpu_membrane_integration(neurons, dt, global_bias);
+    cpu_membrane_integration(
+        neurons,
+        dt,
+        global_bias,
+        membrane_capacitance_uf,
+        spike_threshold_mv,
+        refractory_period_ms,
+    );
 }
 
 /// CPU reference implementation of membrane voltage integration.
 ///
 /// Computes ionic current from all 8 channel types, Euler-integrates voltage,
 /// and performs spike detection with refractory period enforcement.
-pub fn cpu_membrane_integration(neurons: &mut NeuronArrays, dt: f32, global_bias: f32) {
+pub fn cpu_membrane_integration(
+    neurons: &mut NeuronArrays,
+    dt: f32,
+    global_bias: f32,
+    membrane_capacitance_uf: f32,
+    spike_threshold_mv: f32,
+    refractory_period_ms: f32,
+) {
     use crate::constants::*;
 
     for i in 0..neurons.count {
@@ -159,7 +197,7 @@ pub fn cpu_membrane_integration(neurons: &mut NeuronArrays, dt: f32, global_bias
             + global_bias;
 
         // Euler integration: dV/dt = (-I_ion + I_ext) / C_m
-        let dv = (-i_total + i_ext) / DEFAULT_C_M * dt;
+        let dv = (-i_total + i_ext) / membrane_capacitance_uf.max(0.1) * dt;
         let v_new = (v + dv).clamp(VOLTAGE_MIN, VOLTAGE_MAX);
 
         // Refractory timer countdown
@@ -167,9 +205,9 @@ pub fn cpu_membrane_integration(neurons: &mut NeuronArrays, dt: f32, global_bias
 
         // Spike detection: threshold crossing at -20 mV while not refractory
         neurons.fired[i] = 0;
-        if v < AP_THRESHOLD && v_new >= AP_THRESHOLD && ref_timer <= 0.0 {
+        if v < spike_threshold_mv && v_new >= spike_threshold_mv && ref_timer <= 0.0 {
             neurons.fired[i] = 1;
-            ref_timer = REFRACTORY_PERIOD;
+            ref_timer = refractory_period_ms.max(dt);
             neurons.spike_count[i] += 1;
         }
 

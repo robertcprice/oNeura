@@ -87,6 +87,12 @@ pub struct MolecularBrain {
     pub time: f32,
     /// Total simulation steps executed.
     pub step_count: u64,
+    /// Effective membrane capacitance used by voltage integration (µF/cm²).
+    pub membrane_capacitance_uf: f32,
+    /// Spike threshold for threshold-crossing detection (mV).
+    pub spike_threshold_mv: f32,
+    /// Absolute refractory period enforced after a spike (ms).
+    pub refractory_period_ms: f32,
 
     // ===== Feature flags =====
     /// Enable astrocyte/oligodendrocyte/microglia subsystem.
@@ -159,6 +165,9 @@ impl MolecularBrain {
             dt: DEFAULT_DT,
             time: 0.0,
             step_count: 0,
+            membrane_capacitance_uf: DEFAULT_C_M,
+            spike_threshold_mv: AP_THRESHOLD,
+            refractory_period_ms: REFRACTORY_PERIOD,
             enable_glia: true,
             enable_circadian: true,
             enable_pharmacology: true,
@@ -359,6 +368,9 @@ impl MolecularBrain {
                 gpu_neurons,
                 dt,
                 global_bias,
+                self.membrane_capacitance_uf,
+                self.spike_threshold_mv,
+                self.refractory_period_ms,
             );
             gpu::calcium_dynamics::encode_calcium_dynamics(gpu, &cmd, gpu_neurons, dt);
             gpu::second_messenger::encode_second_messenger(gpu, &cmd, gpu_neurons, dt);
@@ -392,7 +404,14 @@ impl MolecularBrain {
         }
         gpu::hh_gating::cpu_hh_gating(&mut self.neurons, dt);
         gpu::receptor_binding::cpu_receptor_binding(&mut self.neurons);
-        gpu::membrane_integration::cpu_membrane_integration(&mut self.neurons, dt, global_bias);
+        gpu::membrane_integration::cpu_membrane_integration(
+            &mut self.neurons,
+            dt,
+            global_bias,
+            self.membrane_capacitance_uf,
+            self.spike_threshold_mv,
+            self.refractory_period_ms,
+        );
         gpu::calcium_dynamics::cpu_calcium_dynamics(&mut self.neurons, dt);
         // G-protein inputs computed internally from NT concentrations.
         gpu::second_messenger::cpu_second_messenger(&mut self.neurons, dt);
@@ -530,6 +549,9 @@ impl MolecularBrain {
                     gpu_neurons,
                     self.dt,
                     0.0,
+                    self.membrane_capacitance_uf,
+                    self.spike_threshold_mv,
+                    self.refractory_period_ms,
                 );
                 gpu::calcium_dynamics::encode_calcium_dynamics(gpu, &cmd, gpu_neurons, self.dt);
                 gpu::second_messenger::encode_second_messenger(gpu, &cmd, gpu_neurons, self.dt);

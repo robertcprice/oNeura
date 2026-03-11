@@ -143,9 +143,10 @@ pub fn encode_synapse_step(
                 (&neurons.alive, 0),
                 (&neurons.voltage, 0),
                 (&neurons.ca_microdomain, 0),
+                (&neurons.nt_conc, 0),
                 (&neurons.synaptic_current_accum_i32, 0),
             ],
-            Some((param_bytes, 25)),
+            Some((param_bytes, 26)),
             synapse_threads,
         );
     }

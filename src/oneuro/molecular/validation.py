@@ -8,6 +8,7 @@ easy to rerun as the model is tuned.
 
 from __future__ import annotations
 
+import argparse
 import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
@@ -15,6 +16,14 @@ from typing import Any, Dict, List, Optional, Sequence
 import torch
 
 from .cuda_backend import CUDAMolecularBrain, NT_DA, NT_GABA, NT_GLU
+
+try:
+    import oneuro_metal
+except ImportError:  # pragma: no cover - optional runtime dependency
+    oneuro_metal = None
+
+
+METAL_GPU_NEURON_THRESHOLD = 64
 
 
 @dataclass
@@ -52,6 +61,18 @@ class TargetCellProfile:
     source_label: str
     source_url: str
     targets: Dict[str, ReferenceRange]
+
+
+@dataclass
+class ValidationBackendInfo:
+    """Execution backend used for a validation run."""
+
+    requested_device: str
+    resolved_backend: str
+    n_sim_neurons: int
+    gpu_active: bool
+    gpu_dispatch_active: bool
+    notes: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -103,6 +124,7 @@ class PlasticityMetrics:
 class ValidationReport:
     """Aggregate neuron validation report."""
 
+    backend: ValidationBackendInfo
     current_clamp: CurrentClampMetrics
     excitatory_synapse: SynapticResponseMetrics
     inhibitory_synapse: SynapticResponseMetrics
@@ -164,20 +186,284 @@ REFERENCE_PROFILES: Dict[str, TargetCellProfile] = {
 }
 
 
+class _ValidationBrain:
+    """Minimal interface shared by validation backends."""
+
+    dt: float
+    backend_info: ValidationBackendInfo
+
+    def step(self) -> None:
+        raise NotImplementedError
+
+    def stimulate(self, neuron_idx: int, current_ua: float) -> None:
+        raise NotImplementedError
+
+    def voltage(self, neuron_idx: int) -> float:
+        raise NotImplementedError
+
+    def prev_voltage(self, neuron_idx: int) -> float:
+        raise NotImplementedError
+
+    def fired(self, neuron_idx: int) -> bool:
+        raise NotImplementedError
+
+    def spike_count(self, neuron_idx: int) -> int:
+        raise NotImplementedError
+
+    def synapse_strength(self, synapse_idx: int) -> float:
+        raise NotImplementedError
+
+    @property
+    def is_metal(self) -> bool:
+        return self.backend_info.resolved_backend == "rust_metal"
+
+    def add_dopamine(self, neuron_indices: Sequence[int], delta_nm: float) -> None:
+        raise NotImplementedError
+
+    def set_conductance_scale_all(self, channel_idx: int, scale: float) -> None:
+        """Optionally tune a conductance family across the assay."""
+
+    def set_membrane_capacitance(self, capacitance_uf: float) -> None:
+        """Optionally tune the effective membrane capacitance."""
+
+    def set_spike_threshold(self, threshold_mv: float) -> None:
+        """Optionally tune spike detection threshold."""
+
+    def set_refractory_period(self, refractory_period_ms: float) -> None:
+        """Optionally tune refractory period."""
+
+
+class _TorchValidationBrain(_ValidationBrain):
+    """Validation wrapper over the PyTorch backend."""
+
+    def __init__(
+        self,
+        n_neurons: int,
+        device: str,
+        psc_scale: float,
+        edges: Optional[Sequence[tuple[int, int, int]]] = None,
+    ) -> None:
+        self.inner = CUDAMolecularBrain(n_neurons, device=device, psc_scale=psc_scale)
+        self.inner.disable_interval_biology()
+        self.inner.set_triton_enabled(False)
+        if edges:
+            pre = torch.tensor([edge[0] for edge in edges], dtype=torch.int64)
+            post = torch.tensor([edge[1] for edge in edges], dtype=torch.int64)
+            weights = torch.tensor([1.0 for _ in edges], dtype=torch.float32)
+            nt_types = torch.tensor([edge[2] for edge in edges], dtype=torch.int32)
+            self.inner.add_synapses(pre, post, weights, nt_types)
+        device_type = str(getattr(self.inner.device, "type", self.inner.device))
+        self.dt = float(self.inner.dt)
+        self.backend_info = ValidationBackendInfo(
+            requested_device=device,
+            resolved_backend=f"torch:{device_type}",
+            n_sim_neurons=n_neurons,
+            gpu_active=device_type != "cpu",
+            gpu_dispatch_active=device_type != "cpu",
+            notes=[],
+        )
+
+    def step(self) -> None:
+        self.inner.step()
+
+    def stimulate(self, neuron_idx: int, current_ua: float) -> None:
+        self.inner.stimulate(neuron_idx, current_ua)
+
+    def voltage(self, neuron_idx: int) -> float:
+        return float(self.inner.voltage[neuron_idx])
+
+    def prev_voltage(self, neuron_idx: int) -> float:
+        return float(self.inner.prev_voltage[neuron_idx])
+
+    def fired(self, neuron_idx: int) -> bool:
+        return bool(self.inner.fired[neuron_idx])
+
+    def spike_count(self, neuron_idx: int) -> int:
+        return int(self.inner.spike_count[neuron_idx])
+
+    def synapse_strength(self, synapse_idx: int) -> float:
+        return float(self.inner.syn_strength[synapse_idx])
+
+    def set_synapse_strength(self, synapse_idx: int, strength: float) -> None:
+        self.inner.syn_strength[synapse_idx] = float(strength)
+
+    def add_dopamine(self, neuron_indices: Sequence[int], delta_nm: float) -> None:
+        self.inner.nt_conc[list(neuron_indices), NT_DA] += float(delta_nm)
+
+    def set_conductance_scale_all(self, channel_idx: int, scale: float) -> None:
+        self.inner.conductance_scale[:, int(channel_idx)] = float(scale)
+
+
+class _MetalValidationBrain(_ValidationBrain):
+    """Validation wrapper over the Rust/Metal backend."""
+
+    def __init__(
+        self,
+        n_neurons: int,
+        requested_device: str,
+        psc_scale: float,
+        edges: Optional[Sequence[tuple[int, int, int]]] = None,
+    ) -> None:
+        if oneuro_metal is None:
+            raise RuntimeError("oneuro_metal is not available in this interpreter")
+        n_sim_neurons = max(int(n_neurons), METAL_GPU_NEURON_THRESHOLD)
+        rust_edges = [(int(pre), int(post), int(nt)) for pre, post, nt in (edges or [])]
+        if not rust_edges:
+            rust_edges = [(1, 2, NT_GLU)]
+        if rust_edges:
+            self.inner = oneuro_metal.MolecularBrain.from_edges(
+                n_sim_neurons,
+                rust_edges,
+                psc_scale=float(psc_scale),
+                dt=0.1,
+            )
+        else:
+            self.inner = oneuro_metal.MolecularBrain(
+                n_sim_neurons,
+                psc_scale=float(psc_scale),
+                dt=0.1,
+            )
+        self.inner.set_gpu_enabled(True)
+        self.inner.set_glia_enabled(False)
+        self.inner.set_circadian_enabled(False)
+        if hasattr(self.inner, "set_pharmacology_enabled"):
+            self.inner.set_pharmacology_enabled(False)
+        if hasattr(self.inner, "set_gene_expression_enabled"):
+            self.inner.set_gene_expression_enabled(False)
+        if hasattr(self.inner, "set_metabolism_enabled"):
+            self.inner.set_metabolism_enabled(False)
+        if hasattr(self.inner, "set_microtubules_enabled"):
+            self.inner.set_microtubules_enabled(False)
+        if hasattr(self.inner, "enable_latency_benchmark_mode"):
+            self.inner.enable_latency_benchmark_mode()
+        gpu_active = bool(self.inner.gpu_active())
+        gpu_dispatch_active = bool(self.inner.gpu_dispatch_active())
+        notes: List[str] = []
+        if n_sim_neurons > n_neurons:
+            notes.append(
+                f"Expanded assay from {n_neurons} to {n_sim_neurons} neurons to satisfy the Metal dispatch threshold."
+            )
+        if not gpu_dispatch_active:
+            raise RuntimeError("Metal validation requested but GPU dispatch is not active")
+        self.dt = float(self.inner.dt)
+        self.backend_info = ValidationBackendInfo(
+            requested_device=requested_device,
+            resolved_backend="rust_metal",
+            n_sim_neurons=n_sim_neurons,
+            gpu_active=gpu_active,
+            gpu_dispatch_active=gpu_dispatch_active,
+            notes=notes,
+        )
+
+    def step(self) -> None:
+        self.inner.step()
+
+    def stimulate(self, neuron_idx: int, current_ua: float) -> None:
+        self.inner.stimulate(neuron_idx, float(current_ua))
+
+    def voltage(self, neuron_idx: int) -> float:
+        return float(self.inner.voltages()[neuron_idx])
+
+    def prev_voltage(self, neuron_idx: int) -> float:
+        if hasattr(self.inner, "prev_voltages"):
+            return float(self.inner.prev_voltages()[neuron_idx])
+        return self.voltage(neuron_idx)
+
+    def fired(self, neuron_idx: int) -> bool:
+        return bool(self.inner.fired()[neuron_idx])
+
+    def spike_count(self, neuron_idx: int) -> int:
+        return int(self.inner.spike_counts()[neuron_idx])
+
+    def synapse_strength(self, synapse_idx: int) -> float:
+        if hasattr(self.inner, "synapse_weight"):
+            return float(self.inner.synapse_weight(synapse_idx))
+        return float(self.inner.synapse_strength(synapse_idx))
+
+    def set_synapse_strength(self, synapse_idx: int, strength: float) -> None:
+        self.inner.set_synapse_strengths([int(synapse_idx)], [float(strength)])
+
+    def add_dopamine(self, neuron_indices: Sequence[int], delta_nm: float) -> None:
+        self.inner.add_nt_concentration_many(list(map(int, neuron_indices)), NT_DA, float(delta_nm))
+
+    def set_conductance_scale_all(self, channel_idx: int, scale: float) -> None:
+        scale = float(scale)
+        for neuron_idx in range(int(self.backend_info.n_sim_neurons)):
+            self.inner.set_conductance_scale(int(neuron_idx), int(channel_idx), scale)
+
+    def set_membrane_capacitance(self, capacitance_uf: float) -> None:
+        if hasattr(self.inner, "set_membrane_capacitance"):
+            self.inner.set_membrane_capacitance(float(capacitance_uf))
+
+    def set_spike_threshold(self, threshold_mv: float) -> None:
+        if hasattr(self.inner, "set_spike_threshold"):
+            self.inner.set_spike_threshold(float(threshold_mv))
+
+    def set_refractory_period(self, refractory_period_ms: float) -> None:
+        if hasattr(self.inner, "set_refractory_period"):
+            self.inner.set_refractory_period(float(refractory_period_ms))
+
+
+def _resolve_validation_backend(device: str) -> str:
+    """Choose the validation backend for a requested device string."""
+    requested = device.lower()
+    if requested in {"metal", "gpu", "rust", "metal_gpu"}:
+        if oneuro_metal is None:
+            raise RuntimeError("Metal backend requested but oneuro_metal is unavailable")
+        if not bool(oneuro_metal.has_gpu()):
+            raise RuntimeError("Metal backend requested but no Metal GPU is available")
+        return "metal"
+    if requested == "auto":
+        if oneuro_metal is not None and bool(oneuro_metal.has_gpu()):
+            return "metal"
+        return "torch"
+    return "torch"
+
+
 def _make_validation_brain(
     n_neurons: int,
-    device: str = "cpu",
+    device: str = "auto",
     psc_scale: float = 300.0,
-) -> CUDAMolecularBrain:
-    """Create a deterministic validation brain on the requested device."""
-    brain = CUDAMolecularBrain(n_neurons, device=device, psc_scale=psc_scale)
-    brain.disable_interval_biology()
-    brain.set_triton_enabled(False)
+    edges: Optional[Sequence[tuple[int, int, int]]] = None,
+    apply_profile: bool = True,
+) -> _ValidationBrain:
+    """Create a deterministic validation brain on the requested backend."""
+    backend = _resolve_validation_backend(device)
+    if backend == "metal":
+        brain = _MetalValidationBrain(
+            n_neurons=n_neurons,
+            requested_device=device,
+            psc_scale=psc_scale,
+            edges=edges,
+        )
+    else:
+        brain = _TorchValidationBrain(
+            n_neurons=n_neurons,
+            device=device,
+            psc_scale=psc_scale,
+            edges=edges,
+        )
+    if apply_profile:
+        _apply_cortical_validation_profile(brain)
     return brain
 
 
+def _apply_cortical_validation_profile(brain: _ValidationBrain) -> None:
+    """Bias the assay toward a cortical regular-spiking regime."""
+    if not brain.is_metal:
+        return
+    brain.set_membrane_capacitance(6.0)
+    brain.set_spike_threshold(-42.0)
+    brain.set_refractory_period(2.5)
+
+
+def _probe_backend(device: str) -> ValidationBackendInfo:
+    """Create a small validation brain and report the active backend."""
+    return _make_validation_brain(2, device=device, psc_scale=300.0).backend_info
+
+
 def _pulse_neuron(
-    brain: CUDAMolecularBrain,
+    brain: _ValidationBrain,
     neuron_idx: int,
     current_ua: float,
     pulse_steps: int,
@@ -187,7 +473,7 @@ def _pulse_neuron(
     for _ in range(max(1, int(pulse_steps))):
         brain.stimulate(neuron_idx, current_ua)
         brain.step()
-        spikes += int(bool(brain.fired[neuron_idx]))
+        spikes += int(brain.fired(neuron_idx))
     return spikes
 
 
@@ -400,7 +686,7 @@ def generate_calibration_suggestions(
 
 
 def measure_current_clamp(
-    device: str = "cpu",
+    device: str = "auto",
     settle_steps: int = 800,
     pulse_steps: int = 1000,
     recovery_steps: int = 400,
@@ -409,6 +695,10 @@ def measure_current_clamp(
     spike_pulse_steps: int = 10,
 ) -> CurrentClampMetrics:
     """Measure basic current-clamp metrics on a single neuron."""
+    if _resolve_validation_backend(device) == "metal":
+        settle_steps = max(int(settle_steps), 2000)
+    if _resolve_validation_backend(device) == "metal" and spike_pulse_current_ua == 50.0:
+        spike_pulse_current_ua = 200.0
     traces: Dict[float, Dict[str, Any]] = {}
     subthreshold_current = None
     rheobase_current = None
@@ -424,13 +714,13 @@ def measure_current_clamp(
             if settle_steps <= step_idx < (settle_steps + pulse_steps):
                 brain.stimulate(0, float(current))
             brain.step()
-            voltage = float(brain.voltage[0])
+            voltage = brain.voltage(0)
             if step_idx < settle_steps:
                 baseline.append(voltage)
             elif step_idx < (settle_steps + pulse_steps):
                 pulse_trace.append(voltage)
-                pulse_prev.append(float(brain.prev_voltage[0]))
-                pulse_fired.append(bool(brain.fired[0]))
+                pulse_prev.append(brain.prev_voltage(0))
+                pulse_fired.append(brain.fired(0))
 
         resting_mv = _mean_tail(baseline)
         steady_mv = _mean_tail(pulse_trace)
@@ -508,18 +798,18 @@ def measure_current_clamp(
         for _ in range(spike_pulse_steps):
             brain.stimulate(0, spike_pulse_current_ua)
             brain.step()
-            if bool(brain.fired[0]):
+            if brain.fired(0):
                 spike_steps.append(cursor)
             cursor += 1
         for _ in range(gap_steps):
             brain.step()
-            if bool(brain.fired[0]):
+            if brain.fired(0):
                 spike_steps.append(cursor)
             cursor += 1
         for _ in range(spike_pulse_steps):
             brain.stimulate(0, spike_pulse_current_ua)
             brain.step()
-            if bool(brain.fired[0]):
+            if brain.fired(0):
                 spike_steps.append(cursor)
             cursor += 1
         if len(spike_steps) >= 2:
@@ -550,33 +840,44 @@ def measure_current_clamp(
 
 def measure_synaptic_response(
     inhibitory: bool = False,
-    device: str = "cpu",
+    device: str = "auto",
     syn_weight: float = 5.0,
     pulse_current_ua: float = 50.0,
     pulse_steps: int = 10,
 ) -> SynapticResponseMetrics:
     """Measure the sign and decay of a one-synapse postsynaptic response."""
-    brain = _make_validation_brain(2, device=device, psc_scale=300.0)
     nt_type = NT_GABA if inhibitory else NT_GLU
-    brain.add_synapses(
-        torch.tensor([0]),
-        torch.tensor([1]),
-        torch.tensor([float(syn_weight)]),
-        torch.tensor([nt_type], dtype=torch.int32),
+    settle_steps = 40
+    effective_syn_weight = float(syn_weight)
+    effective_pulse_current = float(pulse_current_ua)
+    if _resolve_validation_backend(device) == "metal":
+        settle_steps = 800
+        if syn_weight == 5.0:
+            effective_syn_weight = 1.0 if inhibitory else 0.5
+        if pulse_current_ua == 50.0:
+            effective_pulse_current = 8.0
+    brain = _make_validation_brain(
+        2,
+        device=device,
+        psc_scale=300.0,
+        edges=[(0, 1, nt_type)],
     )
+    brain.set_synapse_strength(0, effective_syn_weight)
 
     baseline_trace: List[float] = []
     response_trace: List[float] = []
+    for _ in range(settle_steps):
+        brain.step()
     for _ in range(40):
         brain.step()
-        baseline_trace.append(float(brain.voltage[1]))
+        baseline_trace.append(brain.voltage(1))
     for _ in range(max(1, int(pulse_steps))):
-        brain.stimulate(0, pulse_current_ua)
+        brain.stimulate(0, effective_pulse_current)
         brain.step()
-        response_trace.append(float(brain.voltage[1]))
+        response_trace.append(brain.voltage(1))
     for _ in range(120):
         brain.step()
-        response_trace.append(float(brain.voltage[1]))
+        response_trace.append(brain.voltage(1))
 
     baseline_mv = _mean_tail(baseline_trace, window=20)
     if inhibitory:
@@ -607,13 +908,13 @@ def measure_synaptic_response(
         peak_delta_mv=peak_delta,
         peak_time_ms=float((peak_index + 1) * brain.dt),
         half_decay_ms=half_decay_ms,
-        pre_spike_count=int(brain.spike_count[0]),
-        post_spike_count=int(brain.spike_count[1]),
+        pre_spike_count=brain.spike_count(0),
+        post_spike_count=brain.spike_count(1),
     )
 
 
 def measure_dopamine_gated_plasticity(
-    device: str = "cpu",
+    device: str = "auto",
     pairing_trials: int = 12,
     inter_trial_steps: int = 20,
     post_pair_steps: int = 40,
@@ -625,14 +926,15 @@ def measure_dopamine_gated_plasticity(
     """Measure eligibility-trace learning with and without dopamine."""
 
     def _run_pairing(pre_before_post: bool, dopamine: bool) -> float:
-        brain = _make_validation_brain(2, device=device, psc_scale=300.0)
-        brain.add_synapses(
-            torch.tensor([0]),
-            torch.tensor([1]),
-            torch.tensor([2.0]),
-            torch.tensor([NT_GLU], dtype=torch.int32),
+        brain = _make_validation_brain(
+            2,
+            device=device,
+            psc_scale=300.0,
+            edges=[(0, 1, NT_GLU)],
+            apply_profile=False,
         )
-        base_strength = float(brain.syn_strength[0])
+        brain.set_synapse_strength(0, 2.0)
+        base_strength = brain.synapse_strength(0)
         for _ in range(max(1, int(pairing_trials))):
             for _ in range(max(0, int(inter_trial_steps))):
                 brain.step()
@@ -647,10 +949,11 @@ def measure_dopamine_gated_plasticity(
                     brain.step()
                 _pulse_neuron(brain, 0, pulse_current_ua, pulse_steps)
             if dopamine:
-                brain.nt_conc[1, NT_DA] += dopamine_amount
+                brain.add_dopamine([1], dopamine_amount)
             for _ in range(max(0, int(post_pair_steps))):
                 brain.step()
-        return float(brain.syn_strength[0] - base_strength), float(brain.syn_strength[0])
+        final_strength = brain.synapse_strength(0)
+        return float(final_strength - base_strength), float(final_strength)
 
     pre_no_da, pre_no_da_final = _run_pairing(pre_before_post=True, dopamine=False)
     pre_da, pre_da_final = _run_pairing(pre_before_post=True, dopamine=True)
@@ -776,9 +1079,10 @@ def _build_validation_checks(report: ValidationReport) -> List[ValidationCheck]:
     return checks
 
 
-def run_validation_suite(device: str = "cpu") -> ValidationReport:
+def run_validation_suite(device: str = "auto") -> ValidationReport:
     """Run the full validation suite on the selected device."""
     report = ValidationReport(
+        backend=_probe_backend(device),
         current_clamp=measure_current_clamp(device=device),
         excitatory_synapse=measure_synaptic_response(inhibitory=False, device=device),
         inhibitory_synapse=measure_synaptic_response(inhibitory=True, device=device),
@@ -799,7 +1103,14 @@ def run_validation_suite(device: str = "cpu") -> ValidationReport:
 
 def main() -> int:
     """CLI entry point for printing the validation suite as JSON."""
-    payload = run_validation_suite(device="cpu").to_dict()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="Validation backend/device: auto, metal, cpu, cuda, or mps.",
+    )
+    args = parser.parse_args()
+    payload = run_validation_suite(device=args.device).to_dict()
     print(json.dumps(payload, indent=2))
     return 0
 

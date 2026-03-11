@@ -785,6 +785,11 @@ impl PyMolecularBrain {
         }
     }
 
+    /// Run multiple steps without forcing a host shadow sync at the end.
+    fn run_without_sync(&mut self, steps: u64) {
+        self.inner.run_without_sync(steps);
+    }
+
     /// Current simulation time in milliseconds.
     #[getter]
     fn time(&self) -> f32 {
@@ -835,6 +840,12 @@ impl PyMolecularBrain {
     fn voltages(&mut self) -> Vec<f32> {
         self.inner.sync_shadow_from_gpu();
         self.inner.neurons.voltage.clone()
+    }
+
+    /// Previous-step membrane voltages (mV) for all neurons.
+    fn prev_voltages(&mut self) -> Vec<f32> {
+        self.inner.sync_shadow_from_gpu();
+        self.inner.neurons.prev_voltage.clone()
     }
 
     /// Which neurons fired this step (bool as u8).
@@ -993,6 +1004,67 @@ impl PyMolecularBrain {
         self.inner.enable_circadian = enabled;
     }
 
+    /// Enable/disable pharmacology updates.
+    fn set_pharmacology_enabled(&mut self, enabled: bool) {
+        self.inner.enable_pharmacology = enabled;
+    }
+
+    /// Enable/disable interval-gated gene expression updates.
+    fn set_gene_expression_enabled(&mut self, enabled: bool) {
+        self.inner.enable_gene_expression = enabled;
+    }
+
+    /// Enable/disable interval-gated metabolism updates.
+    fn set_metabolism_enabled(&mut self, enabled: bool) {
+        self.inner.enable_metabolism = enabled;
+    }
+
+    /// Enable/disable interval-gated microtubule updates.
+    fn set_microtubules_enabled(&mut self, enabled: bool) {
+        self.inner.enable_microtubules = enabled;
+    }
+
+    /// Disable nonessential interval biology for latency-sensitive full-GPU stepping.
+    fn enable_latency_benchmark_mode(&mut self) {
+        self.inner.enable_latency_benchmark_mode();
+    }
+
+    /// Set the effective membrane capacitance used by voltage integration (µF/cm²).
+    fn set_membrane_capacitance(&mut self, capacitance_uf: f32) -> PyResult<()> {
+        if !capacitance_uf.is_finite() || capacitance_uf <= 0.0 {
+            return Err(PyValueError::new_err(
+                "membrane capacitance must be a finite positive value",
+            ));
+        }
+        self.inner.membrane_capacitance_uf = capacitance_uf;
+        Ok(())
+    }
+
+    /// Set the spike threshold used for threshold-crossing detection (mV).
+    fn set_spike_threshold(&mut self, threshold_mv: f32) -> PyResult<()> {
+        if !threshold_mv.is_finite() {
+            return Err(PyValueError::new_err("spike threshold must be finite"));
+        }
+        self.inner.spike_threshold_mv = threshold_mv;
+        Ok(())
+    }
+
+    /// Set the absolute refractory period enforced after each spike (ms).
+    fn set_refractory_period(&mut self, refractory_period_ms: f32) -> PyResult<()> {
+        if !refractory_period_ms.is_finite() || refractory_period_ms <= 0.0 {
+            return Err(PyValueError::new_err(
+                "refractory period must be a finite positive value",
+            ));
+        }
+        self.inner.refractory_period_ms = refractory_period_ms;
+        Ok(())
+    }
+
+    /// Force an explicit host shadow sync from the resident GPU buffers.
+    fn sync_shadow_from_gpu(&mut self) {
+        self.inner.sync_shadow_from_gpu();
+    }
+
     /// Whether Metal GPU is available on this system.
     #[staticmethod]
     fn has_gpu() -> bool {
@@ -1074,6 +1146,15 @@ impl PyMolecularBrain {
         Ok(self.inner.synapses.strength[idx])
     }
 
+    /// Effective synaptic weight for a specific synapse index.
+    fn synapse_weight(&mut self, idx: usize) -> PyResult<f32> {
+        if idx >= self.inner.synapses.n_synapses {
+            return Err(PyValueError::new_err("Synapse index out of range"));
+        }
+        self.inner.sync_shadow_from_gpu();
+        Ok(self.inner.synapses.weight[idx])
+    }
+
     /// Presynaptic neuron index for every synapse.
     fn synapse_pre(&mut self) -> Vec<u32> {
         self.inner.sync_shadow_from_gpu();
@@ -1093,6 +1174,12 @@ impl PyMolecularBrain {
     fn synapse_strengths(&mut self) -> Vec<f32> {
         self.inner.sync_shadow_from_gpu();
         self.inner.synapses.strength.clone()
+    }
+
+    /// Effective synaptic weights for every synapse.
+    fn synapse_weights(&mut self) -> Vec<f32> {
+        self.inner.sync_shadow_from_gpu();
+        self.inner.synapses.weight.clone()
     }
 
     /// Adjust selected synapse strengths by a fixed delta.

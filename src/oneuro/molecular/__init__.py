@@ -68,6 +68,7 @@ from oneuro.molecular.brain_regions import (
     Region, CorticalColumn, ThalamicNucleus, Hippocampus, BasalGanglia, RegionalBrain,
 )
 from oneuro.molecular.validation import (
+    ValidationBackendInfo,
     TargetCellProfile,
     CurrentClampMetrics,
     PlasticityMetrics,
@@ -167,6 +168,7 @@ __all__ = [
     "BasalGanglia",
     "RegionalBrain",
     "ReferenceRange",
+    "ValidationBackendInfo",
     "TargetCellProfile",
     "ValidationCheck",
     "CurrentClampMetrics",

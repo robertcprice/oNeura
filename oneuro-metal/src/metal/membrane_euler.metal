@@ -28,11 +28,8 @@ constant float E_CA     = 120.0f;
 constant float E_EXC    = 0.0f;     // excitatory (AMPA, NMDA, nAChR)
 constant float E_INH    = -80.0f;   // inhibitory (GABA-A)
 
-constant float C_M      = 1.0f;     // membrane capacitance uF/cm^2
 constant float V_MIN    = -100.0f;
 constant float V_MAX    = 60.0f;
-constant float SPIKE_TH = -20.0f;   // spike detection threshold (mV)
-constant float REFRACT  = 2.0f;     // refractory period (ms)
 
 // ---------------------------------------------------------------------------
 // Params constant buffer
@@ -41,6 +38,9 @@ struct Params {
     uint  neuron_count;
     float dt;
     float global_bias;
+    float membrane_capacitance_uf;
+    float spike_threshold_mv;
+    float refractory_period_ms;
 };
 
 // ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ kernel void membrane_euler(
     float I_ext = external_current[gid] + synaptic_current[gid] + bias;
 
     // --- Euler integration ---
-    float dV = (-I_total + I_ext) / C_M * dt;
+    float dV = (-I_total + I_ext) / max(params.membrane_capacitance_uf, 0.1f) * dt;
     float V_new = clamp(V + dV, V_MIN, V_MAX);
 
     // --- Refractory timer countdown ---
@@ -130,9 +130,9 @@ kernel void membrane_euler(
     // --- Spike detection ---
     // Threshold crossing: prev < -20 AND new >= -20 AND not refractory
     uchar f = 0;
-    if (V < SPIKE_TH && V_new >= SPIKE_TH && ref <= 0.0f) {
+    if (V < params.spike_threshold_mv && V_new >= params.spike_threshold_mv && ref <= 0.0f) {
         f = 1;
-        ref = REFRACT;
+        ref = max(params.refractory_period_ms, dt);
         spike_count[gid] += 1u;
     }
     fired[gid] = f;

@@ -24,6 +24,7 @@
 use crate::constants::*;
 use crate::neuron_arrays::NeuronArrays;
 use crate::synapse_arrays::SynapseArrays;
+use crate::types::NTType;
 
 /// NMDA Mg2+ block factor at a given membrane voltage.
 ///
@@ -92,7 +93,7 @@ pub fn update_stdp(
         fired_set[idx] = true;
     }
 
-    // --- Phase 1: STDP + BCM + receptor trafficking ---
+    // --- Phase 1: STDP coincidence -> eligibility accumulation ---
     // Only process synapses where pre OR post fired.
     for &pre in fired_indices {
         for syn_idx in synapses.outgoing_range(pre) {
@@ -120,8 +121,8 @@ pub fn update_stdp(
                 );
                 let adjusted_ltd = ltd * (1.0 - bcm_factor).max(0.1);
 
-                // Apply receptor trafficking: remove AMPA receptors
-                apply_receptor_change(synapses, syn_idx, adjusted_ltd);
+                synapses.eligibility_trace[syn_idx] =
+                    (synapses.eligibility_trace[syn_idx] + adjusted_ltd).clamp(-2.0, 2.0);
 
                 // Synaptic tagging for strong LTD events
                 if adjusted_ltd.abs() > TAG_THRESHOLD {
@@ -169,8 +170,8 @@ pub fn update_stdp(
                     );
                     let adjusted_ltp = ltp * bcm_factor.max(0.1);
 
-                    // Apply receptor trafficking: insert AMPA receptors
-                    apply_receptor_change(synapses, syn_idx, adjusted_ltp);
+                    synapses.eligibility_trace[syn_idx] =
+                        (synapses.eligibility_trace[syn_idx] + adjusted_ltp).clamp(-2.0, 2.0);
 
                     // Synaptic tagging for strong LTP events
                     if adjusted_ltp.abs() > TAG_THRESHOLD {
@@ -193,12 +194,31 @@ pub fn update_stdp(
         }
     }
 
-    // --- Phase 2: Eligibility trace decay ---
+    // --- Phase 2: dopamine-gated conversion of eligibility to permanent change ---
+    for syn_idx in 0..synapses.n_synapses {
+        if synapses.nt_type[syn_idx] == NTType::GABA.index() as u8 {
+            continue;
+        }
+        let post = synapses.col_indices[syn_idx] as usize;
+        let da_post = neurons.nt_conc[post][NTType::Dopamine.index()];
+        let da_above_rest = (da_post - 20.0).max(0.0);
+        let da_gain = (da_above_rest / 20.0).clamp(0.0, 10.0);
+        if da_gain <= 0.1 {
+            continue;
+        }
+        let gated_delta = synapses.eligibility_trace[syn_idx] * da_gain * 0.1;
+        if gated_delta.abs() > 1.0e-6 {
+            apply_receptor_change(synapses, syn_idx, gated_delta);
+        }
+        synapses.eligibility_trace[syn_idx] *= 0.9;
+    }
+
+    // --- Phase 3: Eligibility trace decay ---
     for syn_idx in 0..synapses.n_synapses {
         synapses.eligibility_trace[syn_idx] *= (-dt / STDP_WINDOW_MS).exp();
     }
 
-    // --- Phase 3: Tag decay ---
+    // --- Phase 4: Tag decay ---
     let tag_decay = (-dt / TAG_DECAY_TAU_MS).exp();
     for syn_idx in 0..synapses.n_synapses {
         if synapses.tagged[syn_idx] != 0 {
