@@ -221,6 +221,8 @@ struct WholeCellSpatialCouplingCache {
     patch_overlap: [[f32; 5]; 5],
 }
 
+const CHROMOSOME_SEQUENCE_DOMAIN_COUNT: usize = 4;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
 enum SubsystemEstimatorSignal {
@@ -1662,7 +1664,10 @@ impl WholeCellSimulator {
 
     fn chromosome_domain_index(midpoint_bp: u32, genome_bp: u32) -> u32 {
         let genome_bp = genome_bp.max(1);
-        ((4 * midpoint_bp.min(genome_bp.saturating_sub(1))) / genome_bp).min(3)
+        (((CHROMOSOME_SEQUENCE_DOMAIN_COUNT as u32)
+            * midpoint_bp.min(genome_bp.saturating_sub(1)))
+            / genome_bp)
+            .min((CHROMOSOME_SEQUENCE_DOMAIN_COUNT - 1) as u32)
     }
 
     fn chromosome_locus_records(&self, organism: &WholeCellOrganismSpec) -> Vec<(String, u32, i8)> {
@@ -2463,17 +2468,14 @@ impl WholeCellSimulator {
         let genome_bp = state.chromosome_length_bp.max(1);
         let dt_scale = (dt / self.config.dt_ms.max(0.05)).clamp(0.5, 6.0);
         let crowding = self.organism_expression.crowding_penalty.clamp(0.65, 1.10);
-        let chromosome_local_energy_support = self.chromosome_local_energy_support();
-        let chromosome_local_nucleotide_support = self.chromosome_local_nucleotide_support();
-        let chromosome_resource_support = Self::finite_scale(
-            0.44 * chromosome_local_nucleotide_support
-                + 0.32 * chromosome_local_energy_support
-                + 0.14 * crowding
-                + 0.10 * self.organism_expression.process_scales.replication.max(0.0),
-            1.0,
-            0.45,
-            1.65,
-        );
+        let chromosome_domain_energy_support: [f32; CHROMOSOME_SEQUENCE_DOMAIN_COUNT] =
+            std::array::from_fn(|index| self.chromosome_domain_energy_support(index as u32));
+        let chromosome_domain_nucleotide_support: [f32; CHROMOSOME_SEQUENCE_DOMAIN_COUNT] =
+            std::array::from_fn(|index| self.chromosome_domain_nucleotide_support(index as u32));
+        let origin_domain_index = Self::chromosome_domain_index(state.origin_bp, genome_bp) as usize;
+        let chromosome_local_energy_support = chromosome_domain_energy_support[origin_domain_index];
+        let chromosome_local_nucleotide_support =
+            chromosome_domain_nucleotide_support[origin_domain_index];
         let initiation_support = Self::finite_scale(
             0.40 * Self::saturating_signal(self.dnaa, 64.0)
                 + 0.20 * chromosome_local_nucleotide_support
@@ -2519,6 +2521,19 @@ impl WholeCellSimulator {
             }
             let collision_pressure =
                 self.chromosome_collision_pressure(fork.direction, fork.position_bp, genome_bp);
+            let domain_index = Self::chromosome_domain_index(fork.position_bp, genome_bp) as usize;
+            let chromosome_local_energy_support = chromosome_domain_energy_support[domain_index];
+            let chromosome_local_nucleotide_support =
+                chromosome_domain_nucleotide_support[domain_index];
+            let chromosome_resource_support = Self::finite_scale(
+                0.44 * chromosome_local_nucleotide_support
+                    + 0.32 * chromosome_local_energy_support
+                    + 0.14 * crowding
+                    + 0.10 * self.organism_expression.process_scales.replication.max(0.0),
+                1.0,
+                0.45,
+                1.65,
+            );
             let pause_pressure = (0.46 * collision_pressure
                 + 0.18 * (1.0 - crowding).max(0.0)
                 + 0.20 * (1.0 - chromosome_local_nucleotide_support).max(0.0)
@@ -6642,16 +6657,6 @@ impl WholeCellSimulator {
         let previous_units = self.organism_expression.transcription_units.clone();
         let profile = derive_organism_profile(&organism);
         let localized_supply = self.localized_supply_scale();
-        let localized_nucleoid_atp = self.localized_nucleoid_atp_pool_mm();
-        let localized_nucleotide_pool = self.localized_nucleotide_pool_mm();
-        let chromosome_localized_supply = Self::finite_scale(
-            0.48 * localized_supply
-                + 0.30 * Self::saturating_signal(localized_nucleoid_atp, 0.90)
-                + 0.22 * Self::saturating_signal(localized_nucleotide_pool, 0.55),
-            1.0,
-            0.55,
-            1.20,
-        );
         let crowding_penalty =
             Self::finite_scale(self.chemistry_report.crowding_penalty, 1.0, 0.65, 1.10);
         let adenylate_ratio = self.atp_mm.max(0.0) / (self.adp_mm + 0.25).max(0.25);
@@ -6663,17 +6668,6 @@ impl WholeCellSimulator {
             1.0,
             0.55,
             1.55,
-        );
-        let chromosome_energy_support = Self::finite_scale(
-            0.62 * energy_support
-                + 0.38
-                    * Self::saturating_signal(
-                        0.72 * localized_nucleoid_atp + 0.28 * self.chemistry_report.atp_support,
-                        1.0,
-                    ),
-            1.0,
-            0.55,
-            1.60,
         );
         let translation_support = Self::finite_scale(
             0.72 * self.chemistry_report.translation_support + 0.28 * localized_supply,
@@ -6687,18 +6681,12 @@ impl WholeCellSimulator {
             0.55,
             1.55,
         );
-        let chromosome_nucleotide_support = Self::finite_scale(
-            0.58 * nucleotide_support
-                + 0.42
-                    * Self::saturating_signal(
-                        0.78 * localized_nucleotide_pool
-                            + 0.22 * self.chemistry_report.nucleotide_support,
-                        0.80,
-                    ),
-            1.0,
-            0.55,
-            1.60,
-        );
+        let chromosome_domain_energy_support: [f32; CHROMOSOME_SEQUENCE_DOMAIN_COUNT] =
+            std::array::from_fn(|index| self.chromosome_domain_energy_support(index as u32));
+        let chromosome_domain_nucleotide_support: [f32; CHROMOSOME_SEQUENCE_DOMAIN_COUNT] =
+            std::array::from_fn(|index| self.chromosome_domain_nucleotide_support(index as u32));
+        let chromosome_domain_localized_supply: [f32; CHROMOSOME_SEQUENCE_DOMAIN_COUNT] =
+            std::array::from_fn(|index| self.chromosome_domain_localized_supply(index as u32));
         let membrane_support = Self::finite_scale(
             0.72 * self.chemistry_report.membrane_support + 0.28 * localized_supply,
             1.0,
@@ -6752,6 +6740,9 @@ impl WholeCellSimulator {
             } else {
                 organism.origin_bp.min(organism.chromosome_length_bp.max(1))
             };
+            let domain_index =
+                Self::chromosome_domain_index(midpoint_bp, organism.chromosome_length_bp.max(1))
+                    as usize;
             let copy_gain = self.chromosome_copy_number_at(midpoint_bp);
             let chromosome_accessibility = self.chromosome_locus_accessibility_at(midpoint_bp);
             let chromosome_torsion = self.chromosome_locus_torsional_stress_at(midpoint_bp);
@@ -6774,11 +6765,11 @@ impl WholeCellSimulator {
                 });
             let support_level = Self::unit_support_level(
                 unit_weights,
-                chromosome_energy_support,
+                chromosome_domain_energy_support[domain_index],
                 translation_support,
-                chromosome_nucleotide_support,
+                chromosome_domain_nucleotide_support[domain_index],
                 membrane_support,
-                chromosome_localized_supply,
+                chromosome_domain_localized_supply[domain_index],
             );
             let stress_penalty = (load_penalty
                 + 0.22 * (1.0 - crowding_penalty).max(0.0)
@@ -6871,6 +6862,9 @@ impl WholeCellSimulator {
             for feature in &organism.genes {
                 let midpoint_bp = 0.5 * (feature.start_bp as f32 + feature.end_bp as f32);
                 let midpoint_bp = midpoint_bp.round() as u32;
+                let domain_index =
+                    Self::chromosome_domain_index(midpoint_bp, organism.chromosome_length_bp.max(1))
+                        as usize;
                 let copy_gain = self.chromosome_copy_number_at(midpoint_bp);
                 let chromosome_accessibility = self.chromosome_locus_accessibility_at(midpoint_bp);
                 let chromosome_torsion = self.chromosome_locus_torsional_stress_at(midpoint_bp);
@@ -6887,11 +6881,11 @@ impl WholeCellSimulator {
                     .unwrap_or_else(|| 10.0 + 8.0 * feature.basal_expression.max(0.05) * copy_gain);
                 let support_level = Self::unit_support_level(
                     feature.process_weights,
-                    chromosome_energy_support,
+                    chromosome_domain_energy_support[domain_index],
                     translation_support,
-                    chromosome_nucleotide_support,
+                    chromosome_domain_nucleotide_support[domain_index],
                     membrane_support,
-                    chromosome_localized_supply,
+                    chromosome_domain_localized_supply[domain_index],
                 );
                 let stress_penalty = (load_penalty
                     + 0.22 * (1.0 - crowding_penalty).max(0.0)
@@ -7474,6 +7468,62 @@ impl WholeCellSimulator {
             .weighted_mean_species(&self.lattice, species, field)
     }
 
+    fn weighted_species_mean(&self, species: IntracellularSpecies, weights: &[f32]) -> f32 {
+        let total_voxels = self.lattice.total_voxels();
+        if weights.len() != total_voxels {
+            return self.lattice.mean_species(species);
+        }
+        let start = species.index() * total_voxels;
+        let species_values = &self.lattice.current[start..start + total_voxels];
+        let mut weighted_sum = 0.0;
+        let mut weight_total = 0.0;
+        for (&value, &weight) in species_values.iter().zip(weights.iter()) {
+            let clamped = weight.max(0.0);
+            weighted_sum += value * clamped;
+            weight_total += clamped;
+        }
+        if weight_total <= 1.0e-6 {
+            self.lattice.mean_species(species)
+        } else {
+            weighted_sum / weight_total
+        }
+    }
+
+    fn chromosome_domain_weights(&self, domain_index: u32) -> Vec<f32> {
+        let total_voxels = self.lattice.total_voxels();
+        let x_dim = self.lattice.x_dim.max(1);
+        let domain_fraction = (domain_index.min((CHROMOSOME_SEQUENCE_DOMAIN_COUNT - 1) as u32)
+            as f32
+            + 0.5)
+            / CHROMOSOME_SEQUENCE_DOMAIN_COUNT as f32;
+        let axial_center = 0.18 + 0.64 * domain_fraction;
+        let axial_spread = (0.10
+            + 0.08 * (1.0 - self.chromosome_state.compaction_fraction.clamp(0.0, 1.0))
+            + 0.05 * (1.0 - self.chromosome_state.segregation_progress.clamp(0.0, 1.0)))
+        .clamp(0.08, 0.22);
+        let nucleoid = self
+            .spatial_fields
+            .field_slice(IntracellularSpatialField::NucleoidOccupancy);
+        let mut weights = vec![0.0; total_voxels];
+        for gid in 0..total_voxels {
+            let x = gid % x_dim;
+            let x_frac = (x as f32 + 0.5) / x_dim as f32;
+            let axial_term =
+                (-0.5 * ((x_frac - axial_center) / axial_spread.max(1.0e-3)).powi(2)).exp();
+            weights[gid] = nucleoid[gid].max(0.0) * axial_term;
+        }
+        weights
+    }
+
+    fn chromosome_domain_species_mean(
+        &self,
+        species: IntracellularSpecies,
+        domain_index: u32,
+    ) -> f32 {
+        let weights = self.chromosome_domain_weights(domain_index);
+        self.weighted_species_mean(species, &weights)
+    }
+
     fn localized_nucleotide_pool_mm(&self) -> f32 {
         self.spatial_species_mean(
             IntracellularSpecies::Nucleotides,
@@ -7488,25 +7538,58 @@ impl WholeCellSimulator {
         )
     }
 
-    fn chromosome_local_energy_support(&self) -> f32 {
+    fn chromosome_domain_localized_supply(&self, domain_index: u32) -> f32 {
         Self::finite_scale(
-            0.56 * Self::saturating_signal(self.localized_nucleoid_atp_pool_mm(), 0.90)
-                + 0.24 * self.organism_expression.energy_support
-                + 0.20 * self.chemistry_report.atp_support,
+            0.42 * self.localized_supply_scale()
+                + 0.34
+                    * Self::saturating_signal(
+                        self.chromosome_domain_species_mean(IntracellularSpecies::ATP, domain_index),
+                        0.90,
+                    )
+                + 0.24
+                    * Self::saturating_signal(
+                        self.chromosome_domain_species_mean(
+                            IntracellularSpecies::Nucleotides,
+                            domain_index,
+                        ),
+                        0.55,
+                    ),
             1.0,
-            0.50,
-            1.70,
+            0.55,
+            1.25,
         )
     }
 
-    fn chromosome_local_nucleotide_support(&self) -> f32 {
+    fn chromosome_domain_energy_support(&self, domain_index: u32) -> f32 {
         Self::finite_scale(
-            0.58 * Self::saturating_signal(self.localized_nucleotide_pool_mm(), 0.55)
-                + 0.24 * self.organism_expression.nucleotide_support
-                + 0.18 * self.chemistry_report.nucleotide_support,
+            0.54
+                * Self::saturating_signal(
+                    self.chromosome_domain_species_mean(IntracellularSpecies::ATP, domain_index),
+                    0.90,
+                )
+                + 0.26 * self.organism_expression.energy_support
+                + 0.20 * self.chemistry_report.atp_support,
             1.0,
             0.50,
-            1.70,
+            1.75,
+        )
+    }
+
+    fn chromosome_domain_nucleotide_support(&self, domain_index: u32) -> f32 {
+        Self::finite_scale(
+            0.56
+                * Self::saturating_signal(
+                    self.chromosome_domain_species_mean(
+                        IntracellularSpecies::Nucleotides,
+                        domain_index,
+                    ),
+                    0.55,
+                )
+                + 0.24 * self.organism_expression.nucleotide_support
+                + 0.20 * self.chemistry_report.nucleotide_support,
+            1.0,
+            0.50,
+            1.75,
         )
     }
 
@@ -9451,6 +9534,140 @@ mod tests {
     }
 
     #[test]
+    fn test_chromosome_domain_support_tracks_domain_loaded_pools() {
+        let mut sim =
+            WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
+        let domain_zero_weights = sim.chromosome_domain_weights(0);
+        let domain_three_weights = sim.chromosome_domain_weights(3);
+        let domain_zero_atp = distribute_total_by_weights(&domain_zero_weights, 1.10);
+        let domain_zero_nucleotides = distribute_total_by_weights(&domain_zero_weights, 0.80);
+
+        sim.lattice
+            .set_species(IntracellularSpecies::ATP, &domain_zero_atp)
+            .expect("domain-zero ATP");
+        sim.lattice
+            .set_species(IntracellularSpecies::Nucleotides, &domain_zero_nucleotides)
+            .expect("domain-zero nucleotides");
+        sim.sync_from_lattice();
+
+        assert!(
+            sim.weighted_species_mean(IntracellularSpecies::ATP, &domain_zero_weights)
+                > sim.weighted_species_mean(IntracellularSpecies::ATP, &domain_three_weights)
+        );
+        assert!(
+            sim.chromosome_domain_energy_support(0) > sim.chromosome_domain_energy_support(3)
+        );
+        assert!(
+            sim.chromosome_domain_nucleotide_support(0)
+                > sim.chromosome_domain_nucleotide_support(3)
+        );
+    }
+
+    #[test]
+    fn test_chromosome_domain_loading_biases_expression_by_midpoint() {
+        let mut left_loaded =
+            WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
+        let mut right_loaded =
+            WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
+
+        let domain_zero_weights = left_loaded.chromosome_domain_weights(0);
+        let domain_three_weights = left_loaded.chromosome_domain_weights(3);
+        let left_atp = distribute_total_by_weights(&domain_zero_weights, 1.10);
+        let left_nucleotides = distribute_total_by_weights(&domain_zero_weights, 0.80);
+        let right_atp = distribute_total_by_weights(&domain_three_weights, 1.10);
+        let right_nucleotides = distribute_total_by_weights(&domain_three_weights, 0.80);
+
+        left_loaded
+            .lattice
+            .set_species(IntracellularSpecies::ATP, &left_atp)
+            .expect("left-domain ATP");
+        left_loaded
+            .lattice
+            .set_species(IntracellularSpecies::Nucleotides, &left_nucleotides)
+            .expect("left-domain nucleotides");
+        right_loaded
+            .lattice
+            .set_species(IntracellularSpecies::ATP, &right_atp)
+            .expect("right-domain ATP");
+        right_loaded
+            .lattice
+            .set_species(IntracellularSpecies::Nucleotides, &right_nucleotides)
+            .expect("right-domain nucleotides");
+        left_loaded.sync_from_lattice();
+        right_loaded.sync_from_lattice();
+        left_loaded.refresh_organism_expression_state();
+        right_loaded.refresh_organism_expression_state();
+
+        let organism = left_loaded
+            .organism_data
+            .as_ref()
+            .expect("bundled organism data");
+        let mut unit_midpoints: Vec<(String, u32)> = organism
+            .transcription_units
+            .iter()
+            .map(|unit| {
+                let mut midpoint_sum = 0.0;
+                let mut midpoint_count = 0usize;
+                for gene_name in &unit.genes {
+                    if let Some(feature) = organism
+                        .genes
+                        .iter()
+                        .find(|feature| feature.gene == *gene_name)
+                    {
+                        midpoint_sum += 0.5 * (feature.start_bp as f32 + feature.end_bp as f32);
+                        midpoint_count += 1;
+                    }
+                }
+                let midpoint_bp = if midpoint_count > 0 {
+                    (midpoint_sum / midpoint_count as f32).round() as u32
+                } else {
+                    organism.origin_bp.min(organism.chromosome_length_bp.max(1))
+                };
+                (unit.name.clone(), midpoint_bp)
+            })
+            .collect();
+        unit_midpoints.sort_by_key(|(_, midpoint_bp)| *midpoint_bp);
+        let low_name = unit_midpoints
+            .first()
+            .map(|(name, _)| name.clone())
+            .expect("low-midpoint unit");
+        let high_name = unit_midpoints
+            .last()
+            .map(|(name, _)| name.clone())
+            .expect("high-midpoint unit");
+
+        let left_expression = left_loaded
+            .organism_expression_state()
+            .expect("left-domain expression");
+        let right_expression = right_loaded
+            .organism_expression_state()
+            .expect("right-domain expression");
+        let left_low = left_expression
+            .transcription_units
+            .iter()
+            .find(|unit| unit.name == low_name)
+            .expect("left low-midpoint unit");
+        let right_low = right_expression
+            .transcription_units
+            .iter()
+            .find(|unit| unit.name == low_name)
+            .expect("right low-midpoint unit");
+        let left_high = left_expression
+            .transcription_units
+            .iter()
+            .find(|unit| unit.name == high_name)
+            .expect("left high-midpoint unit");
+        let right_high = right_expression
+            .transcription_units
+            .iter()
+            .find(|unit| unit.name == high_name)
+            .expect("right high-midpoint unit");
+
+        assert!(left_low.support_level > right_low.support_level);
+        assert!(right_high.support_level > left_high.support_level);
+    }
+
+    #[test]
     fn test_nucleoid_localization_biases_chromosome_progress() {
         let mut nucleoid_loaded =
             WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
@@ -9507,13 +9724,10 @@ mod tests {
         let nucleoid_state = nucleoid_loaded.chromosome_state();
         let pole_state = pole_loaded.chromosome_state();
 
+        assert!(nucleoid_loaded.chromosome_domain_energy_support(0) > pole_loaded.chromosome_domain_energy_support(0));
         assert!(
-            nucleoid_loaded.chromosome_local_energy_support()
-                > pole_loaded.chromosome_local_energy_support()
-        );
-        assert!(
-            nucleoid_loaded.chromosome_local_nucleotide_support()
-                > pole_loaded.chromosome_local_nucleotide_support()
+            nucleoid_loaded.chromosome_domain_nucleotide_support(0)
+                > pole_loaded.chromosome_domain_nucleotide_support(0)
         );
         assert!(
             nucleoid_state.initiation_potential > pole_state.initiation_potential,

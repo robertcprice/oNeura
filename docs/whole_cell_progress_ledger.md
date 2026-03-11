@@ -501,3 +501,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `chromosome runtime now responds more directly to local nucleoid chemistry, but fork and locus behavior still use coarse whole-nucleoid averages rather than per-domain compiled local pools and domain-resolved chromosome chemistry`
+
+### 2026-03-11 - Phase 7 / Domain-Resolved Chromosome Locality Slice
+
+- Summary:
+  - introduced sequence-domain-aware chromosome locality by deriving four dynamic axial domain weight maps from the existing nucleoid spatial field instead of treating the whole nucleoid as one chemistry bucket
+  - added domain-resolved ATP, nucleotide, and localized-supply helpers and cached those per domain inside both `advance_chromosome_state()` and `refresh_organism_expression_state()`, so fork dynamics and per-unit expression support now respond to chromosome position rather than only a whole-nucleoid mean
+  - added regressions for domain-loaded local pools and for left-vs-right domain loading flipping support in low-midpoint versus high-midpoint transcription units
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_chromosome_domain_support_tracks_domain_loaded_pools --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_chromosome_domain_loading_biases_expression_by_midpoint --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_nucleoid_localization_biases_chromosome_progress --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `chromosome locality is now domain-resolved, but the domains are still inferred from dynamic axial weights rather than explicit compiled chromosome-domain chemistry assets and domain-specific reaction ownership`
