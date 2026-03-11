@@ -2093,6 +2093,7 @@ fn localized_pool_supports_bulk_field(field: WholeCellBulkField) -> bool {
     matches!(
         field,
         WholeCellBulkField::ATP
+            | WholeCellBulkField::ADP
             | WholeCellBulkField::AminoAcids
             | WholeCellBulkField::Nucleotides
             | WholeCellBulkField::MembranePrecursors
@@ -2130,33 +2131,56 @@ fn localized_pool_fields_for_asset_class(
     }
 }
 
+fn localized_pool_request_weight(
+    field: WholeCellBulkField,
+    asset_class: WholeCellAssetClass,
+) -> Option<f32> {
+    localized_pool_fields_for_asset_class(asset_class)
+        .iter()
+        .copied()
+        .find(|(candidate_field, _)| *candidate_field == field)
+        .map(|(_, weight)| weight)
+        .or_else(|| match field {
+            WholeCellBulkField::ADP => localized_pool_fields_for_asset_class(asset_class)
+                .iter()
+                .copied()
+                .find(|(candidate_field, _)| *candidate_field == WholeCellBulkField::ATP)
+                .map(|(_, atp_weight)| (0.82 * atp_weight).clamp(0.18, 1.0))
+                .or(Some(0.30)),
+            _ => None,
+        })
+}
+
 fn localized_pool_transfer_rate(field: WholeCellBulkField) -> f32 {
     match field {
         WholeCellBulkField::ATP => 0.085,
+        WholeCellBulkField::ADP => 0.080,
         WholeCellBulkField::AminoAcids => 0.072,
         WholeCellBulkField::Nucleotides => 0.066,
         WholeCellBulkField::MembranePrecursors => 0.058,
-        WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
+        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
     }
 }
 
 fn localized_pool_turnover_rate(field: WholeCellBulkField) -> f32 {
     match field {
         WholeCellBulkField::ATP => 0.030,
+        WholeCellBulkField::ADP => 0.028,
         WholeCellBulkField::AminoAcids => 0.025,
         WholeCellBulkField::Nucleotides => 0.022,
         WholeCellBulkField::MembranePrecursors => 0.020,
-        WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
+        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
     }
 }
 
 fn localized_pool_basal_scale(field: WholeCellBulkField) -> f32 {
     match field {
         WholeCellBulkField::ATP => 0.11,
+        WholeCellBulkField::ADP => 0.10,
         WholeCellBulkField::AminoAcids => 0.09,
         WholeCellBulkField::Nucleotides => 0.08,
         WholeCellBulkField::MembranePrecursors => 0.07,
-        WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
+        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
     }
 }
 
@@ -2808,11 +2832,7 @@ pub fn compile_genome_process_registry(
             {
                 return global_species_id.clone();
             }
-            let Some((_, weight)) = localized_pool_fields_for_asset_class(asset_class)
-                .iter()
-                .copied()
-                .find(|(candidate_field, _)| *candidate_field == field)
-            else {
+            let Some(weight) = localized_pool_request_weight(field, asset_class) else {
                 return global_species_id.clone();
             };
             register_localized_pool_request(
@@ -3131,7 +3151,16 @@ pub fn compile_genome_process_registry(
         let mut stress_products = Vec::new();
         if let Some(species_id) = adp_pool.as_ref() {
             stress_products.push(WholeCellReactionParticipantSpec {
-                species_id: species_id.clone(),
+                species_id: localized_pool_participant(
+                    species_id,
+                    WholeCellBulkField::ADP,
+                    operon_spatial_scope,
+                    operon_patch_domain,
+                    operon_chromosome_domain.as_deref(),
+                    operon_signal_seed,
+                    operon_asset_class,
+                    &[],
+                ),
                 stoichiometry: (operon.genes.len().max(1) as f32).sqrt().max(1.0),
             });
         }
@@ -3346,7 +3375,18 @@ pub fn compile_genome_process_registry(
                 &complex.subsystem_targets,
             )
         });
-        let assembly_adp_pool = adp_pool.clone();
+        let localized_assembly_adp_pool = adp_pool.as_ref().map(|species_id| {
+            localized_pool_participant(
+                species_id,
+                WholeCellBulkField::ADP,
+                complex_spatial_scope,
+                complex_patch_domain,
+                complex_chromosome_domain.as_deref(),
+                assembly_energy_signal,
+                complex.asset_class,
+                &complex.subsystem_targets,
+            )
+        });
         let mut subunit_pool_reactants = complex
             .components
             .iter()
@@ -3365,7 +3405,7 @@ pub fn compile_genome_process_registry(
             species_id: subunit_pool_id.clone(),
             stoichiometry: 1.0,
         }];
-        if let Some(species_id) = assembly_adp_pool.as_ref() {
+        if let Some(species_id) = localized_assembly_adp_pool.as_ref() {
             subunit_pool_products.push(WholeCellReactionParticipantSpec {
                 species_id: species_id.clone(),
                 stoichiometry: (0.12 * total_stoichiometry.sqrt()).clamp(0.08, 0.75),
@@ -3403,7 +3443,7 @@ pub fn compile_genome_process_registry(
             species_id: nucleation_id.clone(),
             stoichiometry: 1.0,
         }];
-        if let Some(species_id) = assembly_adp_pool.as_ref() {
+        if let Some(species_id) = localized_assembly_adp_pool.as_ref() {
             nucleation_products.push(WholeCellReactionParticipantSpec {
                 species_id: species_id.clone(),
                 stoichiometry: (0.14 * total_stoichiometry.sqrt()).clamp(0.10, 0.85),
@@ -3444,7 +3484,7 @@ pub fn compile_genome_process_registry(
             species_id: elongation_id.clone(),
             stoichiometry: 1.0,
         }];
-        if let Some(species_id) = assembly_adp_pool.as_ref() {
+        if let Some(species_id) = localized_assembly_adp_pool.as_ref() {
             elongation_products.push(WholeCellReactionParticipantSpec {
                 species_id: species_id.clone(),
                 stoichiometry: (0.16 * total_stoichiometry.sqrt()).clamp(0.12, 0.95),
@@ -3480,7 +3520,7 @@ pub fn compile_genome_process_registry(
             species_id: mature_id.clone(),
             stoichiometry: 1.0,
         }];
-        if let Some(species_id) = assembly_adp_pool.as_ref() {
+        if let Some(species_id) = localized_assembly_adp_pool.as_ref() {
             maturation_products.push(WholeCellReactionParticipantSpec {
                 species_id: species_id.clone(),
                 stoichiometry: (0.10 + 0.04 * complex.basal_abundance.max(0.1).sqrt())
@@ -3542,7 +3582,16 @@ pub fn compile_genome_process_registry(
         }];
         if let Some(species_id) = adp_pool.as_ref() {
             repair_products.push(WholeCellReactionParticipantSpec {
-                species_id: species_id.clone(),
+                species_id: localized_pool_participant(
+                    species_id,
+                    WholeCellBulkField::ADP,
+                    complex_spatial_scope,
+                    complex_patch_domain,
+                    complex_chromosome_domain.as_deref(),
+                    total_stoichiometry.max(1.0),
+                    complex.asset_class,
+                    &complex.subsystem_targets,
+                ),
                 stoichiometry: 0.30 * total_stoichiometry.sqrt().max(1.0),
             });
         }
@@ -3575,7 +3624,7 @@ pub fn compile_genome_process_registry(
             species_id: subunit_pool_id,
             stoichiometry: 1.0,
         }];
-        if let Some(species_id) = assembly_adp_pool.as_ref() {
+        if let Some(species_id) = localized_assembly_adp_pool.as_ref() {
             turnover_products.push(WholeCellReactionParticipantSpec {
                 species_id: species_id.clone(),
                 stoichiometry: (0.08 * total_stoichiometry.sqrt()).clamp(0.05, 0.45),
@@ -4840,6 +4889,42 @@ mod tests {
                     participant
                         .species_id
                         .starts_with("pool_nucleoid_track_atp")
+                })
+        }));
+    }
+
+    #[test]
+    fn localized_adp_pool_requests_compile_when_bundle_exposes_adp_pool() {
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        package.pools.push(WholeCellMoleculePoolSpec {
+            species: "adp".to_string(),
+            concentration_mm: 0.35,
+            count: 3200.0,
+        });
+        let registry = compile_genome_process_registry(&package);
+
+        assert!(registry.species.iter().any(|species| {
+            species.patch_domain == WholeCellPatchDomain::NucleoidTrack
+                && species.bulk_field == Some(WholeCellBulkField::ADP)
+                && species.chromosome_domain.is_some()
+                && species.id.starts_with("pool_nucleoid_track_adp_")
+        }));
+        assert!(registry.reactions.iter().any(|reaction| {
+            matches!(
+                reaction.reaction_class,
+                WholeCellReactionClass::StressResponse
+                    | WholeCellReactionClass::SubunitPoolFormation
+                    | WholeCellReactionClass::ComplexNucleation
+                    | WholeCellReactionClass::ComplexElongation
+                    | WholeCellReactionClass::ComplexMaturation
+                    | WholeCellReactionClass::ComplexRepair
+                    | WholeCellReactionClass::ComplexTurnover
+            ) && reaction.patch_domain == WholeCellPatchDomain::NucleoidTrack
+                && reaction.chromosome_domain.is_some()
+                && reaction.products.iter().any(|participant| {
+                    participant
+                        .species_id
+                        .starts_with("pool_nucleoid_track_adp_")
                 })
         }));
     }

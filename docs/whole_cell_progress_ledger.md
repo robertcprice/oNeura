@@ -605,3 +605,23 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiled chromosome domains now shape localized pool asset generation, but broader localized support-pool chemistry and per-domain reaction ownership still need to move off generic fallback pools and onto richer compiled chromosome-domain datasets`
+
+### 2026-03-11 - Phase 7 / Localized Support-Pool Turnover Slice
+
+- Summary:
+  - extended the generic localized-pool primitive to support explicit ADP localization requests, including transfer/turnover kinetics and request-weight inference from the same asset-class rule set used for ATP, so chromosome-local energy turnover no longer has to collapse back to a global product pool when the source bundle exposes ADP
+  - switched stress-response and chromosome-local assembly/repair/turnover product generation onto localized ADP participants, keeping ATP consumption and ADP return on the same domain-aware locality path instead of mixing local reactants with global products
+  - added a focused regression that clones the bundled Syn3A asset package, injects an explicit ADP pool, and verifies that domain-scoped nucleoid-track ADP pools plus matching chromosome-local ADP-producing reactions compile without changing the bundled fixture contract
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `localized support-pool turnover is now generic, but the bundled organism datasets still under-specify several counterpools and reversible metabolite states, so richer compiled chemistry inputs are still needed before chromosome-local support chemistry can fully replace the remaining global fallback pools`
