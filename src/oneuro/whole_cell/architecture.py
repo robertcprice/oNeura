@@ -7,9 +7,11 @@ multiple solvers and biological timescales.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Tuple
+
+from .contracts import WholeCellContract, WholeCellProvenance
 
 
 class CouplingStage(str, Enum):
@@ -58,6 +60,8 @@ class WholeCellProgramSpec:
     external_tools: Tuple[ExternalTool, ...]
     reusable_oneuro_surfaces: Tuple[str, ...]
     missing_core_surfaces: Tuple[str, ...]
+    contract: WholeCellContract = field(default_factory=WholeCellContract)
+    provenance: WholeCellProvenance = field(default_factory=WholeCellProvenance)
 
 
 def syn3a_reference_program() -> WholeCellProgramSpec:
@@ -108,5 +112,13 @@ def syn3a_reference_program() -> WholeCellProgramSpec:
             "chromosome dynamics interface",
             "growth and division geometry controller",
             "whole-cell validation suite",
+        ),
+        provenance=WholeCellProvenance(
+            source_dataset="JCVI-syn3A reference program",
+            backend="external_reference",
+            notes=(
+                "Contract-frozen whole-cell reference program.",
+                "Use this surface for runtime and manifest schema compatibility checks.",
+            ),
         ),
     )

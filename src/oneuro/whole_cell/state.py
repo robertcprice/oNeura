@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Dict, Mapping, MutableMapping
 
+from .contracts import WholeCellContract, WholeCellProvenance
+
 
 class CellCompartment(str, Enum):
     """Compartments commonly used by minimal bacterial whole-cell models."""
@@ -69,6 +71,8 @@ class WholeCellState:
             volume_nm3=33_510_321.0,
         )
     )
+    contract: WholeCellContract = field(default_factory=WholeCellContract)
+    provenance: WholeCellProvenance = field(default_factory=WholeCellProvenance)
     metadata: Dict[str, Any] = field(default_factory=dict)
     stage_history: list[dict[str, Any]] = field(default_factory=list)
 
@@ -182,4 +186,11 @@ def syn3a_minimal_state() -> WholeCellState:
             "model_family": "native_whole_cell_skeleton",
             "organism_class": "minimal_bacterium",
         },
+        provenance=WholeCellProvenance(
+            source_dataset="JCVI-syn3A minimal native skeleton",
+            backend="python_skeleton",
+            notes=(
+                "Coarse shared state for scheduler and contract tests.",
+            ),
+        ),
     )

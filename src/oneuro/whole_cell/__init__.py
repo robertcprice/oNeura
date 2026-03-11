@@ -14,6 +14,14 @@ from .architecture import (
     WholeCellProgramSpec,
     syn3a_reference_program,
 )
+from .contracts import (
+    WHOLE_CELL_CONTRACT_VERSION,
+    WHOLE_CELL_PROGRAM_SCHEMA_VERSION,
+    WHOLE_CELL_RUNTIME_MANIFEST_SCHEMA_VERSION,
+    WHOLE_CELL_SAVED_STATE_SCHEMA_VERSION,
+    WholeCellContract,
+    WholeCellProvenance,
+)
 from .handlers import (
     bd_stage_handler,
     build_syn3a_skeleton_scheduler,
@@ -42,6 +50,11 @@ __all__ = [
     "RustWholeCellSimulator",
     "CouplingStage",
     "ExternalTool",
+    "WHOLE_CELL_CONTRACT_VERSION",
+    "WHOLE_CELL_PROGRAM_SCHEMA_VERSION",
+    "WHOLE_CELL_RUNTIME_MANIFEST_SCHEMA_VERSION",
+    "WHOLE_CELL_SAVED_STATE_SCHEMA_VERSION",
+    "WholeCellContract",
     "bd_stage_handler",
     "apply_nqpu_whole_cell_profile",
     "build_nqpu_whole_cell_profile",
@@ -58,6 +71,7 @@ __all__ = [
     "WholeCellStageResult",
     "WholeCellConfig",
     "WholeCellProgramSpec",
+    "WholeCellProvenance",
     "WholeCellRuntimeManifest",
     "WholeCellState",
     "syn3a_reference_program",

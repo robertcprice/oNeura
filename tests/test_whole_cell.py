@@ -10,11 +10,14 @@ from oneuro.whole_cell import (
     ExternalTool,
     MC4DRunner,
     NQPUWholeCellProfile,
+    WHOLE_CELL_CONTRACT_VERSION,
     WholeCellScheduler,
     WholeCellStageResult,
     WholeCellArtifactIngestor,
+    WholeCellContract,
     WholeCellState,
     WholeCellConfig,
+    WholeCellProvenance,
     apply_nqpu_whole_cell_profile,
     build_nqpu_whole_cell_profile,
     WholeCellProgramSpec,
@@ -36,6 +39,9 @@ def test_syn3a_reference_program_shape():
     assert CouplingStage.RDME in spec.coupling_stages
     assert CouplingStage.BD in spec.coupling_stages
     assert ExternalTool.LAMMPS in spec.external_tools
+    assert isinstance(spec.contract, WholeCellContract)
+    assert spec.contract.contract_version == WHOLE_CELL_CONTRACT_VERSION
+    assert isinstance(spec.provenance, WholeCellProvenance)
 
 
 def test_syn3a_minimal_state_shape():
@@ -66,6 +72,8 @@ def test_whole_cell_state_apply_deltas_and_snapshot():
     assert snapshot["proteins"]["DnaA"] == 82.0
     assert snapshot["chromosome"]["replicated_bp"] == 1000
     assert snapshot["geometry"]["division_progress"] == 0.25
+    assert snapshot["contract"]["contract_version"] == WHOLE_CELL_CONTRACT_VERSION
+    assert snapshot["provenance"]["source_dataset"] == "JCVI-syn3A minimal native skeleton"
 
 
 def test_syn3a_reference_manifest_shape():
@@ -76,6 +84,8 @@ def test_syn3a_reference_manifest_shape():
     assert manifest.restart_entrypoint == Path("Restart_Whole_Cell_Minimal_Cell.py")
     assert any(dep.tool == ExternalTool.BTREE_CHROMO_GPU for dep in manifest.dependencies)
     assert any(path == Path("input_data") for path in manifest.expected_repo_paths)
+    assert manifest.contract.contract_version == WHOLE_CELL_CONTRACT_VERSION
+    assert manifest.provenance.run_manifest_hash == "syn3a_reference_manifest_v1"
 
 
 def test_scheduler_runs_stage_handlers_in_manifest_order():
@@ -432,3 +442,109 @@ def test_rust_whole_cell_local_chemistry_sites_if_available():
     assert all(report[5][1] > 0.0 for report in site_reports)
     assert all(len(report[6]) == 4 for report in site_reports)
     assert all(report[6][3] != 0.0 for report in site_reports)
+
+
+def test_rust_whole_cell_derivation_calibration_if_available():
+    if RustWholeCellSimulator is None:
+        pytest.skip("oneuro_metal extension not available")
+
+    sim = RustWholeCellSimulator(use_gpu=False, dt_ms=0.25)
+    sim.enable_local_chemistry(12, 12, 6, 0.5, False)
+
+    samples = sim.derivation_calibration_samples(0.25, 2)
+    assert len(samples) == 4
+    assert {sample["preset"] for sample in samples} == {
+        "atp_synthase_membrane_band",
+        "ribosome_polysome_cluster",
+        "replisome_track",
+        "ftsz_septum_ring",
+    }
+    assert all(sample["site_report"]["mean_nitrate"] >= 0.0 for sample in samples)
+    assert all(sample["md_report"]["structural_order"] > 0.0 for sample in samples)
+    assert all(sample["md_report"]["bond_density"] > 0.0 for sample in samples)
+    assert all(sample["md_report"]["thermal_stability"] > 0.0 for sample in samples)
+
+    fit = sim.fit_derivation_calibration(0.25, 2)
+    assert fit is not None
+    assert fit["sample_count"] == 4
+    assert fit["fitted_loss"] < fit["baseline_loss"]
+    assert fit["calibration"]["reaction_focus_gain"] > 0.0
+
+
+def test_rust_whole_cell_bundled_spec_and_restart_if_available():
+    if RustWholeCellSimulator is None:
+        pytest.skip("oneuro_metal extension not available")
+
+    spec_json = RustWholeCellSimulator.bundled_syn3a_reference_spec_json()
+    organism_json = RustWholeCellSimulator.bundled_syn3a_organism_spec_json()
+    asset_json = RustWholeCellSimulator.bundled_syn3a_genome_asset_package_json()
+    assert "jcvi_syn3a_reference_native" in spec_json
+    assert "JCVI-syn3A" in organism_json
+    assert "ribosome_biogenesis_operon_complex" in asset_json
+
+    sim = RustWholeCellSimulator.from_program_spec_json(spec_json)
+    summary = sim.organism_summary()
+    asset_summary = sim.organism_asset_summary()
+    profile = sim.organism_profile()
+    expression = sim.organism_expression_state()
+    complex_assembly = sim.complex_assembly_state()
+    named_complexes = sim.named_complexes_state()
+    sim.run(6)
+    saved = sim.save_state_json()
+    restored = RustWholeCellSimulator.from_saved_state_json(saved)
+    saved_payload = json.loads(saved)
+
+    sim_snapshot = sim.snapshot()
+    restored_snapshot = restored.snapshot()
+    restored_complex = restored.complex_assembly_state()
+    restored_named_complexes = restored.named_complexes_state()
+
+    assert summary is not None
+    assert summary["organism"] == "JCVI-syn3A"
+    assert summary["gene_count"] >= 10
+    assert asset_summary is not None
+    assert asset_summary["operon_count"] >= summary["transcription_unit_count"]
+    assert asset_summary["protein_count"] == summary["gene_count"]
+    assert asset_summary["targeted_complex_count"] >= 4
+    assert profile is not None
+    assert profile["process_scales"]["translation"] > 0.9
+    assert profile["metabolic_burden_scale"] > 0.9
+    assert expression is not None
+    assert expression["global_activity"] > 0.0
+    assert expression["total_transcript_abundance"] > 0.0
+    assert expression["total_protein_abundance"] > 0.0
+    assert "ribosome_biogenesis_operon" in expression["transcription_units"]
+    assert (
+        expression["transcription_units"]["ribosome_biogenesis_operon"]["protein_abundance"] > 0.0
+    )
+    assert complex_assembly["total_complexes"] > 0.0
+    assert complex_assembly["ribosome_target"] > 0.0
+    assert len(named_complexes) == asset_summary["complex_count"]
+    assert any(
+        state["id"] == "ribosome_biogenesis_operon_complex"
+        and state["abundance"] > 0.0
+        and state["component_satisfaction"] > 0.0
+        for state in named_complexes
+    )
+    assert restored_complex["ribosome_complexes"] == pytest.approx(
+        sim.complex_assembly_state()["ribosome_complexes"]
+    )
+    assert len(restored_named_complexes) == len(named_complexes)
+    assert next(
+        state["abundance"]
+        for state in restored_named_complexes
+        if state["id"] == "ribosome_biogenesis_operon_complex"
+    ) == pytest.approx(
+        next(
+            state["abundance"]
+            for state in sim.named_complexes_state()
+            if state["id"] == "ribosome_biogenesis_operon_complex"
+        )
+    )
+    assert restored_snapshot[2] == sim_snapshot[2]
+    assert restored_snapshot[7] == sim_snapshot[7]
+    assert restored_snapshot[3] == pytest.approx(sim_snapshot[3])
+    assert saved_payload["contract"]["contract_version"] == WHOLE_CELL_CONTRACT_VERSION
+    assert saved_payload["provenance"]["backend"] in {"cpu", "metal"}
+    assert saved_payload["provenance"]["organism_asset_hash"]
+    assert saved_payload["provenance"]["run_manifest_hash"]

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Tuple
 
 from .architecture import CouplingStage, ExternalTool, WholeCellProgramSpec, syn3a_reference_program
+from .contracts import WholeCellContract, WholeCellProvenance
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,8 @@ class WholeCellRuntimeManifest:
     cadences: Tuple[SolverCadence, ...]
     dependencies: Tuple[RuntimeDependency, ...]
     expected_repo_paths: Tuple[Path, ...]
+    contract: WholeCellContract = field(default_factory=WholeCellContract)
+    provenance: WholeCellProvenance = field(default_factory=WholeCellProvenance)
 
 
 def syn3a_reference_manifest() -> WholeCellRuntimeManifest:
@@ -124,5 +127,14 @@ def syn3a_reference_manifest() -> WholeCellRuntimeManifest:
             Path("MC_RDME_initialization.py"),
             Path("SpatialDnaDynamics.py"),
             Path("input_data"),
+        ),
+        contract=program.contract,
+        provenance=WholeCellProvenance(
+            source_dataset="JCVI-syn3A reference manifest",
+            run_manifest_hash="syn3a_reference_manifest_v1",
+            backend="external_reference",
+            notes=(
+                "Manifest-level cadence and dependency contract for the MC4D-compatible reference flow.",
+            ),
         ),
     )
