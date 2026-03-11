@@ -166,7 +166,7 @@ pub use whole_cell_data::{
     WholeCellLocalChemistryConfig, WholeCellLocalChemistrySpec, WholeCellMembraneDivisionState,
     WholeCellMoleculePoolSpec, WholeCellOperonSpec, WholeCellOrganismExpressionState,
     WholeCellOrganismProfile, WholeCellOrganismSpec, WholeCellOrganismSummary,
-    WholeCellProcessWeights, WholeCellProgramSpec, WholeCellProteinProductSpec,
+    WholeCellPatchDomain, WholeCellProcessWeights, WholeCellProgramSpec, WholeCellProteinProductSpec,
     WholeCellReactionClass, WholeCellReactionParticipantSpec, WholeCellReactionRuntimeState,
     WholeCellReactionSpec, WholeCellRnaProductSpec, WholeCellSavedCoreState, WholeCellSavedState,
     WholeCellSeedSpec, WholeCellSpeciesClass, WholeCellSpeciesRuntimeState, WholeCellSpeciesSpec,

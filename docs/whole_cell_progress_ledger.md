@@ -327,3 +327,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `RDME now sees compiled and patch-local drive fields, but richer compartment types, explicit membrane patch turnover chemistry, and broader chromosome-local species ownership still need to be moved off the remaining coarse rule channels`
+
+### 2026-03-11 - Phase 7 / Compiled Patch Domain And Membrane Patch Turnover Slice
+
+- Summary:
+  - added explicit compiled `patch_domain` metadata for whole-cell species and reactions, with native runtime-state carry-through so membrane bands, poles, septum patches, and nucleoid tracks are declared by compiled biology rather than inferred ad hoc inside solver stages
+  - extended restartable spatial state with membrane-band and pole fields, and used the same generic locality weighting path to drive RDME demand/source fields and bulk-pool lattice writes from `spatial_scope + patch_domain` instead of scope alone
+  - added explicit membrane patch turnover state for membrane bands, poles, and septum, then coupled the membrane runtime to localized precursor, ATP, demand, source, and crowding signals so patch inventories and turnover pressure evolve from local chemistry rather than a single aggregate envelope pool
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/gpu/whole_cell_rdme.rs`
+  - `oneuro-metal/src/lib.rs`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiled patch domains now drive localized membrane behavior, but membrane patch reactions, richer compartment scopes, and chromosome-local execution still need broader compiled-species coverage and tighter multiscale coupling in later slices`

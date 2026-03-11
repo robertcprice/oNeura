@@ -68,10 +68,12 @@ pub enum IntracellularSpatialField {
     MembraneAdjacency = 0,
     SeptumZone = 1,
     NucleoidOccupancy = 2,
+    MembraneBandZone = 3,
+    PoleZone = 4,
 }
 
 impl IntracellularSpatialField {
-    pub const COUNT: usize = 3;
+    pub const COUNT: usize = 5;
 
     pub fn index(self) -> usize {
         self as usize
@@ -83,6 +85,8 @@ const FIELD_ORDER: [IntracellularSpatialField; IntracellularSpatialField::COUNT]
     IntracellularSpatialField::MembraneAdjacency,
     IntracellularSpatialField::SeptumZone,
     IntracellularSpatialField::NucleoidOccupancy,
+    IntracellularSpatialField::MembraneBandZone,
+    IntracellularSpatialField::PoleZone,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
