@@ -1168,3 +1168,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `strict structured bundles now require explicit core organism sources, but the broader compatibility layer still supports legacy organism_spec_json ingestion for older bundles and some downstream state surfaces still default to inferred descriptions when explicit structured sources are absent`
+
+### 2026-03-12 - Phase 7 / Remove Legacy Monolithic Bundle Path
+
+- Summary:
+  - removed the active `organism_spec_json` manifest compile path from both the Python bundle compiler and the native Rust manifest compiler, so bundle compilation always flows through explicit structured sources instead of silently accepting monolithic organism-spec payloads
+  - kept the manifest field only as a migration error surface, with direct validation messages pointing callers at structured bundle sources
+  - updated the regression coverage so manifest bundles that still try to declare `organism_spec_json` fail with the new migration error
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the in-repo monolithic manifest path is gone, but explicit structured-source coverage still needs to expand across more downstream state descriptions so fewer semantics and runtime defaults depend on compatibility-only inference`

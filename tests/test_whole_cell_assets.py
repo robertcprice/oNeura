@@ -245,7 +245,7 @@ def test_explicit_semantic_bundle_rejects_missing_gene_overlay(tmp_path):
         compile_bundle_manifest(bundle_dir / "manifest.json")
 
 
-def test_strict_structured_bundle_rejects_organism_spec_json(tmp_path):
+def test_bundle_rejects_organism_spec_json(tmp_path):
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
     organism_spec = {
@@ -273,7 +273,8 @@ def test_strict_structured_bundle_rejects_organism_spec_json(tmp_path):
     )
 
     with pytest.raises(
-        ValueError, match="requires structured sources and may not define organism_spec_json"
+        ValueError,
+        match="bundle manifests may not define organism_spec_json; use explicit structured bundle sources",
     ):
         compile_bundle_manifest(bundle_dir / "manifest.json")
 

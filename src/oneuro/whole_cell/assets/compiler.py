@@ -73,13 +73,7 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
     manifest = _load_json(path)
     source_hashes: Dict[str, str] = {"manifest.json": _sha256_path(path)}
     _validate_manifest_mode(manifest)
-
-    if "organism_spec_json" in manifest:
-        spec_path = _resolve_manifest_path(path, manifest["organism_spec_json"])
-        source_hashes["organism_spec_json"] = _sha256_path(spec_path)
-        organism_spec = _load_json(spec_path)
-    else:
-        organism_spec = _compile_structured_bundle(path, manifest, source_hashes)
+    organism_spec = _compile_structured_bundle(path, manifest, source_hashes)
 
     organism_spec = _with_compiled_chromosome_domains(organism_spec)
     asset_package = _compile_genome_asset_package(organism_spec)
@@ -352,9 +346,10 @@ def write_structured_bundle_sources(
 
 
 def _validate_manifest_mode(manifest: Dict[str, Any]) -> None:
-    if manifest.get("require_structured_bundle") and "organism_spec_json" in manifest:
+    if "organism_spec_json" in manifest:
         raise ValueError(
-            "bundle requires structured sources and may not define organism_spec_json"
+            "bundle manifests may not define organism_spec_json; "
+            "use explicit structured bundle sources"
         )
     if manifest.get("require_explicit_organism_sources"):
         missing = []

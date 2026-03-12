@@ -4972,9 +4972,10 @@ fn parse_bundle_manifest_json(
 }
 
 fn validate_bundle_manifest_mode(manifest: &WholeCellOrganismBundleManifest) -> Result<(), String> {
-    if manifest.require_structured_bundle && manifest.organism_spec_json.is_some() {
+    if manifest.organism_spec_json.is_some() {
         return Err(
-            "bundle requires structured sources and may not define organism_spec_json".to_string(),
+            "bundle manifests may not define organism_spec_json; use explicit structured bundle sources"
+                .to_string(),
         );
     }
     if manifest.require_explicit_organism_sources {
@@ -5139,11 +5140,6 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
     let manifest_json = read_text_file(&manifest_path, "bundle manifest")?;
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
     validate_bundle_manifest_mode(&manifest)?;
-
-    if let Some(spec_relative) = manifest.organism_spec_json.as_deref() {
-        let spec_path = resolve_manifest_relative_path(&manifest_path, spec_relative)?;
-        return parse_organism_spec_json(&read_text_file(&spec_path, "organism spec JSON")?);
-    }
 
     let metadata_relative = manifest
         .metadata_json
