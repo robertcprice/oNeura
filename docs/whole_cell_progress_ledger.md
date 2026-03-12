@@ -1411,3 +1411,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `the remaining compiler shortcut is the generic Python bundle compiler fallback that still derives asset entities when a source bundle omits them, so the next step is either eliminating that fallback or confining it to an explicitly legacy bundle mode`
+
+### 2026-03-12 - Phase 1 / Gate Derived Asset Compilation Behind Legacy Opt-In
+
+- Summary:
+  - added `allow_legacy_derived_assets` as the explicit manifest switch for source bundles that still need derived operons/RNAs/proteins/complexes or derived asset semantics, and made the normal structured-bundle path reject missing explicit asset entities or semantics by default
+  - updated both the Python bundle compiler and the native Rust manifest compiler so derived asset/entity compilation is only reachable when a manifest explicitly opts into that legacy mode
+  - added reject-by-default and opt-in legacy coverage in both Python and Rust tests, proving that derived asset compilation is no longer part of the standard structured-bundle contract
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiler-time normalization helpers still exist for legacy parsers and explicit migration/export tooling, so the next cleanup target is deciding which of those should move into a dedicated migration module instead of staying beside the live compiler`

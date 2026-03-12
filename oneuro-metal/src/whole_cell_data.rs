@@ -1482,6 +1482,8 @@ pub struct WholeCellOrganismBundleManifest {
     #[serde(default)]
     pub require_explicit_asset_semantics: bool,
     #[serde(default)]
+    pub allow_legacy_derived_assets: bool,
+    #[serde(default)]
     pub require_explicit_program_defaults: bool,
     #[serde(default)]
     pub metadata_json: Option<String>,
@@ -5428,6 +5430,26 @@ fn validate_bundle_manifest_mode(manifest: &WholeCellOrganismBundleManifest) -> 
 fn validate_bundle_asset_contracts(
     manifest: &WholeCellOrganismBundleManifest,
 ) -> Result<(), String> {
+    if manifest.allow_legacy_derived_assets
+        && (manifest.require_explicit_asset_entities || manifest.require_explicit_asset_semantics)
+    {
+        return Err(
+            "allow_legacy_derived_assets is incompatible with explicit asset entity or semantic requirements"
+                .to_string(),
+        );
+    }
+    if !manifest.require_explicit_asset_entities && !manifest.allow_legacy_derived_assets {
+        return Err(
+            "bundle must declare explicit asset entities or set allow_legacy_derived_assets"
+                .to_string(),
+        );
+    }
+    if !manifest.require_explicit_asset_semantics && !manifest.allow_legacy_derived_assets {
+        return Err(
+            "bundle must declare explicit asset semantics or set allow_legacy_derived_assets"
+                .to_string(),
+        );
+    }
     if manifest.require_explicit_asset_entities {
         let mut missing = Vec::new();
         if manifest.operons_json.is_none() {
@@ -5865,6 +5887,7 @@ fn compile_genome_asset_package_from_bundle_manifest_path(
     let assets = if manifest.require_explicit_asset_entities {
         empty_genome_asset_package(&organism)
     } else {
+        debug_assert!(manifest.allow_legacy_derived_assets);
         compile_genome_asset_package(&organism)
     };
     let assets = apply_bundle_asset_entity_overlays(&manifest_path_obj, &manifest, assets)?;
@@ -6107,6 +6130,7 @@ fn compile_embedded_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetP
     let mut assets = if manifest.require_explicit_asset_entities {
         empty_genome_asset_package(&organism)
     } else {
+        debug_assert!(manifest.allow_legacy_derived_assets);
         compile_genome_asset_package(&organism)
     };
     assets.operons =
@@ -6554,6 +6578,57 @@ mod tests {
 
         assert!(parsed.organism_assets.is_some());
         assert!(parsed.organism_process_registry.is_none());
+    }
+
+    #[test]
+    fn validate_bundle_asset_contracts_rejects_implicit_derived_assets_without_opt_in() {
+        let manifest = parse_bundle_manifest_json(
+            r#"{
+                "organism": "Legacy-demo",
+                "require_structured_bundle": true,
+                "require_explicit_organism_sources": true,
+                "require_explicit_gene_semantics": true,
+                "require_explicit_transcription_unit_semantics": true,
+                "metadata_json": "metadata.json",
+                "gene_features_json": "gene_features.json",
+                "gene_products_json": "gene_products.json",
+                "gene_semantics_json": "gene_semantics.json",
+                "transcription_units_json": "transcription_units.json",
+                "transcription_unit_semantics_json": "transcription_unit_semantics.json",
+                "chromosome_domains_json": "chromosome_domains.json",
+                "pools_json": "pools.json"
+            }"#,
+        )
+        .expect("manifest");
+
+        let error =
+            validate_bundle_asset_contracts(&manifest).expect_err("implicit derived assets");
+        assert!(error.contains("allow_legacy_derived_assets"));
+    }
+
+    #[test]
+    fn validate_bundle_asset_contracts_allows_legacy_derived_assets_with_opt_in() {
+        let manifest = parse_bundle_manifest_json(
+            r#"{
+                "organism": "Legacy-demo",
+                "require_structured_bundle": true,
+                "require_explicit_organism_sources": true,
+                "require_explicit_gene_semantics": true,
+                "require_explicit_transcription_unit_semantics": true,
+                "allow_legacy_derived_assets": true,
+                "metadata_json": "metadata.json",
+                "gene_features_json": "gene_features.json",
+                "gene_products_json": "gene_products.json",
+                "gene_semantics_json": "gene_semantics.json",
+                "transcription_units_json": "transcription_units.json",
+                "transcription_unit_semantics_json": "transcription_unit_semantics.json",
+                "chromosome_domains_json": "chromosome_domains.json",
+                "pools_json": "pools.json"
+            }"#,
+        )
+        .expect("manifest");
+
+        validate_bundle_asset_contracts(&manifest).expect("legacy derived assets opt-in");
     }
 
     #[test]

@@ -305,6 +305,97 @@ def test_bundle_rejects_organism_spec_json(tmp_path):
         compile_bundle_manifest(bundle_dir / "manifest.json")
 
 
+def test_bundle_rejects_implicit_derived_assets_without_legacy_opt_in(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    source_dir = Path("src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo").resolve()
+    for name in [
+        "metadata.json",
+        "genome.fasta",
+        "features.gff3",
+        "gene_products.json",
+        "gene_semantics.json",
+        "transcription_units.json",
+        "transcription_unit_semantics.json",
+        "chromosome_domains.json",
+        "pools.json",
+    ]:
+        (bundle_dir / name).write_text((source_dir / name).read_text(), encoding="ascii")
+    manifest = {
+        "organism": "Mgen-minimal-demo",
+        "source_dataset": "legacy_demo_bundle",
+        "require_structured_bundle": True,
+        "require_explicit_organism_sources": True,
+        "require_explicit_gene_semantics": True,
+        "require_explicit_transcription_unit_semantics": True,
+        "metadata_json": "metadata.json",
+        "genome_fasta": "genome.fasta",
+        "gene_features_gff": "features.gff3",
+        "gene_products_json": "gene_products.json",
+        "gene_semantics_json": "gene_semantics.json",
+        "transcription_units_json": "transcription_units.json",
+        "transcription_unit_semantics_json": "transcription_unit_semantics.json",
+        "chromosome_domains_json": "chromosome_domains.json",
+        "pools_json": "pools.json",
+    }
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="ascii"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="bundle must declare explicit asset entities or set allow_legacy_derived_assets",
+    ):
+        compile_bundle_manifest(bundle_dir / "manifest.json")
+
+
+def test_bundle_allows_legacy_derived_assets_with_opt_in(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    source_dir = Path("src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo").resolve()
+    for name in [
+        "metadata.json",
+        "genome.fasta",
+        "features.gff3",
+        "gene_products.json",
+        "gene_semantics.json",
+        "transcription_units.json",
+        "transcription_unit_semantics.json",
+        "chromosome_domains.json",
+        "pools.json",
+    ]:
+        (bundle_dir / name).write_text((source_dir / name).read_text(), encoding="ascii")
+    manifest = {
+        "organism": "Mgen-minimal-demo",
+        "source_dataset": "legacy_demo_bundle",
+        "require_structured_bundle": True,
+        "require_explicit_organism_sources": True,
+        "require_explicit_gene_semantics": True,
+        "require_explicit_transcription_unit_semantics": True,
+        "allow_legacy_derived_assets": True,
+        "metadata_json": "metadata.json",
+        "genome_fasta": "genome.fasta",
+        "gene_features_gff": "features.gff3",
+        "gene_products_json": "gene_products.json",
+        "gene_semantics_json": "gene_semantics.json",
+        "transcription_units_json": "transcription_units.json",
+        "transcription_unit_semantics_json": "transcription_unit_semantics.json",
+        "chromosome_domains_json": "chromosome_domains.json",
+        "pools_json": "pools.json",
+    }
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="ascii"
+    )
+
+    bundle = compile_bundle_manifest(bundle_dir / "manifest.json")
+
+    assert bundle.organism == "Mgen-minimal-demo"
+    assert bundle.summary()["operon_count"] >= 3
+    assert bundle.summary()["complex_count"] >= 3
+    assert "operons_json" not in bundle.source_hashes
+    assert "complex_semantics_json" not in bundle.source_hashes
+
+
 def test_explicit_asset_bundle_rejects_missing_operon_source(tmp_path):
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()

@@ -73,6 +73,7 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
     manifest = _load_json(path)
     source_hashes: Dict[str, str] = {"manifest.json": _sha256_path(path)}
     _validate_manifest_mode(manifest)
+    allow_legacy_derived_assets = bool(manifest.get("allow_legacy_derived_assets"))
     require_explicit_asset_entities = bool(manifest.get("require_explicit_asset_entities"))
     require_explicit_asset_semantics = bool(
         manifest.get("require_explicit_asset_semantics")
@@ -102,6 +103,7 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
     if require_explicit_asset_entities:
         asset_package = _empty_genome_asset_package(organism_spec)
     else:
+        assert allow_legacy_derived_assets
         asset_package = _compile_genome_asset_package(organism_spec)
     asset_package = _apply_asset_entity_overlays(
         asset_package,
@@ -406,7 +408,29 @@ def _validate_explicit_asset_contracts(
     manifest: Dict[str, Any],
     source_hashes: Dict[str, str],
 ) -> None:
-    if manifest.get("require_explicit_asset_entities"):
+    allow_legacy_derived_assets = bool(manifest.get("allow_legacy_derived_assets"))
+    require_explicit_asset_entities = bool(
+        manifest.get("require_explicit_asset_entities")
+    )
+    require_explicit_asset_semantics = bool(
+        manifest.get("require_explicit_asset_semantics")
+    )
+
+    if allow_legacy_derived_assets and (
+        require_explicit_asset_entities or require_explicit_asset_semantics
+    ):
+        raise ValueError(
+            "allow_legacy_derived_assets is incompatible with explicit asset entity or semantic requirements"
+        )
+    if not require_explicit_asset_entities and not allow_legacy_derived_assets:
+        raise ValueError(
+            "bundle must declare explicit asset entities or set allow_legacy_derived_assets"
+        )
+    if not require_explicit_asset_semantics and not allow_legacy_derived_assets:
+        raise ValueError(
+            "bundle must declare explicit asset semantics or set allow_legacy_derived_assets"
+        )
+    if require_explicit_asset_entities:
         required_entity_keys = {
             "operons_json",
             "rnas_json",
@@ -419,7 +443,7 @@ def _validate_explicit_asset_contracts(
                 "bundle requires explicit asset entities but is missing "
                 + ", ".join(missing)
             )
-    if manifest.get("require_explicit_asset_semantics"):
+    if require_explicit_asset_semantics:
         required_semantic_keys = {
             "operon_semantics_json",
             "protein_semantics_json",
