@@ -1553,3 +1553,20 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiler.py still owns explicit-vs-legacy manifest dispatch and asset overlay application, so the next cleanup target is isolating the remaining compatibility/overlay transforms behind migration-only helpers`
+
+### 2026-03-12 - Phase 1 / Asset Overlay Helper Split
+
+- Summary:
+  - moved asset overlay application, explicit asset coverage validation, and empty asset-package construction out of `assets/compiler.py` and into `assets/asset_overlays.py`, so compiler orchestration no longer owns the compatibility overlay path directly
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/assets/asset_overlays.py`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/asset_overlays.py src/oneuro/whole_cell/assets/derived_assets.py src/oneuro/whole_cell/assets/source_normalization.py src/oneuro/whole_cell/assets/exporter.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiler.py still combines explicit manifest dispatch with the legacy-derived asset entrypoint, so the next cleanup target is isolating the explicit-vs-legacy bundle orchestration boundary itself`
