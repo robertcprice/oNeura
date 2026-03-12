@@ -34,6 +34,14 @@ const BUNDLED_SYN3A_BUNDLE_CHROMOSOME_DOMAINS_JSON: &str =
     include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/chromosome_domains.json");
 const BUNDLED_SYN3A_BUNDLE_POOLS_JSON: &str =
     include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/pools.json");
+const BUNDLED_SYN3A_BUNDLE_OPERONS_JSON: &str =
+    include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/operons.json");
+const BUNDLED_SYN3A_BUNDLE_RNAS_JSON: &str =
+    include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/rnas.json");
+const BUNDLED_SYN3A_BUNDLE_PROTEINS_JSON: &str =
+    include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/proteins.json");
+const BUNDLED_SYN3A_BUNDLE_COMPLEXES_JSON: &str =
+    include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/complexes.json");
 const BUNDLED_SYN3A_BUNDLE_OPERON_SEMANTICS_JSON: &str =
     include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/operon_semantics.json");
 const BUNDLED_SYN3A_BUNDLE_PROTEIN_SEMANTICS_JSON: &str =
@@ -1469,6 +1477,14 @@ pub struct WholeCellOrganismBundleManifest {
     pub chromosome_domains_json: Option<String>,
     #[serde(default)]
     pub pools_json: Option<String>,
+    #[serde(default)]
+    pub operons_json: Option<String>,
+    #[serde(default)]
+    pub rnas_json: Option<String>,
+    #[serde(default)]
+    pub proteins_json: Option<String>,
+    #[serde(default)]
+    pub complexes_json: Option<String>,
     #[serde(default)]
     pub operon_semantics_json: Option<String>,
     #[serde(default)]
@@ -5220,6 +5236,71 @@ fn apply_bundle_asset_semantic_overlays(
     ))
 }
 
+fn apply_bundle_asset_entity_overlays(
+    manifest_path: &Path,
+    manifest: &WholeCellOrganismBundleManifest,
+    mut assets: WholeCellGenomeAssetPackage,
+) -> Result<WholeCellGenomeAssetPackage, String> {
+    let mut entity_overrides = false;
+    if let Some(operons_json) = manifest.operons_json.as_deref() {
+        let operons_path = resolve_manifest_relative_path(manifest_path, operons_json)?;
+        assets.operons = serde_json::from_str::<Vec<WholeCellOperonSpec>>(&read_text_file(
+            &operons_path,
+            "operon JSON",
+        )?)
+        .map_err(|error| {
+            format!(
+                "failed to parse operons {}: {error}",
+                operons_path.display()
+            )
+        })?;
+        entity_overrides = true;
+    }
+    if let Some(rnas_json) = manifest.rnas_json.as_deref() {
+        let rnas_path = resolve_manifest_relative_path(manifest_path, rnas_json)?;
+        assets.rnas = serde_json::from_str::<Vec<WholeCellRnaProductSpec>>(&read_text_file(
+            &rnas_path, "RNA JSON",
+        )?)
+        .map_err(|error| format!("failed to parse RNAs {}: {error}", rnas_path.display()))?;
+        entity_overrides = true;
+    }
+    if let Some(proteins_json) = manifest.proteins_json.as_deref() {
+        let proteins_path = resolve_manifest_relative_path(manifest_path, proteins_json)?;
+        assets.proteins = serde_json::from_str::<Vec<WholeCellProteinProductSpec>>(
+            &read_text_file(&proteins_path, "protein JSON")?,
+        )
+        .map_err(|error| {
+            format!(
+                "failed to parse proteins {}: {error}",
+                proteins_path.display()
+            )
+        })?;
+        entity_overrides = true;
+    }
+    if let Some(complexes_json) = manifest.complexes_json.as_deref() {
+        let complexes_path = resolve_manifest_relative_path(manifest_path, complexes_json)?;
+        assets.complexes = serde_json::from_str::<Vec<WholeCellComplexSpec>>(&read_text_file(
+            &complexes_path,
+            "complex JSON",
+        )?)
+        .map_err(|error| {
+            format!(
+                "failed to parse complexes {}: {error}",
+                complexes_path.display()
+            )
+        })?;
+        entity_overrides = true;
+    }
+    if entity_overrides {
+        assets.operon_semantics.clear();
+        assets.protein_semantics.clear();
+        assets.complex_semantics.clear();
+    }
+    Ok(with_normalized_asset_semantic_metadata(
+        with_normalized_asset_pool_metadata(assets),
+    ))
+}
+
 fn compile_genome_asset_package_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<WholeCellGenomeAssetPackage, String> {
@@ -5230,6 +5311,7 @@ fn compile_genome_asset_package_from_bundle_manifest_path(
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
     let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
     let assets = compile_genome_asset_package(&organism);
+    let assets = apply_bundle_asset_entity_overlays(&manifest_path_obj, &manifest, assets)?;
     apply_bundle_asset_semantic_overlays(&manifest_path_obj, &manifest, assets)
 }
 
@@ -5391,6 +5473,22 @@ pub fn bundled_syn3a_organism_spec() -> Result<WholeCellOrganismSpec, String> {
 fn compile_embedded_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetPackage, String> {
     let mut assets =
         bundled_syn3a_organism_spec().map(|organism| compile_genome_asset_package(&organism))?;
+    assets.operons =
+        serde_json::from_str::<Vec<WholeCellOperonSpec>>(BUNDLED_SYN3A_BUNDLE_OPERONS_JSON)
+            .map_err(|error| format!("failed to parse embedded Syn3A operons: {error}"))?;
+    assets.rnas =
+        serde_json::from_str::<Vec<WholeCellRnaProductSpec>>(BUNDLED_SYN3A_BUNDLE_RNAS_JSON)
+            .map_err(|error| format!("failed to parse embedded Syn3A RNAs: {error}"))?;
+    assets.proteins = serde_json::from_str::<Vec<WholeCellProteinProductSpec>>(
+        BUNDLED_SYN3A_BUNDLE_PROTEINS_JSON,
+    )
+    .map_err(|error| format!("failed to parse embedded Syn3A proteins: {error}"))?;
+    assets.complexes =
+        serde_json::from_str::<Vec<WholeCellComplexSpec>>(BUNDLED_SYN3A_BUNDLE_COMPLEXES_JSON)
+            .map_err(|error| format!("failed to parse embedded Syn3A complexes: {error}"))?;
+    assets.operon_semantics.clear();
+    assets.protein_semantics.clear();
+    assets.complex_semantics.clear();
     assets.operon_semantics = serde_json::from_str::<Vec<WholeCellOperonSemanticSpec>>(
         BUNDLED_SYN3A_BUNDLE_OPERON_SEMANTICS_JSON,
     )
@@ -6090,6 +6188,23 @@ mod tests {
             embedded.chromosome_domains,
             from_manifest.chromosome_domains
         );
+    }
+
+    #[test]
+    fn bundled_syn3a_embedded_asset_package_matches_manifest_compilation() {
+        let embedded = bundled_syn3a_genome_asset_package().expect("embedded assets");
+        let manifest_path = bundle_manifest_path("jcvi_syn3a");
+        let from_manifest = compile_genome_asset_package_from_bundle_manifest_path(&manifest_path)
+            .expect("manifest assets");
+
+        assert_eq!(embedded.organism, from_manifest.organism);
+        assert_eq!(embedded.operons, from_manifest.operons);
+        assert_eq!(embedded.rnas, from_manifest.rnas);
+        assert_eq!(embedded.proteins, from_manifest.proteins);
+        assert_eq!(embedded.complexes, from_manifest.complexes);
+        assert_eq!(embedded.operon_semantics, from_manifest.operon_semantics);
+        assert_eq!(embedded.protein_semantics, from_manifest.protein_semantics);
+        assert_eq!(embedded.complex_semantics, from_manifest.complex_semantics);
     }
 
     #[test]

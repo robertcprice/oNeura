@@ -1,0 +1,292 @@
+[
+  {
+    "id": "energy_membrane_operon_complex",
+    "name": "energy_membrane_operon complex",
+    "operon": "energy_membrane_operon",
+    "components": [
+      {
+        "protein_id": "atp_synthase_catalytic_core_protein",
+        "stoichiometry": 1
+      },
+      {
+        "protein_id": "electron_transport_membrane_module_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 12.899494936611665,
+    "asset_class": "energy",
+    "family": "atp_synthase",
+    "process_weights": {
+      "energy": 1.646,
+      "transcription": 0.25699999999999995,
+      "translation": 0.38,
+      "replication": 0.0645,
+      "segregation": 0.05099999999999999,
+      "membrane": 1.359,
+      "constriction": 0.078
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ],
+    "membrane_inserted": true,
+    "chromosome_coupled": false,
+    "division_coupled": false
+  },
+  {
+    "id": "ribosome_biogenesis_operon_complex",
+    "name": "ribosome_biogenesis_operon complex",
+    "operon": "ribosome_biogenesis_operon",
+    "components": [
+      {
+        "protein_id": "ribosome_small_subunit_core_protein",
+        "stoichiometry": 1
+      },
+      {
+        "protein_id": "ribosome_large_subunit_core_protein",
+        "stoichiometry": 1
+      },
+      {
+        "protein_id": "rrna_processing_module_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 16.57927833134,
+    "asset_class": "translation",
+    "family": "ribosome",
+    "process_weights": {
+      "energy": 0.33499999999999996,
+      "transcription": 1.389,
+      "translation": 2.0220000000000002,
+      "replication": 0.106,
+      "segregation": 0.047999999999999994,
+      "membrane": 0.07200000000000001,
+      "constriction": 0.047999999999999994
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ],
+    "membrane_inserted": false,
+    "chromosome_coupled": false,
+    "division_coupled": false
+  },
+  {
+    "id": "translation_factor_operon_complex",
+    "name": "translation_factor_operon complex",
+    "operon": "translation_factor_operon",
+    "components": [
+      {
+        "protein_id": "translation_factor_cycle_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 10.0,
+    "asset_class": "translation",
+    "family": "generic",
+    "process_weights": {
+      "energy": 0.223,
+      "transcription": 0.466,
+      "translation": 1.141,
+      "replication": 0.057499999999999996,
+      "segregation": 0.027,
+      "membrane": 0.044,
+      "constriction": 0.0305
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ],
+    "membrane_inserted": false,
+    "chromosome_coupled": false,
+    "division_coupled": false
+  },
+  {
+    "id": "replication_cycle_operon_complex",
+    "name": "replication_cycle_operon complex",
+    "operon": "replication_cycle_operon",
+    "components": [
+      {
+        "protein_id": "dna_initiation_module_protein",
+        "stoichiometry": 1
+      },
+      {
+        "protein_id": "dna_polymerase_processivity_module_protein",
+        "stoichiometry": 1
+      },
+      {
+        "protein_id": "nucleotide_salvage_cycle_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 13.911920087683926,
+    "asset_class": "replication",
+    "family": "replisome",
+    "process_weights": {
+      "energy": 0.335,
+      "transcription": 0.33499999999999996,
+      "translation": 0.396,
+      "replication": 1.987,
+      "segregation": 0.6619999999999999,
+      "membrane": 0.041,
+      "constriction": 0.041
+    },
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ],
+    "membrane_inserted": false,
+    "chromosome_coupled": true,
+    "division_coupled": false
+  },
+  {
+    "id": "partitioning_unit_complex",
+    "name": "partitioning_unit complex",
+    "operon": "partitioning_unit",
+    "components": [
+      {
+        "protein_id": "chromosome_partitioning_scaffold_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 8.46,
+    "asset_class": "replication",
+    "family": "replisome",
+    "process_weights": {
+      "energy": 0.11499999999999999,
+      "transcription": 0.14200000000000002,
+      "translation": 0.196,
+      "replication": 0.366,
+      "segregation": 1.35,
+      "membrane": 0.027,
+      "constriction": 0.027
+    },
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ],
+    "membrane_inserted": false,
+    "chromosome_coupled": true,
+    "division_coupled": false
+  },
+  {
+    "id": "membrane_homeostasis_operon_complex",
+    "name": "membrane_homeostasis_operon complex",
+    "operon": "membrane_homeostasis_operon",
+    "components": [
+      {
+        "protein_id": "lipid_activation_module_protein",
+        "stoichiometry": 1
+      },
+      {
+        "protein_id": "membrane_transport_homeostasis_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 12.305525240414966,
+    "asset_class": "energy",
+    "family": "atp_synthase",
+    "process_weights": {
+      "energy": 0.44199999999999995,
+      "transcription": 0.279,
+      "translation": 0.34,
+      "replication": 0.051,
+      "segregation": 0.0375,
+      "membrane": 1.679,
+      "constriction": 0.374
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand",
+      "FtsZSeptumRing"
+    ],
+    "membrane_inserted": true,
+    "chromosome_coupled": false,
+    "division_coupled": false
+  },
+  {
+    "id": "division_ring_operon_complex",
+    "name": "division_ring_operon complex",
+    "operon": "division_ring_operon",
+    "components": [
+      {
+        "protein_id": "ftsz_ring_polymerization_core_protein",
+        "stoichiometry": 1
+      },
+      {
+        "protein_id": "septum_envelope_remodeling_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 11.909545442950499,
+    "asset_class": "constriction",
+    "family": "divisome",
+    "process_weights": {
+      "energy": 0.245,
+      "transcription": 0.279,
+      "translation": 0.42899999999999994,
+      "replication": 0.034,
+      "segregation": 0.05449999999999999,
+      "membrane": 1.204,
+      "constriction": 1.6720000000000002
+    },
+    "subsystem_targets": [
+      "FtsZSeptumRing"
+    ],
+    "membrane_inserted": true,
+    "chromosome_coupled": false,
+    "division_coupled": true
+  },
+  {
+    "id": "carbon_energy_unit_complex",
+    "name": "carbon_energy_unit complex",
+    "operon": "carbon_energy_unit",
+    "components": [
+      {
+        "protein_id": "central_carbon_oxidation_core_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 10.0,
+    "asset_class": "energy",
+    "family": "atp_synthase",
+    "process_weights": {
+      "energy": 1.329,
+      "transcription": 0.243,
+      "translation": 0.277,
+      "replication": 0.054,
+      "segregation": 0.0305,
+      "membrane": 0.14200000000000002,
+      "constriction": 0.044
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ],
+    "membrane_inserted": true,
+    "chromosome_coupled": false,
+    "division_coupled": false
+  },
+  {
+    "id": "quality_control_unit_complex",
+    "name": "quality_control_unit complex",
+    "operon": "quality_control_unit",
+    "components": [
+      {
+        "protein_id": "chaperone_quality_control_core_protein",
+        "stoichiometry": 1
+      }
+    ],
+    "basal_abundance": 8.739999999999998,
+    "asset_class": "quality_control",
+    "family": "chaperone_client",
+    "process_weights": {
+      "energy": 0.25,
+      "transcription": 0.277,
+      "translation": 0.527,
+      "replication": 0.108,
+      "segregation": 0.061,
+      "membrane": 0.061,
+      "constriction": 0.061
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ],
+    "membrane_inserted": false,
+    "chromosome_coupled": false,
+    "division_coupled": false
+  }
+]

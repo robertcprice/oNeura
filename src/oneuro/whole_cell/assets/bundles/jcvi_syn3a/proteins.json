@@ -1,0 +1,372 @@
+[
+  {
+    "id": "atp_synthase_catalytic_core_protein",
+    "gene": "atp_synthase_catalytic_core",
+    "operon": "energy_membrane_operon",
+    "rna_id": "atp_synthase_catalytic_core_rna",
+    "aa_length": 1600,
+    "basal_abundance": 18.5,
+    "translation_cost": 1.1,
+    "nucleotide_cost": 0.95,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 1.0,
+      "transcription": 0.12,
+      "translation": 0.22,
+      "replication": 0.04,
+      "segregation": 0.03,
+      "membrane": 0.82,
+      "constriction": 0.04
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "id": "electron_transport_membrane_module_protein",
+    "gene": "electron_transport_membrane_module",
+    "operon": "energy_membrane_operon",
+    "rna_id": "electron_transport_membrane_module_rna",
+    "aa_length": 2200,
+    "basal_abundance": 18.0,
+    "translation_cost": 1.0,
+    "nucleotide_cost": 0.9,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.96,
+      "transcription": 0.1,
+      "translation": 0.18,
+      "replication": 0.03,
+      "segregation": 0.03,
+      "membrane": 0.72,
+      "constriction": 0.04
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "id": "ribosome_small_subunit_core_protein",
+    "gene": "ribosome_small_subunit_core",
+    "operon": "ribosome_biogenesis_operon",
+    "rna_id": "ribosome_small_subunit_core_rna",
+    "aa_length": 2700,
+    "basal_abundance": 19.200000000000003,
+    "translation_cost": 1.2,
+    "nucleotide_cost": 0.78,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.2,
+      "transcription": 0.48,
+      "translation": 1.0,
+      "replication": 0.06,
+      "segregation": 0.03,
+      "membrane": 0.05,
+      "constriction": 0.03
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "ribosome_large_subunit_core_protein",
+    "gene": "ribosome_large_subunit_core",
+    "operon": "ribosome_biogenesis_operon",
+    "rna_id": "ribosome_large_subunit_core_rna",
+    "aa_length": 3100,
+    "basal_abundance": 19.5,
+    "translation_cost": 1.24,
+    "nucleotide_cost": 0.8,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.2,
+      "transcription": 0.46,
+      "translation": 1.0,
+      "replication": 0.06,
+      "segregation": 0.03,
+      "membrane": 0.05,
+      "constriction": 0.03
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "rrna_processing_module_protein",
+    "gene": "rrna_processing_module",
+    "operon": "ribosome_biogenesis_operon",
+    "rna_id": "rrna_processing_module_rna",
+    "aa_length": 1667,
+    "basal_abundance": 19.799999999999997,
+    "translation_cost": 0.86,
+    "nucleotide_cost": 0.74,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.1,
+      "transcription": 0.8,
+      "translation": 0.92,
+      "replication": 0.04,
+      "segregation": 0.02,
+      "membrane": 0.02,
+      "constriction": 0.02
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "translation_factor_cycle_protein",
+    "gene": "translation_factor_cycle",
+    "operon": "translation_factor_operon",
+    "rna_id": "translation_factor_cycle_rna",
+    "aa_length": 2133,
+    "basal_abundance": 18.4,
+    "translation_cost": 1.12,
+    "nucleotide_cost": 0.72,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.18,
+      "transcription": 0.36,
+      "translation": 0.86,
+      "replication": 0.05,
+      "segregation": 0.02,
+      "membrane": 0.04,
+      "constriction": 0.03
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "dna_initiation_module_protein",
+    "gene": "dna_initiation_module",
+    "operon": "replication_cycle_operon",
+    "rna_id": "dna_initiation_module_rna",
+    "aa_length": 1433,
+    "basal_abundance": 16.8,
+    "translation_cost": 0.92,
+    "nucleotide_cost": 1.14,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.14,
+      "transcription": 0.2,
+      "translation": 0.2,
+      "replication": 1.0,
+      "segregation": 0.32,
+      "membrane": 0.02,
+      "constriction": 0.02
+    },
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "dna_polymerase_processivity_module_protein",
+    "gene": "dna_polymerase_processivity_module",
+    "operon": "replication_cycle_operon",
+    "rna_id": "dna_polymerase_processivity_module_rna",
+    "aa_length": 2967,
+    "basal_abundance": 17.200000000000003,
+    "translation_cost": 0.98,
+    "nucleotide_cost": 1.22,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.18,
+      "transcription": 0.16,
+      "translation": 0.22,
+      "replication": 1.0,
+      "segregation": 0.44,
+      "membrane": 0.02,
+      "constriction": 0.02
+    },
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "nucleotide_salvage_cycle_protein",
+    "gene": "nucleotide_salvage_cycle",
+    "operon": "replication_cycle_operon",
+    "rna_id": "nucleotide_salvage_cycle_rna",
+    "aa_length": 1900,
+    "basal_abundance": 16.4,
+    "translation_cost": 0.78,
+    "nucleotide_cost": 1.1,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.18,
+      "transcription": 0.14,
+      "translation": 0.14,
+      "replication": 0.82,
+      "segregation": 0.16,
+      "membrane": 0.02,
+      "constriction": 0.02
+    },
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "chromosome_partitioning_scaffold_protein",
+    "gene": "chromosome_partitioning_scaffold",
+    "operon": "partitioning_unit",
+    "rna_id": "chromosome_partitioning_scaffold_rna",
+    "aa_length": 2133,
+    "basal_abundance": 15.8,
+    "translation_cost": 0.72,
+    "nucleotide_cost": 0.66,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.1,
+      "transcription": 0.12,
+      "translation": 0.16,
+      "replication": 0.36,
+      "segregation": 1.0,
+      "membrane": 0.02,
+      "constriction": 0.02
+    },
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "lipid_activation_module_protein",
+    "gene": "lipid_activation_module",
+    "operon": "membrane_homeostasis_operon",
+    "rna_id": "lipid_activation_module_rna",
+    "aa_length": 1867,
+    "basal_abundance": 17.6,
+    "translation_cost": 0.9,
+    "nucleotide_cost": 0.72,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.24,
+      "transcription": 0.18,
+      "translation": 0.22,
+      "replication": 0.04,
+      "segregation": 0.03,
+      "membrane": 1.0,
+      "constriction": 0.26
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand",
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "membrane_transport_homeostasis_protein",
+    "gene": "membrane_transport_homeostasis",
+    "operon": "membrane_homeostasis_operon",
+    "rna_id": "membrane_transport_homeostasis_rna",
+    "aa_length": 2933,
+    "basal_abundance": 17.0,
+    "translation_cost": 0.84,
+    "nucleotide_cost": 0.68,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.28,
+      "transcription": 0.16,
+      "translation": 0.18,
+      "replication": 0.02,
+      "segregation": 0.02,
+      "membrane": 0.94,
+      "constriction": 0.18
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand",
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "ftsz_ring_polymerization_core_protein",
+    "gene": "ftsz_ring_polymerization_core",
+    "operon": "division_ring_operon",
+    "rna_id": "ftsz_ring_polymerization_core_rna",
+    "aa_length": 1933,
+    "basal_abundance": 17.200000000000003,
+    "translation_cost": 0.96,
+    "nucleotide_cost": 0.7,
+    "asset_class": "constriction",
+    "process_weights": {
+      "energy": 0.16,
+      "transcription": 0.18,
+      "translation": 0.28,
+      "replication": 0.02,
+      "segregation": 0.04,
+      "membrane": 0.56,
+      "constriction": 1.0
+    },
+    "subsystem_targets": [
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "septum_envelope_remodeling_protein",
+    "gene": "septum_envelope_remodeling",
+    "operon": "division_ring_operon",
+    "rna_id": "septum_envelope_remodeling_rna",
+    "aa_length": 2933,
+    "basal_abundance": 16.6,
+    "translation_cost": 0.88,
+    "nucleotide_cost": 0.66,
+    "asset_class": "constriction",
+    "process_weights": {
+      "energy": 0.14,
+      "transcription": 0.16,
+      "translation": 0.26,
+      "replication": 0.02,
+      "segregation": 0.03,
+      "membrane": 0.88,
+      "constriction": 0.92
+    },
+    "subsystem_targets": [
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "central_carbon_oxidation_core_protein",
+    "gene": "central_carbon_oxidation_core",
+    "operon": "carbon_energy_unit",
+    "rna_id": "central_carbon_oxidation_core_rna",
+    "aa_length": 2900,
+    "basal_abundance": 18.2,
+    "translation_cost": 0.82,
+    "nucleotide_cost": 0.72,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.94,
+      "transcription": 0.18,
+      "translation": 0.22,
+      "replication": 0.04,
+      "segregation": 0.03,
+      "membrane": 0.12,
+      "constriction": 0.04
+    },
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "id": "chaperone_quality_control_core_protein",
+    "gene": "chaperone_quality_control_core",
+    "operon": "quality_control_unit",
+    "rna_id": "chaperone_quality_control_core_rna",
+    "aa_length": 2400,
+    "basal_abundance": 16.2,
+    "translation_cost": 0.78,
+    "nucleotide_cost": 0.6,
+    "asset_class": "quality_control",
+    "process_weights": {
+      "energy": 0.2,
+      "transcription": 0.22,
+      "translation": 0.42,
+      "replication": 0.08,
+      "segregation": 0.06,
+      "membrane": 0.06,
+      "constriction": 0.06
+    },
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  }
+]

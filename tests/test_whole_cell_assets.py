@@ -36,6 +36,10 @@ def test_compile_syn3a_bundle_matches_current_runtime_shape():
         "transcription_unit_semantics_json",
         "chromosome_domains_json",
         "pools_json",
+        "operons_json",
+        "rnas_json",
+        "proteins_json",
+        "complexes_json",
         "operon_semantics_json",
         "protein_semantics_json",
         "complex_semantics_json",
@@ -186,6 +190,10 @@ def test_structured_bundle_export_round_trips_syn3a_python(tmp_path):
     assert "gene_semantics_json" in round_tripped.source_hashes
     assert "transcription_unit_semantics_json" in round_tripped.source_hashes
     assert "chromosome_domains_json" in round_tripped.source_hashes
+    assert "operons_json" in round_tripped.source_hashes
+    assert "rnas_json" in round_tripped.source_hashes
+    assert "proteins_json" in round_tripped.source_hashes
+    assert "complexes_json" in round_tripped.source_hashes
     assert "operon_semantics_json" in round_tripped.source_hashes
     assert "protein_semantics_json" in round_tripped.source_hashes
     assert "complex_semantics_json" in round_tripped.source_hashes

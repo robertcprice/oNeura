@@ -1068,3 +1068,31 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `asset semantics can now come from explicit source files, but the remaining legacy organism_spec_json compatibility path still exists and more downstream entity descriptions still need to migrate onto explicit structured-source contracts to eliminate inference as the default path`
+
+### 2026-03-11 - Phase 7 / Explicit Asset-Entity Bundle Slice
+
+- Summary:
+  - extended the structured bundle contract so downstream asset entities themselves (`operons`, `rnas`, `proteins`, and `complexes`) can be carried as explicit source files instead of only being regenerated from organism-level descriptions during every compile
+  - updated both the Python bundle compiler and the native Rust manifest compiler to consume those entity files before applying asset-semantic overlays, with re-normalization so explicit source entities become the default package state
+  - regenerated the checked-in Syn3A structured bundle with explicit `operons.json`, `rnas.json`, `proteins.json`, and `complexes.json`, and aligned the embedded native bundled Syn3A asset path to the same files with a regression proving manifest and embedded asset packages match
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/complexes.json`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/manifest.json`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/operons.json`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/proteins.json`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/rnas.json`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `asset entities and asset semantics can now come from explicit source files, but the remaining legacy organism_spec_json compatibility path still exists and more downstream state descriptions still need to move onto explicit structured-source contracts to make inference a compatibility-only path`

@@ -1,0 +1,274 @@
+[
+  {
+    "id": "atp_synthase_catalytic_core_rna",
+    "gene": "atp_synthase_catalytic_core",
+    "operon": "energy_membrane_operon",
+    "length_nt": 4801,
+    "basal_abundance": 10.3,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 1.0,
+      "transcription": 0.12,
+      "translation": 0.22,
+      "replication": 0.04,
+      "segregation": 0.03,
+      "membrane": 0.82,
+      "constriction": 0.04
+    }
+  },
+  {
+    "id": "electron_transport_membrane_module_rna",
+    "gene": "electron_transport_membrane_module",
+    "operon": "energy_membrane_operon",
+    "length_nt": 6601,
+    "basal_abundance": 10.0,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.96,
+      "transcription": 0.1,
+      "translation": 0.18,
+      "replication": 0.03,
+      "segregation": 0.03,
+      "membrane": 0.72,
+      "constriction": 0.04
+    }
+  },
+  {
+    "id": "ribosome_small_subunit_core_rna",
+    "gene": "ribosome_small_subunit_core",
+    "operon": "ribosome_biogenesis_operon",
+    "length_nt": 8101,
+    "basal_abundance": 10.72,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.2,
+      "transcription": 0.48,
+      "translation": 1.0,
+      "replication": 0.06,
+      "segregation": 0.03,
+      "membrane": 0.05,
+      "constriction": 0.03
+    }
+  },
+  {
+    "id": "ribosome_large_subunit_core_rna",
+    "gene": "ribosome_large_subunit_core",
+    "operon": "ribosome_biogenesis_operon",
+    "length_nt": 9301,
+    "basal_abundance": 10.899999999999999,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.2,
+      "transcription": 0.46,
+      "translation": 1.0,
+      "replication": 0.06,
+      "segregation": 0.03,
+      "membrane": 0.05,
+      "constriction": 0.03
+    }
+  },
+  {
+    "id": "rrna_processing_module_rna",
+    "gene": "rrna_processing_module",
+    "operon": "ribosome_biogenesis_operon",
+    "length_nt": 5001,
+    "basal_abundance": 11.08,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.1,
+      "transcription": 0.8,
+      "translation": 0.92,
+      "replication": 0.04,
+      "segregation": 0.02,
+      "membrane": 0.02,
+      "constriction": 0.02
+    }
+  },
+  {
+    "id": "translation_factor_cycle_rna",
+    "gene": "translation_factor_cycle",
+    "operon": "translation_factor_operon",
+    "length_nt": 6401,
+    "basal_abundance": 10.24,
+    "asset_class": "translation",
+    "process_weights": {
+      "energy": 0.18,
+      "transcription": 0.36,
+      "translation": 0.86,
+      "replication": 0.05,
+      "segregation": 0.02,
+      "membrane": 0.04,
+      "constriction": 0.03
+    }
+  },
+  {
+    "id": "dna_initiation_module_rna",
+    "gene": "dna_initiation_module",
+    "operon": "replication_cycle_operon",
+    "length_nt": 4301,
+    "basal_abundance": 9.280000000000001,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.14,
+      "transcription": 0.2,
+      "translation": 0.2,
+      "replication": 1.0,
+      "segregation": 0.32,
+      "membrane": 0.02,
+      "constriction": 0.02
+    }
+  },
+  {
+    "id": "dna_polymerase_processivity_module_rna",
+    "gene": "dna_polymerase_processivity_module",
+    "operon": "replication_cycle_operon",
+    "length_nt": 8901,
+    "basal_abundance": 9.52,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.18,
+      "transcription": 0.16,
+      "translation": 0.22,
+      "replication": 1.0,
+      "segregation": 0.44,
+      "membrane": 0.02,
+      "constriction": 0.02
+    }
+  },
+  {
+    "id": "nucleotide_salvage_cycle_rna",
+    "gene": "nucleotide_salvage_cycle",
+    "operon": "replication_cycle_operon",
+    "length_nt": 5701,
+    "basal_abundance": 9.04,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.18,
+      "transcription": 0.14,
+      "translation": 0.14,
+      "replication": 0.82,
+      "segregation": 0.16,
+      "membrane": 0.02,
+      "constriction": 0.02
+    }
+  },
+  {
+    "id": "chromosome_partitioning_scaffold_rna",
+    "gene": "chromosome_partitioning_scaffold",
+    "operon": "partitioning_unit",
+    "length_nt": 6401,
+    "basal_abundance": 8.68,
+    "asset_class": "replication",
+    "process_weights": {
+      "energy": 0.1,
+      "transcription": 0.12,
+      "translation": 0.16,
+      "replication": 0.36,
+      "segregation": 1.0,
+      "membrane": 0.02,
+      "constriction": 0.02
+    }
+  },
+  {
+    "id": "lipid_activation_module_rna",
+    "gene": "lipid_activation_module",
+    "operon": "membrane_homeostasis_operon",
+    "length_nt": 5601,
+    "basal_abundance": 9.76,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.24,
+      "transcription": 0.18,
+      "translation": 0.22,
+      "replication": 0.04,
+      "segregation": 0.03,
+      "membrane": 1.0,
+      "constriction": 0.26
+    }
+  },
+  {
+    "id": "membrane_transport_homeostasis_rna",
+    "gene": "membrane_transport_homeostasis",
+    "operon": "membrane_homeostasis_operon",
+    "length_nt": 8801,
+    "basal_abundance": 9.4,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.28,
+      "transcription": 0.16,
+      "translation": 0.18,
+      "replication": 0.02,
+      "segregation": 0.02,
+      "membrane": 0.94,
+      "constriction": 0.18
+    }
+  },
+  {
+    "id": "ftsz_ring_polymerization_core_rna",
+    "gene": "ftsz_ring_polymerization_core",
+    "operon": "division_ring_operon",
+    "length_nt": 5801,
+    "basal_abundance": 9.52,
+    "asset_class": "constriction",
+    "process_weights": {
+      "energy": 0.16,
+      "transcription": 0.18,
+      "translation": 0.28,
+      "replication": 0.02,
+      "segregation": 0.04,
+      "membrane": 0.56,
+      "constriction": 1.0
+    }
+  },
+  {
+    "id": "septum_envelope_remodeling_rna",
+    "gene": "septum_envelope_remodeling",
+    "operon": "division_ring_operon",
+    "length_nt": 8801,
+    "basal_abundance": 9.16,
+    "asset_class": "constriction",
+    "process_weights": {
+      "energy": 0.14,
+      "transcription": 0.16,
+      "translation": 0.26,
+      "replication": 0.02,
+      "segregation": 0.03,
+      "membrane": 0.88,
+      "constriction": 0.92
+    }
+  },
+  {
+    "id": "central_carbon_oxidation_core_rna",
+    "gene": "central_carbon_oxidation_core",
+    "operon": "carbon_energy_unit",
+    "length_nt": 8701,
+    "basal_abundance": 10.120000000000001,
+    "asset_class": "energy",
+    "process_weights": {
+      "energy": 0.94,
+      "transcription": 0.18,
+      "translation": 0.22,
+      "replication": 0.04,
+      "segregation": 0.03,
+      "membrane": 0.12,
+      "constriction": 0.04
+    }
+  },
+  {
+    "id": "chaperone_quality_control_core_rna",
+    "gene": "chaperone_quality_control_core",
+    "operon": "quality_control_unit",
+    "length_nt": 7201,
+    "basal_abundance": 8.92,
+    "asset_class": "quality_control",
+    "process_weights": {
+      "energy": 0.2,
+      "transcription": 0.22,
+      "translation": 0.42,
+      "replication": 0.08,
+      "segregation": 0.06,
+      "membrane": 0.06,
+      "constriction": 0.06
+    }
+  }
+]
