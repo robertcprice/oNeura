@@ -6036,6 +6036,11 @@ pub fn bundled_syn3a_program_spec_json() -> &'static str {
 
 pub fn parse_organism_spec_json(spec_json: &str) -> Result<WholeCellOrganismSpec, String> {
     serde_json::from_str::<WholeCellOrganismSpec>(spec_json)
+        .map_err(|error| format!("failed to parse organism spec: {error}"))
+}
+
+pub fn parse_legacy_organism_spec_json(spec_json: &str) -> Result<WholeCellOrganismSpec, String> {
+    serde_json::from_str::<WholeCellOrganismSpec>(spec_json)
         .map(with_normalized_pool_metadata)
         .map(with_normalized_semantic_metadata)
         .map(with_compiled_chromosome_domains)
@@ -6043,6 +6048,13 @@ pub fn parse_organism_spec_json(spec_json: &str) -> Result<WholeCellOrganismSpec
 }
 
 pub fn parse_genome_asset_package_json(
+    spec_json: &str,
+) -> Result<WholeCellGenomeAssetPackage, String> {
+    serde_json::from_str(spec_json)
+        .map_err(|error| format!("failed to parse genome asset package: {error}"))
+}
+
+pub fn parse_legacy_genome_asset_package_json(
     spec_json: &str,
 ) -> Result<WholeCellGenomeAssetPackage, String> {
     serde_json::from_str(spec_json)
@@ -6197,21 +6209,9 @@ pub fn bundled_syn3a_program_spec() -> Result<WholeCellProgramSpec, String> {
         .clone()
 }
 
-pub fn parse_saved_state_json(state_json: &str) -> Result<WholeCellSavedState, String> {
-    let mut state: WholeCellSavedState = serde_json::from_str(state_json)
-        .map_err(|error| format!("failed to parse saved state: {error}"))?;
-    if let Some(organism) = state.organism_data.take() {
-        state.organism_data = Some(with_compiled_chromosome_domains(
-            with_normalized_pool_metadata(organism),
-        ));
-    }
-    if let (Some(organism), Some(assets)) =
-        (state.organism_data.as_ref(), state.organism_assets.as_mut())
-    {
-        if assets.chromosome_domains.is_empty() {
-            *assets = compile_genome_asset_package(organism);
-        }
-    }
+fn finalize_parsed_saved_state(
+    mut state: WholeCellSavedState,
+) -> Result<WholeCellSavedState, String> {
     let refresh_registry = match (
         state.organism_assets.as_ref(),
         state.organism_process_registry.as_ref(),
@@ -6241,9 +6241,33 @@ pub fn parse_saved_state_json(state_json: &str) -> Result<WholeCellSavedState, S
         &mut state.organism_species,
         state.organism_process_registry.as_ref(),
     );
-    backfill_legacy_runtime_species_bulk_fields(&mut state.organism_species);
     populate_saved_state_contract_metadata(&mut state)?;
     Ok(state)
+}
+
+pub fn parse_saved_state_json(state_json: &str) -> Result<WholeCellSavedState, String> {
+    let state: WholeCellSavedState = serde_json::from_str(state_json)
+        .map_err(|error| format!("failed to parse saved state: {error}"))?;
+    finalize_parsed_saved_state(state)
+}
+
+pub fn parse_legacy_saved_state_json(state_json: &str) -> Result<WholeCellSavedState, String> {
+    let mut state: WholeCellSavedState = serde_json::from_str(state_json)
+        .map_err(|error| format!("failed to parse saved state: {error}"))?;
+    if let Some(organism) = state.organism_data.take() {
+        state.organism_data = Some(with_compiled_chromosome_domains(
+            with_normalized_pool_metadata(organism),
+        ));
+    }
+    if let (Some(organism), Some(assets)) =
+        (state.organism_data.as_ref(), state.organism_assets.as_mut())
+    {
+        if assets.chromosome_domains.is_empty() {
+            *assets = compile_genome_asset_package(organism);
+        }
+    }
+    backfill_legacy_runtime_species_bulk_fields(&mut state.organism_species);
+    finalize_parsed_saved_state(state)
 }
 
 pub fn saved_state_to_json(state: &WholeCellSavedState) -> Result<String, String> {
@@ -6660,7 +6684,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_organism_spec_json_backfills_legacy_semantic_metadata_at_boundary() {
+    fn parse_legacy_organism_spec_json_backfills_legacy_semantic_metadata_at_boundary() {
         let mut organism = bundled_syn3a_organism_spec().expect("bundled organism");
         let division_gene = organism
             .genes
@@ -6680,7 +6704,7 @@ mod tests {
         division_unit.complex_family = None;
 
         let json = serde_json::to_string(&organism).expect("serialize organism");
-        let reparsed = parse_organism_spec_json(&json).expect("parse organism");
+        let reparsed = parse_legacy_organism_spec_json(&json).expect("parse organism");
         let reparsed_gene = reparsed
             .genes
             .iter()
@@ -6711,6 +6735,15 @@ mod tests {
         assert!(reparsed_unit
             .subsystem_targets
             .contains(&Syn3ASubsystemPreset::FtsZSeptumRing));
+    }
+
+    #[test]
+    fn parse_organism_spec_json_round_trips_explicit_metadata() {
+        let organism = bundled_syn3a_organism_spec().expect("bundled organism");
+        let json = serde_json::to_string(&organism).expect("serialize organism");
+        let reparsed = parse_organism_spec_json(&json).expect("parse explicit organism");
+
+        assert_eq!(reparsed, organism);
     }
 
     #[test]
@@ -7017,7 +7050,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_genome_asset_package_json_backfills_legacy_pool_bulk_field_metadata() {
+    fn parse_legacy_genome_asset_package_json_backfills_legacy_pool_bulk_field_metadata() {
         let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
         let atp_pool = package
             .pools
@@ -7027,7 +7060,7 @@ mod tests {
         atp_pool.bulk_field = None;
 
         let json = serde_json::to_string(&package).expect("serialize package");
-        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed = parse_legacy_genome_asset_package_json(&json).expect("parse package");
         let reparsed_atp_pool = reparsed
             .pools
             .iter()
@@ -7037,7 +7070,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_genome_asset_package_json_backfills_legacy_pool_role_metadata() {
+    fn parse_legacy_genome_asset_package_json_backfills_legacy_pool_role_metadata() {
         let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
         package.pools.push(WholeCellMoleculePoolSpec {
             species: "ribosome_shadow_buffer".to_string(),
@@ -7048,7 +7081,7 @@ mod tests {
         });
 
         let json = serde_json::to_string(&package).expect("serialize package");
-        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed = parse_legacy_genome_asset_package_json(&json).expect("parse package");
         let reparsed_pool = reparsed
             .pools
             .iter()
@@ -7058,7 +7091,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_genome_asset_package_json_backfills_legacy_operon_semantics() {
+    fn parse_legacy_genome_asset_package_json_backfills_legacy_operon_semantics() {
         let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
         let opaque_operon = "opaque_operon_alpha";
         let semantic = package
@@ -7105,7 +7138,7 @@ mod tests {
         complex.division_coupled = false;
 
         let json = serde_json::to_string(&package).expect("serialize package");
-        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed = parse_legacy_genome_asset_package_json(&json).expect("parse package");
         let reparsed_operon = reparsed
             .operons
             .iter()
@@ -7138,7 +7171,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_genome_asset_package_json_backfills_legacy_complex_semantics() {
+    fn parse_legacy_genome_asset_package_json_backfills_legacy_complex_semantics() {
         let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
         let complex = package
             .complexes
@@ -7155,7 +7188,7 @@ mod tests {
         complex.division_coupled = false;
 
         let json = serde_json::to_string(&package).expect("serialize package");
-        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed = parse_legacy_genome_asset_package_json(&json).expect("parse package");
         let reparsed_complex = reparsed
             .complexes
             .iter()
@@ -7187,7 +7220,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_genome_asset_package_json_backfills_legacy_protein_semantics() {
+    fn parse_legacy_genome_asset_package_json_backfills_legacy_protein_semantics() {
         let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
         let protein = package
             .proteins
@@ -7200,7 +7233,7 @@ mod tests {
         protein.asset_class = WholeCellAssetClass::Generic;
 
         let json = serde_json::to_string(&package).expect("serialize package");
-        let reparsed = parse_genome_asset_package_json(&json).expect("parse package");
+        let reparsed = parse_legacy_genome_asset_package_json(&json).expect("parse package");
         let reparsed_protein = reparsed
             .proteins
             .iter()
@@ -7216,6 +7249,15 @@ mod tests {
         for target in &reparsed_semantic.subsystem_targets {
             assert!(reparsed_protein.subsystem_targets.contains(target));
         }
+    }
+
+    #[test]
+    fn parse_genome_asset_package_json_round_trips_explicit_metadata() {
+        let package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let json = serde_json::to_string(&package).expect("serialize package");
+        let reparsed = parse_genome_asset_package_json(&json).expect("parse explicit package");
+
+        assert_eq!(reparsed, package);
     }
 
     #[test]
@@ -7242,7 +7284,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_saved_state_json_backfills_legacy_pool_bulk_fields_at_boundary() {
+    fn parse_legacy_saved_state_json_backfills_legacy_pool_bulk_fields_at_boundary() {
         let spec = bundled_syn3a_program_spec().expect("bundled spec");
         let mut saved = minimal_saved_state_from_spec(&spec);
         let organism = saved.organism_data.as_mut().expect("organism");
@@ -7253,8 +7295,9 @@ mod tests {
             .expect("ATP pool");
         atp_pool.bulk_field = None;
 
-        let reparsed = parse_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
-            .expect("reparsed saved state");
+        let reparsed =
+            parse_legacy_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
+                .expect("reparsed saved state");
 
         let stored_pool = reparsed
             .organism_data
@@ -7268,7 +7311,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_saved_state_json_backfills_runtime_pool_bulk_fields_at_boundary() {
+    fn parse_legacy_saved_state_json_backfills_runtime_pool_bulk_fields_at_boundary() {
         let spec = bundled_syn3a_program_spec().expect("bundled spec");
         let mut saved = minimal_saved_state_from_spec(&spec);
         saved.organism_data = None;
@@ -7294,12 +7337,28 @@ mod tests {
             turnover_rate: 0.0,
         }];
 
-        let reparsed = parse_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
-            .expect("reparsed saved state");
+        let reparsed =
+            parse_legacy_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
+                .expect("reparsed saved state");
 
         assert_eq!(
             reparsed.organism_species[0].bulk_field,
             Some(WholeCellBulkField::ATP)
+        );
+    }
+
+    #[test]
+    fn parse_saved_state_json_round_trips_explicit_state() {
+        let spec = bundled_syn3a_program_spec().expect("bundled spec");
+        let saved = minimal_saved_state_from_spec(&spec);
+        let json = saved_state_to_json(&saved).expect("saved json");
+        let reparsed = parse_saved_state_json(&json).expect("reparsed saved state");
+
+        assert_eq!(reparsed.organism_data, saved.organism_data);
+        assert_eq!(reparsed.organism_assets, saved.organism_assets);
+        assert_eq!(
+            reparsed.organism_process_registry,
+            saved.organism_process_registry
         );
     }
 

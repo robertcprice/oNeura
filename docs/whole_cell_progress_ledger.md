@@ -1280,3 +1280,43 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `strict bundle compilation now requires explicit asset coverage, but compatibility-only normalization and semantic backfills still exist at JSON/state ingress and the remaining active parser/resolver boundaries still need to be split into explicit-vs-legacy paths`
+
+### 2026-03-12 - Phase 7 / Split Explicit And Legacy Organism Asset JSON Parsers
+
+- Summary:
+  - changed `parse_organism_spec_json` and `parse_genome_asset_package_json` to behave as explicit round-trip loaders instead of boundary repair loaders, so compiled organism and asset JSON now reparse without hidden normalization
+  - moved the old organism and asset repair behavior behind `parse_legacy_organism_spec_json` and `parse_legacy_genome_asset_package_json`, preserving compatibility-only semantic and pool backfills without keeping them on the main explicit path
+  - updated the Rust public exports and regressions so explicit JSON round-trips are checked directly while the legacy backfill tests now exercise the legacy parser entrypoints
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/lib.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/lib.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `saved-state ingress still defaults to compatibility backfills and the remaining explicit-vs-legacy parser boundaries need the same split so simulator-emitted state is not repaired on load`
+
+### 2026-03-12 - Phase 7 / Split Explicit And Legacy Saved-State Parsers
+
+- Summary:
+  - changed `parse_saved_state_json` to keep the explicit simulator-emitted restore path free of pool and runtime-species name backfills, while still sharing registry/contract/provenance hydration that belongs to current-state restoration
+  - moved the legacy saved-state repair behavior behind `parse_legacy_saved_state_json`, so old saved states still regain pool and runtime-species bulk-field metadata at a dedicated compatibility boundary instead of on the main restore path
+  - added explicit saved-state round-trip coverage and updated the legacy saved-state regressions to target the new legacy parser entrypoint
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/lib.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/lib.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the live parser path is now cleaner, but bundled/reference resolvers and any remaining compatibility loaders still need the same explicit-vs-legacy separation so no current-state path depends on inferred metadata`
