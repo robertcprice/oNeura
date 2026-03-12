@@ -1119,3 +1119,28 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `strict structured bundles now exist for Syn3A, but the broader compatibility layer still supports legacy organism_spec_json ingestion for older bundles and more state surfaces still need explicit structured contracts before inference stops being the normal fallback`
+
+### 2026-03-12 - Phase 7 / Explicit Program-Default Bundle Slice
+
+- Summary:
+  - extended the structured bundle contract so a bundle can carry explicit runtime program defaults in `program_defaults.json` instead of relying only on `build_program_spec_from_organism` defaults during manifest compilation
+  - wired those defaults through both the Python structured-bundle exporter and the native Rust manifest compiler, so program-name, config, lattice, state, and quantum defaults can come from declared source files before hydration
+  - enabled strict explicit program-default enforcement on the checked-in Syn3A bundle and added regressions covering both the rejection path for missing defaults and the positive native hydration path
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/manifest.json`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/program_defaults.json`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `strict structured bundles now carry explicit program defaults, but the broader compatibility layer still supports legacy organism_spec_json ingestion for older bundles and more downstream state surfaces still need explicit structured-source contracts before inference becomes compatibility-only`

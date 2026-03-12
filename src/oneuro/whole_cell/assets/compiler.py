@@ -96,6 +96,7 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
         _load_optional_json(path, manifest, "protein_semantics_json", source_hashes) or [],
         _load_optional_json(path, manifest, "complex_semantics_json", source_hashes) or [],
     )
+    _load_optional_json(path, manifest, "program_defaults_json", source_hashes)
     _validate_explicit_asset_contracts(manifest, source_hashes)
     return CompiledOrganismBundle(
         manifest_path=str(path),
@@ -202,6 +203,7 @@ def write_structured_bundle_sources(
     require_explicit_transcription_unit_semantics: bool = True,
     require_explicit_asset_entities: bool = True,
     require_explicit_asset_semantics: bool = True,
+    require_explicit_program_defaults: bool = True,
 ) -> Dict[str, str]:
     """Write a structured source bundle from a compiled organism spec."""
 
@@ -274,6 +276,7 @@ def write_structured_bundle_sources(
     operon_semantics = list(asset_package.get("operon_semantics", []))
     protein_semantics = list(asset_package.get("protein_semantics", []))
     complex_semantics = list(asset_package.get("complex_semantics", []))
+    program_defaults = _default_program_defaults(organism_spec)
     manifest = {
         "organism": organism_spec["organism"],
         "source_dataset": source_dataset
@@ -283,6 +286,7 @@ def write_structured_bundle_sources(
         "require_explicit_transcription_unit_semantics": require_explicit_transcription_unit_semantics,
         "require_explicit_asset_entities": require_explicit_asset_entities,
         "require_explicit_asset_semantics": require_explicit_asset_semantics,
+        "require_explicit_program_defaults": require_explicit_program_defaults,
         "metadata_json": "metadata.json",
         "gene_features_json": "gene_features.json",
         "gene_products_json": "gene_products.json",
@@ -298,6 +302,7 @@ def write_structured_bundle_sources(
         "operon_semantics_json": "operon_semantics.json",
         "protein_semantics_json": "protein_semantics.json",
         "complex_semantics_json": "complex_semantics.json",
+        "program_defaults_json": "program_defaults.json",
     }
 
     written = {
@@ -317,6 +322,7 @@ def write_structured_bundle_sources(
         "operon_semantics": out_dir / "operon_semantics.json",
         "protein_semantics": out_dir / "protein_semantics.json",
         "complex_semantics": out_dir / "complex_semantics.json",
+        "program_defaults": out_dir / "program_defaults.json",
     }
 
     payloads = {
@@ -336,6 +342,7 @@ def write_structured_bundle_sources(
         "operon_semantics": operon_semantics,
         "protein_semantics": protein_semantics,
         "complex_semantics": complex_semantics,
+        "program_defaults": program_defaults,
     }
     for key, path in written.items():
         path.write_text(json.dumps(payloads[key], indent=2), encoding="ascii")
@@ -378,6 +385,72 @@ def _validate_explicit_asset_contracts(
                 "bundle requires explicit asset semantics but is missing "
                 + ", ".join(missing)
             )
+    if manifest.get("require_explicit_program_defaults"):
+        if "program_defaults_json" not in source_hashes:
+            raise ValueError(
+                "bundle requires explicit program defaults but is missing "
+                "program_defaults_json"
+            )
+
+
+def _default_program_defaults(organism_spec: Dict[str, Any]) -> Dict[str, Any]:
+    slug = organism_spec["organism"].lower().replace(" ", "_").replace("-", "_")
+    geometry = organism_spec["geometry"]
+    radius_nm = max(50.0, float(geometry["radius_nm"]))
+    chromosome_radius_fraction = max(0.1, float(geometry["chromosome_radius_fraction"]))
+    chromosome_separation_nm = round(
+        max(10.0, radius_nm * chromosome_radius_fraction), 6
+    )
+    return {
+        "program_name": f"{slug}_structured_bundle_native",
+        "config": {
+            "x_dim": 24,
+            "y_dim": 24,
+            "z_dim": 12,
+            "voxel_size_nm": 20.0,
+            "dt_ms": 0.25,
+            "cme_interval": 4,
+            "ode_interval": 1,
+            "bd_interval": 2,
+            "geometry_interval": 4,
+            "use_gpu": True,
+        },
+        "initial_lattice": {
+            "atp": _pool_concentration_for_field(organism_spec, "a_t_p", 1.2),
+            "amino_acids": _pool_concentration_for_field(organism_spec, "amino_acids", 0.95),
+            "nucleotides": _pool_concentration_for_field(organism_spec, "nucleotides", 0.80),
+            "membrane_precursors": _pool_concentration_for_field(
+                organism_spec, "membrane_precursors", 0.35
+            ),
+        },
+        "initial_state": {
+            "adp_mm": _pool_concentration_for_field(organism_spec, "adp", 0.2),
+            "glucose_mm": _pool_concentration_for_field(organism_spec, "glucose", 1.0),
+            "oxygen_mm": _pool_concentration_for_field(organism_spec, "oxygen", 0.85),
+            "genome_bp": int(organism_spec["chromosome_length_bp"]),
+            "replicated_bp": 0,
+            "chromosome_separation_nm": chromosome_separation_nm,
+            "radius_nm": radius_nm,
+            "division_progress": 0.0,
+            "metabolic_load": 1.0,
+        },
+        "quantum_profile": {
+            "oxphos_efficiency": 1.0,
+            "translation_efficiency": 1.0,
+            "nucleotide_polymerization_efficiency": 1.0,
+            "membrane_synthesis_efficiency": 1.0,
+            "chromosome_segregation_efficiency": 1.0,
+        },
+    }
+
+
+def _pool_concentration_for_field(
+    organism_spec: Dict[str, Any], bulk_field: str, fallback: float
+) -> float:
+    for pool in organism_spec.get("pools", []):
+        if pool.get("bulk_field") == bulk_field:
+            return float(pool.get("concentration_mm", fallback))
+    return float(fallback)
 
 
 def _apply_asset_semantic_overlays(

@@ -6,6 +6,7 @@
   "require_explicit_transcription_unit_semantics": true,
   "require_explicit_asset_entities": true,
   "require_explicit_asset_semantics": true,
+  "require_explicit_program_defaults": true,
   "metadata_json": "metadata.json",
   "gene_features_json": "gene_features.json",
   "gene_products_json": "gene_products.json",
@@ -20,5 +21,6 @@
   "complexes_json": "complexes.json",
   "operon_semantics_json": "operon_semantics.json",
   "protein_semantics_json": "protein_semantics.json",
-  "complex_semantics_json": "complex_semantics.json"
+  "complex_semantics_json": "complex_semantics.json",
+  "program_defaults_json": "program_defaults.json"
 }

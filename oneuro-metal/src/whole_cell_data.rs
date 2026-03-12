@@ -1445,6 +1445,22 @@ pub struct WholeCellProgramSpec {
     pub local_chemistry: Option<WholeCellLocalChemistrySpec>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct WholeCellProgramDefaultsSpec {
+    #[serde(default)]
+    pub program_name: Option<String>,
+    #[serde(default)]
+    pub config: Option<WholeCellConfig>,
+    #[serde(default)]
+    pub initial_lattice: Option<WholeCellInitialLatticeSpec>,
+    #[serde(default)]
+    pub initial_state: Option<WholeCellInitialStateSpec>,
+    #[serde(default)]
+    pub quantum_profile: Option<WholeCellQuantumProfile>,
+    #[serde(default)]
+    pub local_chemistry: Option<WholeCellLocalChemistrySpec>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WholeCellOrganismBundleManifest {
     #[serde(default)]
@@ -1463,6 +1479,8 @@ pub struct WholeCellOrganismBundleManifest {
     pub require_explicit_asset_entities: bool,
     #[serde(default)]
     pub require_explicit_asset_semantics: bool,
+    #[serde(default)]
+    pub require_explicit_program_defaults: bool,
     #[serde(default)]
     pub metadata_json: Option<String>,
     #[serde(default)]
@@ -1497,6 +1515,8 @@ pub struct WholeCellOrganismBundleManifest {
     pub protein_semantics_json: Option<String>,
     #[serde(default)]
     pub complex_semantics_json: Option<String>,
+    #[serde(default)]
+    pub program_defaults_json: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -5000,6 +5020,12 @@ fn validate_bundle_asset_contracts(
             ));
         }
     }
+    if manifest.require_explicit_program_defaults && manifest.program_defaults_json.is_none() {
+        return Err(
+            "bundle requires explicit program defaults but is missing program_defaults_json"
+                .to_string(),
+        );
+    }
     Ok(())
 }
 
@@ -5378,6 +5404,46 @@ fn compile_genome_asset_package_from_bundle_manifest_path(
     apply_bundle_asset_semantic_overlays(&manifest_path_obj, &manifest, assets)
 }
 
+fn apply_bundle_program_defaults(
+    manifest_path: &Path,
+    manifest: &WholeCellOrganismBundleManifest,
+    spec: &mut WholeCellProgramSpec,
+) -> Result<(), String> {
+    let Some(program_defaults_json) = manifest.program_defaults_json.as_deref() else {
+        return Ok(());
+    };
+    let defaults_path = resolve_manifest_relative_path(manifest_path, program_defaults_json)?;
+    let defaults = serde_json::from_str::<WholeCellProgramDefaultsSpec>(&read_text_file(
+        &defaults_path,
+        "program defaults JSON",
+    )?)
+    .map_err(|error| {
+        format!(
+            "failed to parse program defaults {}: {error}",
+            defaults_path.display()
+        )
+    })?;
+    if defaults.program_name.is_some() {
+        spec.program_name = defaults.program_name;
+    }
+    if let Some(config) = defaults.config {
+        spec.config = config;
+    }
+    if let Some(initial_lattice) = defaults.initial_lattice {
+        spec.initial_lattice = initial_lattice;
+    }
+    if let Some(initial_state) = defaults.initial_state {
+        spec.initial_state = initial_state;
+    }
+    if let Some(quantum_profile) = defaults.quantum_profile {
+        spec.quantum_profile = quantum_profile;
+    }
+    if defaults.local_chemistry.is_some() {
+        spec.local_chemistry = defaults.local_chemistry;
+    }
+    Ok(())
+}
+
 pub fn compile_program_spec_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<WholeCellProgramSpec, String> {
@@ -5392,6 +5458,7 @@ pub fn compile_program_spec_from_bundle_manifest_path(
     let mut spec = build_program_spec_from_organism(organism, manifest.source_dataset.clone())?;
     spec.organism_assets = Some(assets);
     spec.organism_process_registry = Some(registry);
+    apply_bundle_program_defaults(&manifest_path_obj, &manifest, &mut spec)?;
     hydrate_program_spec(&mut spec)?;
     Ok(spec)
 }
@@ -6629,6 +6696,10 @@ mod tests {
         let assets = spec.organism_assets.as_ref().expect("compiled assets");
 
         assert_eq!(organism.organism, "JCVI-syn3A");
+        assert_eq!(
+            spec.program_name.as_deref(),
+            Some("jcvi_syn3a_structured_bundle_native")
+        );
         assert_eq!(assets.proteins.len(), organism.genes.len());
         assert!(assets.complexes.len() >= organism.transcription_units.len());
         assert_eq!(
