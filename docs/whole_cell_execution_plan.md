@@ -27,6 +27,26 @@ The target is:
 - restartable, benchmarked, calibrated runs that reproduce a validated microbial cell cycle
 - MC4D parity first, then broader coverage and stronger atomistic grounding
 
+## Current Achieved State
+
+What is already built on the active path:
+
+- strict structured-bundle organism compilation for bundled Syn3A plus a second demo organism
+- native Rust ingestion of structured organism bundles and compiled process registries
+- explicit runtime state for transcription units, RNA/protein execution pools, named complexes, chromosome state, membrane/division state, spatial fields, scheduler clocks, and restart payloads
+- native registry writeback into authoritative pools, expression state, complex state, stress response, and repair
+- registry-aware multirate scheduling across RDME, CME, ODE, chromosome BD, geometry, and atomistic-refinement stages
+- explicit complex channel ownership from subsystem targets, family, and asset class
+- direct process-capacity computation from explicit channel inventory, chemistry support, local pool state, and quantum efficiency instead of generic scalar-rule capacity wrappers
+
+What is still not at the target:
+
+- many downstream stage drive mixes still use scalar-rule surrogates instead of explicit local reaction or channel execution
+- reaction/species coverage is still narrow relative to a full microbial cell
+- membrane chemistry, chromosome mechanics, and local chemistry are still too coarse for parity
+- atomistic refinement exists as infrastructure, but not yet as an authoritative live feedback service
+- calibration, validation, and parity reporting are still incomplete
+
 ## Current Starting Position
 
 What already exists in this repo:
@@ -44,17 +64,18 @@ What already exists in this repo:
 
 What is partially present but not complete:
 
-- compiled operon/RNA/protein/complex assets for bundled Syn3A content
-- persistent transcription-unit, transcript/protein, and assembled-complex state
-- coarse staged scheduler and restart surfaces
+- explicit species, process-registry, expression, assembly, chromosome, membrane/division, and spatial runtime state
+- strict structured-bundle compilation and native ingestion for bundled organisms
+- native multirate scheduling and restart surfaces
 - local chemistry and local atomistic refinement stubs that are not yet authoritative enough
+- direct process-capacity ownership, but not yet direct stage-drive ownership end to end
 
 What still does not exist:
 
-- compiler-driven organism ingestion from external annotations and sequences
-- canonical species registry and canonical reaction registry for the full cell
+- broader external organism ingestion beyond the current structured-bundle and demo-source set
+- canonical full-cell species registry and canonical full-cell reaction registry at parity breadth
 - explicit chromosome polymer mechanics at parity depth
-- explicit membrane composition and division mechanics at parity depth
+- explicit membrane composition, membrane patch chemistry, and division mechanics at parity depth
 - event-driven multirate solver scheduler with full checkpointing
 - live atomistic extraction from runtime state with calibrated feedback loops
 - full Syn3A dataset, calibration, validation, and parity reporting stack
@@ -105,21 +126,39 @@ These rules are operational, not aspirational.
 
 ## Master Phase Table
 
-| Phase | Name | Main Output | Depends On |
-|---|---|---|---|
-| 0 | Contract Freeze | stable runtime, IR, and restart schemas | current repo |
-| 1 | Organism Compiler | compiler-produced Syn3A asset package | 0 |
-| 2 | Species/Reaction IR | canonical species and reaction registries | 0, 1 |
-| 3 | Expression Runtime | explicit transcription/translation/degradation execution | 1, 2 |
-| 4 | Assembly Runtime | named complexes and assembly intermediates | 1, 2, 3 |
-| 5 | Chromosome Runtime | explicit forks, loci, polymer state, topology | 1, 2, 3, 4 |
-| 6 | Membrane/Division Runtime | explicit membrane composition, divisome, geometry | 2, 4, 5 |
-| 7 | Spatial Chemistry Runtime | authoritative intracellular spatial chemistry | 2, 3, 4, 5, 6 |
-| 8 | Atomistic Refinement Runtime | live local extraction and feedback | 2, 4, 5, 6, 7 |
-| 9 | Multirate Scheduler | event-driven solver orchestration and checkpoints | 2, 3, 4, 5, 6, 7, 8 |
-| 10 | Calibration/Validation | dataset bundle, fitting, held-out tests | 1 through 9 |
-| 11 | MC4D Parity | matched observables and restart quality | 10 |
-| 12 | Beyond Parity | broader atomistic coverage and extra organisms | 11 |
+| Phase | Name | Main Output | Depends On | Status |
+|---|---|---|---|---|
+| 0 | Contract Freeze | stable runtime, IR, and restart schemas | current repo | complete |
+| 1 | Organism Compiler | compiler-produced Syn3A asset package | 0 | active on strict structured-bundle path |
+| 2 | Species/Reaction IR | canonical species and reaction registries | 0, 1 | active, partial breadth |
+| 3 | Expression Runtime | explicit transcription/translation/degradation execution | 1, 2 | active |
+| 4 | Assembly Runtime | named complexes and assembly intermediates | 1, 2, 3 | active |
+| 5 | Chromosome Runtime | explicit forks, loci, polymer state, topology | 1, 2, 3, 4 | active |
+| 6 | Membrane/Division Runtime | explicit membrane composition, divisome, geometry | 2, 4, 5 | active |
+| 7 | Spatial Chemistry Runtime | authoritative intracellular spatial chemistry | 2, 3, 4, 5, 6 | active |
+| 8 | Atomistic Refinement Runtime | live local extraction and feedback | 2, 4, 5, 6, 7 | scaffold only |
+| 9 | Multirate Scheduler | event-driven solver orchestration and checkpoints | 2, 3, 4, 5, 6, 7, 8 | active, needs deeper ownership |
+| 10 | Calibration/Validation | dataset bundle, fitting, held-out tests | 1 through 9 | not complete |
+| 11 | MC4D Parity | matched observables and restart quality | 10 | not started |
+| 12 | Beyond Parity | broader atomistic coverage and extra organisms | 11 | not started |
+
+## Active Todo Ladder
+
+This is the direct task ladder from the current runtime to the full vision. The detailed work packages below remain authoritative; this section is the execution-facing todo.
+
+1. Remove the remaining scalar-rule stage-drive surrogates and replace them with direct channel/local-state formulas the same way process capacities were flattened.
+2. Replace `prior_assembly_inventory()` and other derived aggregate fallbacks with explicit compiled local inventories wherever assets exist.
+3. Expand compiled species/reaction coverage for metabolites, ions, cofactors, lipids, damage states, repair states, and membrane-local species beyond the current narrow bundle set.
+4. Move more reaction execution from generic process scales into explicit registry-driven reaction families with direct ownership of pools, transcripts, proteins, complexes, and local fields.
+5. Make chromosome-domain chemistry fully compiled and local, not just domain-weighted over generic nucleoid pools.
+6. Make membrane patch reactions explicit: synthesis, insertion, remodeling, turnover, stress, constriction support, and pole/septum differentiation.
+7. Deepen membrane/division mechanics so geometry, patch composition, divisome occupancy, and chromosome occlusion are driven by explicit local state instead of mixed summary signals.
+8. Deepen chromosome mechanics toward polymer-level behavior: fork barriers, supercoiling, topological strain, macrodomain constraints, segregation forces, and locus-local transcription/replication conflicts.
+9. Expand spatial chemistry so RDME fields are authoritative for more resource and damage flows, with fewer well-mixed fallback shortcuts.
+10. Turn atomistic refinement from a side probe into a live service that extracts local systems from runtime state, runs calibrated local chemistry or MD, and writes validated corrections back into the cell state.
+11. Add organism-calibration bundles and benchmark datasets for Syn3A covering growth, ATP usage, transcript/protein abundance, division timing, chromosome progression, membrane composition, and perturbation responses.
+12. Build parity reporting against MC4D-style observables and close each mismatch by improving explicit state and reaction ownership, not by reintroducing heuristic shortcuts.
+13. After parity, generalize the same compiler/runtime path to additional organisms and broaden atomistic coverage to the highest-value subsystems.
 
 ## Phase 0: Freeze The Contract
 

@@ -776,31 +776,6 @@ const fn scalar_branch_5(
     )
 }
 
-const fn scalar_branch_6(
-    f1: ScalarFactor,
-    f2: ScalarFactor,
-    f3: ScalarFactor,
-    f4: ScalarFactor,
-    f5: ScalarFactor,
-    f6: ScalarFactor,
-    coefficient: f32,
-) -> ScalarBranch {
-    ScalarBranch::new(
-        coefficient,
-        6,
-        [
-            f1,
-            f2,
-            f3,
-            f4,
-            f5,
-            f6,
-            EMPTY_SCALAR_FACTOR,
-            EMPTY_SCALAR_FACTOR,
-        ],
-    )
-}
-
 const fn scalar_branch_7(
     f1: ScalarFactor,
     f2: ScalarFactor,
@@ -966,145 +941,6 @@ const DNAA_ACTIVITY_RULE: ScalarRule = ScalarRule::new(
     ],
     8.0,
     192.0,
-);
-
-const ENERGY_CAPACITY_RULE: ScalarRule = ScalarRule::new(
-    0.0,
-    1,
-    [
-        scalar_branch_6(
-            scalar_factor(WholeCellRuleSignal::AtpBandComplexes, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::AtpSupport, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::AtpBandScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::LocalizedSupplyScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::OxygenSignal, 0.55, 0.45),
-            scalar_factor(WholeCellRuleSignal::GlucoseSignal, 0.55, 0.45),
-            1.0 / 24.0,
-        ),
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-    ],
-    0.40,
-    2.40,
-);
-
-const TRANSCRIPTION_CAPACITY_RULE: ScalarRule = ScalarRule::new(
-    0.0,
-    1,
-    [
-        scalar_branch_4(
-            scalar_factor(WholeCellRuleSignal::RnapComplexes, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::NucleotideSupport, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::LocalizedSupplyScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::EnergySignal, 0.55, 0.45),
-            1.0 / 24.0,
-        ),
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-    ],
-    0.35,
-    2.40,
-);
-
-const TRANSLATION_CAPACITY_RULE: ScalarRule = ScalarRule::new(
-    0.0,
-    1,
-    [
-        scalar_branch_6(
-            scalar_factor(WholeCellRuleSignal::RibosomeComplexes, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::TranslationSupport, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::RibosomeTranslationScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MdTranslationScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::LocalizedSupplyScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::AminoSignal, 0.55, 0.45),
-            1.0 / 46.0,
-        ),
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-    ],
-    0.35,
-    2.60,
-);
-
-const REPLICATION_CAPACITY_RULE: ScalarRule = ScalarRule::new(
-    0.0,
-    1,
-    [
-        scalar_branch_4(
-            scalar_factor(WholeCellRuleSignal::ReplisomeComplexes, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::ReplisomeReplicationScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::NucleotideSupport, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::NucleotideSignal, 0.55, 0.45),
-            1.0 / 28.0,
-        ),
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-    ],
-    0.30,
-    2.40,
-);
-
-const SEGREGATION_CAPACITY_RULE: ScalarRule = ScalarRule::new(
-    0.0,
-    1,
-    [
-        scalar_branch_4(
-            scalar_factor(WholeCellRuleSignal::ReplisomeComplexes, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::ReplisomeSegregationScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::QuantumSegregationEfficiency, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::EnergySignal, 0.60, 0.40),
-            1.0 / 28.0,
-        ),
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-    ],
-    0.30,
-    2.40,
-);
-
-const MEMBRANE_CAPACITY_RULE: ScalarRule = ScalarRule::new(
-    0.0,
-    1,
-    [
-        scalar_branch_5(
-            scalar_factor(WholeCellRuleSignal::MembraneComplexes, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MembraneSupport, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MembraneAssemblyScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MdMembraneScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MembraneSignal, 0.55, 0.45),
-            1.0 / 24.0,
-        ),
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-    ],
-    0.35,
-    2.40,
-);
-
-const CONSTRICTION_CAPACITY_RULE: ScalarRule = ScalarRule::new(
-    0.0,
-    1,
-    [
-        scalar_branch_5(
-            scalar_factor(WholeCellRuleSignal::FtszPolymer, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::FtszConstrictionScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MembraneSupport, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MdTranslationScale, 0.0, 1.0),
-            scalar_factor(WholeCellRuleSignal::MembraneSignal, 0.55, 0.45),
-            1.0 / 90.0,
-        ),
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-        EMPTY_SCALAR_BRANCH,
-    ],
-    0.30,
-    2.60,
 );
 
 const TRANSCRIPTION_FLUX_RULE: ScalarRule = ScalarRule::new(
@@ -3190,16 +3026,78 @@ impl WholeCellSimulator {
     }
 
     fn process_fluxes(&self, inventory: WholeCellAssemblyInventory) -> WholeCellProcessFluxes {
-        let ctx = self.process_rule_context(0.0, inventory);
-        let scalar = ctx.scalar();
+        let base = self.base_rule_context(0.0);
+        let localized_supply = base.get(WholeCellRuleSignal::LocalizedSupplyScale);
+        let oxygen_signal = base.get(WholeCellRuleSignal::OxygenSignal);
+        let glucose_signal = base.get(WholeCellRuleSignal::GlucoseSignal);
+        let amino_signal = base.get(WholeCellRuleSignal::AminoSignal);
+        let nucleotide_signal = base.get(WholeCellRuleSignal::NucleotideSignal);
+        let membrane_signal = base.get(WholeCellRuleSignal::MembraneSignal);
+        let energy_signal = base.get(WholeCellRuleSignal::EnergySignal);
+        let atp_band_scale = base.get(WholeCellRuleSignal::AtpBandScale);
+        let ribosome_translation_scale = base.get(WholeCellRuleSignal::RibosomeTranslationScale);
+        let replisome_replication_scale =
+            base.get(WholeCellRuleSignal::ReplisomeReplicationScale);
+        let replisome_segregation_scale =
+            base.get(WholeCellRuleSignal::ReplisomeSegregationScale);
+        let membrane_assembly_scale = base.get(WholeCellRuleSignal::MembraneAssemblyScale);
+        let ftsz_constriction_scale = base.get(WholeCellRuleSignal::FtszConstrictionScale);
+        let md_translation_scale = base.get(WholeCellRuleSignal::MdTranslationScale);
+        let md_membrane_scale = base.get(WholeCellRuleSignal::MdMembraneScale);
+        let atp_support = base.get(WholeCellRuleSignal::AtpSupport);
+        let translation_support = base.get(WholeCellRuleSignal::TranslationSupport);
+        let nucleotide_support = base.get(WholeCellRuleSignal::NucleotideSupport);
+        let membrane_support = base.get(WholeCellRuleSignal::MembraneSupport);
+
         WholeCellProcessFluxes {
-            energy_capacity: ENERGY_CAPACITY_RULE.evaluate(scalar),
-            transcription_capacity: TRANSCRIPTION_CAPACITY_RULE.evaluate(scalar),
-            translation_capacity: TRANSLATION_CAPACITY_RULE.evaluate(scalar),
-            replication_capacity: REPLICATION_CAPACITY_RULE.evaluate(scalar),
-            segregation_capacity: SEGREGATION_CAPACITY_RULE.evaluate(scalar),
-            membrane_capacity: MEMBRANE_CAPACITY_RULE.evaluate(scalar),
-            constriction_capacity: CONSTRICTION_CAPACITY_RULE.evaluate(scalar),
+            energy_capacity: ((1.0 / 24.0)
+                * inventory.atp_band_complexes.max(0.0)
+                * atp_support
+                * atp_band_scale
+                * localized_supply
+                * (0.55 + 0.45 * oxygen_signal)
+                * (0.55 + 0.45 * glucose_signal))
+                .clamp(0.40, 2.40),
+            transcription_capacity: ((1.0 / 24.0)
+                * inventory.rnap_complexes.max(0.0)
+                * nucleotide_support
+                * localized_supply
+                * (0.55 + 0.45 * energy_signal))
+                .clamp(0.35, 2.40),
+            translation_capacity: ((1.0 / 46.0)
+                * inventory.ribosome_complexes.max(0.0)
+                * translation_support
+                * ribosome_translation_scale
+                * md_translation_scale
+                * localized_supply
+                * (0.55 + 0.45 * amino_signal))
+                .clamp(0.35, 2.60),
+            replication_capacity: ((1.0 / 28.0)
+                * inventory.replisome_complexes.max(0.0)
+                * replisome_replication_scale
+                * nucleotide_support
+                * (0.55 + 0.45 * nucleotide_signal))
+                .clamp(0.30, 2.40),
+            segregation_capacity: ((1.0 / 28.0)
+                * inventory.replisome_complexes.max(0.0)
+                * replisome_segregation_scale
+                * self.quantum_profile.chromosome_segregation_efficiency.max(0.0)
+                * (0.60 + 0.40 * energy_signal))
+                .clamp(0.30, 2.40),
+            membrane_capacity: ((1.0 / 24.0)
+                * inventory.membrane_complexes.max(0.0)
+                * membrane_support
+                * membrane_assembly_scale
+                * md_membrane_scale
+                * (0.55 + 0.45 * membrane_signal))
+                .clamp(0.35, 2.40),
+            constriction_capacity: ((1.0 / 90.0)
+                * inventory.ftsz_polymer.max(0.0)
+                * ftsz_constriction_scale
+                * membrane_support
+                * md_translation_scale
+                * (0.55 + 0.45 * membrane_signal))
+                .clamp(0.30, 2.60),
         }
     }
 
@@ -12441,6 +12339,43 @@ mod tests {
         assert!(reduced_fluxes.translation_capacity <= baseline_fluxes.translation_capacity);
         assert!(reduced_fluxes.transcription_capacity <= baseline_fluxes.transcription_capacity);
         assert!(reduced_fluxes.replication_capacity <= baseline_fluxes.replication_capacity);
+    }
+
+    #[test]
+    fn test_process_fluxes_follow_explicit_channel_inventory() {
+        let mut sim = WholeCellSimulator::new(WholeCellConfig {
+            use_gpu: false,
+            ..WholeCellConfig::default()
+        });
+        sim.atp_mm = 1.4;
+        sim.amino_acids_mm = 1.2;
+        sim.nucleotides_mm = 1.3;
+        sim.membrane_precursors_mm = 1.1;
+        sim.oxygen_mm = 1.0;
+        sim.glucose_mm = 1.0;
+        sim.chemistry_report.atp_support = 1.0;
+        sim.chemistry_report.translation_support = 1.0;
+        sim.chemistry_report.nucleotide_support = 1.0;
+        sim.chemistry_report.membrane_support = 1.0;
+
+        let translation_fluxes = sim.process_fluxes(WholeCellAssemblyInventory {
+            ribosome_complexes: 96.0,
+            ..WholeCellAssemblyInventory::default()
+        });
+        let transcription_fluxes = sim.process_fluxes(WholeCellAssemblyInventory {
+            rnap_complexes: 72.0,
+            ..WholeCellAssemblyInventory::default()
+        });
+        let replication_fluxes = sim.process_fluxes(WholeCellAssemblyInventory {
+            replisome_complexes: 56.0,
+            ..WholeCellAssemblyInventory::default()
+        });
+
+        assert!(translation_fluxes.translation_capacity > transcription_fluxes.translation_capacity);
+        assert!(translation_fluxes.transcription_capacity <= transcription_fluxes.transcription_capacity);
+        assert!(replication_fluxes.replication_capacity > translation_fluxes.replication_capacity);
+        assert!((translation_fluxes.transcription_capacity - 0.35).abs() < 1.0e-6);
+        assert!((transcription_fluxes.translation_capacity - 0.35).abs() < 1.0e-6);
     }
 
     #[test]

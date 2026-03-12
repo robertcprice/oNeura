@@ -1716,3 +1716,19 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `named-complex aggregation now follows explicit biological ownership, but the downstream process-capacity rules still collapse those explicit inventories into scalar rule surrogates and remain the next bottom-up target`
+
+### 2026-03-12 - Phase 7 / Direct Process Capacity From Explicit Channels
+
+- Summary:
+  - removed the generic scalar-rule layer for whole-cell process capacities and now compute energy, transcription, translation, replication, segregation, membrane, and constriction capacities directly from explicit channel inventory, chemistry support, local pool state, and quantum efficiency
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_process_fluxes_follow_explicit_channel_inventory --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `process capacities now come straight from explicit runtime state, but several downstream stage drive mixes and fallback inventory targets still depend on generic scalar-rule surrogates instead of explicit local channel execution`
