@@ -1342,3 +1342,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `saved-state restore and simulator bootstrap still contain later compatibility fallbacks for missing assets and registries, and those remaining live-path repair points need the same explicit-vs-legacy split`
+
+### 2026-03-12 - Phase 7 / Split Explicit And Legacy Restore-Time Registry Rebuilds
+
+- Summary:
+  - removed live-path registry derivation from `ensure_process_registry`, `organism_process_registry()`, and `restore_saved_state`, so explicit simulators and explicit saved-state restores no longer compile process registries or assets behind the caller's back
+  - added explicit legacy constructor entrypoints on `WholeCellSimulator` for program-spec and saved-state JSON, keeping compatibility-only rebuild behavior opt-in at the runtime boundary instead of implicit in the default constructors
+  - expanded `parse_legacy_saved_state_json` to rebuild missing asset packages and process registries from inline organism data, aligning legacy saved-state restore behavior with the legacy program-spec path while keeping the main explicit restore path strict
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/whole_cell.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `runtime rebuild helpers and any remaining bootstrap paths that still compile registries from assets need the same explicit-vs-legacy split so the live simulator never repairs missing whole-cell metadata implicitly`

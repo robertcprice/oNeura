@@ -6269,7 +6269,11 @@ pub fn parse_legacy_saved_state_json(state_json: &str) -> Result<WholeCellSavedS
             with_normalized_pool_metadata(organism),
         ));
     }
-    if let (Some(organism), Some(assets)) =
+    if state.organism_assets.is_none() {
+        if let Some(organism) = state.organism_data.as_ref() {
+            state.organism_assets = Some(compile_genome_asset_package(organism));
+        }
+    } else if let (Some(organism), Some(assets)) =
         (state.organism_data.as_ref(), state.organism_assets.as_mut())
     {
         if assets.chromosome_domains.is_empty() {
@@ -7420,6 +7424,23 @@ mod tests {
             reparsed.organism_process_registry,
             saved.organism_process_registry
         );
+    }
+
+    #[test]
+    fn parse_legacy_saved_state_json_derives_inline_organism_assets() {
+        let spec = bundled_syn3a_program_spec().expect("bundled spec");
+        let mut saved = minimal_saved_state_from_spec(&spec);
+        saved.organism_data_ref = None;
+        saved.organism_assets = None;
+        saved.organism_process_registry = None;
+
+        let reparsed =
+            parse_legacy_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
+                .expect("reparsed legacy saved state");
+
+        assert!(reparsed.organism_data.is_some());
+        assert!(reparsed.organism_assets.is_some());
+        assert!(reparsed.organism_process_registry.is_some());
     }
 
     #[test]

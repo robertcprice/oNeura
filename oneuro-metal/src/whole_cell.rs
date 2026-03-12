@@ -21,9 +21,10 @@ use crate::substrate_ir::{
 };
 use crate::whole_cell_data::{
     bundled_syn3a_genome_asset_package_json, bundled_syn3a_program_spec,
-    bundled_syn3a_program_spec_json, compile_genome_asset_package, compile_genome_process_registry,
+    bundled_syn3a_program_spec_json, compile_genome_process_registry,
     compile_program_spec_from_bundle_manifest_path, derive_organism_profile,
-    initialize_runtime_reaction_state, initialize_runtime_species_state, parse_program_spec_json,
+    initialize_runtime_reaction_state, initialize_runtime_species_state,
+    parse_legacy_program_spec_json, parse_legacy_saved_state_json, parse_program_spec_json,
     parse_saved_state_json, saved_state_to_json, WholeCellAssemblyFamily, WholeCellAssetClass,
     WholeCellBulkField, WholeCellChromosomeDomainSpec, WholeCellChromosomeForkDirection,
     WholeCellChromosomeForkState, WholeCellChromosomeLocusState, WholeCellChromosomeState,
@@ -3728,12 +3729,6 @@ impl WholeCellSimulator {
     }
 
     fn ensure_process_registry(&mut self) -> Option<WholeCellGenomeProcessRegistry> {
-        if self.organism_process_registry.is_none() {
-            self.organism_process_registry = self
-                .organism_assets
-                .as_ref()
-                .map(compile_genome_process_registry);
-        }
         self.organism_process_registry.clone()
     }
 
@@ -7576,11 +7571,7 @@ impl WholeCellSimulator {
     }
 
     pub fn organism_process_registry(&self) -> Option<WholeCellGenomeProcessRegistry> {
-        self.organism_process_registry.clone().or_else(|| {
-            self.organism_assets
-                .as_ref()
-                .map(compile_genome_process_registry)
-        })
+        self.organism_process_registry.clone()
     }
 
     pub fn organism_expression_state(&self) -> Option<WholeCellOrganismExpressionState> {
@@ -8008,18 +7999,6 @@ impl WholeCellSimulator {
                 .map(|organism| organism.chromosome_length_bp.max(1))
                 .unwrap_or(self.genome_bp);
             self.replicated_bp = self.replicated_bp.min(self.genome_bp);
-            if self.organism_assets.is_none() {
-                self.organism_assets = self
-                    .organism_data
-                    .as_ref()
-                    .map(compile_genome_asset_package);
-            }
-            if self.organism_process_registry.is_none() {
-                self.organism_process_registry = self
-                    .organism_assets
-                    .as_ref()
-                    .map(compile_genome_process_registry);
-            }
             if self.organism_expression.transcription_units.is_empty() {
                 self.refresh_organism_expression_state();
             }
@@ -8366,6 +8345,11 @@ impl WholeCellSimulator {
         parse_program_spec_json(spec_json).map(Self::from_program_spec)
     }
 
+    /// Create a simulator from a legacy JSON-encoded whole-cell program spec.
+    pub fn from_legacy_program_spec_json(spec_json: &str) -> Result<Self, String> {
+        parse_legacy_program_spec_json(spec_json).map(Self::from_program_spec)
+    }
+
     /// Serialize the current simulator state into a restartable JSON payload.
     pub fn save_state_json(&self) -> Result<String, String> {
         let saved = WholeCellSavedState {
@@ -8465,6 +8449,14 @@ impl WholeCellSimulator {
     /// Restore a simulator from a JSON-encoded saved state.
     pub fn from_saved_state_json(state_json: &str) -> Result<Self, String> {
         let saved = parse_saved_state_json(state_json)?;
+        let mut simulator = Self::new(saved.config.clone());
+        simulator.restore_saved_state(saved)?;
+        Ok(simulator)
+    }
+
+    /// Restore a simulator from a legacy JSON-encoded saved state.
+    pub fn from_legacy_saved_state_json(state_json: &str) -> Result<Self, String> {
+        let saved = parse_legacy_saved_state_json(state_json)?;
         let mut simulator = Self::new(saved.config.clone());
         simulator.restore_saved_state(saved)?;
         Ok(simulator)
@@ -12129,5 +12121,89 @@ mod tests {
         assert!(simulator.organism_data.is_some());
         assert!(simulator.organism_assets.is_none());
         assert!(simulator.organism_process_registry.is_none());
+    }
+
+    #[test]
+    fn test_from_program_spec_json_preserves_missing_assets_and_registry() {
+        let mut spec = bundled_syn3a_program_spec().expect("bundled Syn3A program spec");
+        spec.organism_data_ref = None;
+        spec.organism_assets = None;
+        spec.organism_process_registry = None;
+
+        let simulator = WholeCellSimulator::from_program_spec_json(
+            &serde_json::to_string(&spec).expect("serialize explicit program spec"),
+        )
+        .expect("restore explicit program spec");
+
+        assert!(simulator.organism_data.is_some());
+        assert!(simulator.organism_assets.is_none());
+        assert!(simulator.organism_process_registry.is_none());
+        assert!(simulator.organism_process_registry().is_none());
+    }
+
+    #[test]
+    fn test_from_legacy_program_spec_json_restores_missing_assets_and_registry() {
+        let mut spec = bundled_syn3a_program_spec().expect("bundled Syn3A program spec");
+        spec.organism_data_ref = None;
+        spec.organism_assets = None;
+        spec.organism_process_registry = None;
+
+        let simulator = WholeCellSimulator::from_legacy_program_spec_json(
+            &serde_json::to_string(&spec).expect("serialize legacy program spec"),
+        )
+        .expect("restore legacy program spec");
+
+        assert!(simulator.organism_data.is_some());
+        assert!(simulator.organism_assets.is_some());
+        assert!(simulator.organism_process_registry.is_some());
+        assert!(simulator.organism_process_registry().is_some());
+    }
+
+    #[test]
+    fn test_from_saved_state_json_preserves_missing_assets_and_registry() {
+        let simulator = WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A");
+        let mut saved = parse_saved_state_json(
+            &simulator
+                .save_state_json()
+                .expect("serialize explicit saved state"),
+        )
+        .expect("parse explicit saved state");
+        saved.organism_data_ref = None;
+        saved.organism_assets = None;
+        saved.organism_process_registry = None;
+
+        let restored = WholeCellSimulator::from_saved_state_json(
+            &saved_state_to_json(&saved).expect("serialize explicit saved state"),
+        )
+        .expect("restore explicit saved state");
+
+        assert!(restored.organism_data.is_some());
+        assert!(restored.organism_assets.is_none());
+        assert!(restored.organism_process_registry.is_none());
+        assert!(restored.organism_process_registry().is_none());
+    }
+
+    #[test]
+    fn test_from_legacy_saved_state_json_restores_missing_assets_and_registry() {
+        let simulator = WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A");
+        let mut saved = parse_saved_state_json(
+            &simulator
+                .save_state_json()
+                .expect("serialize explicit saved state"),
+        )
+        .expect("parse explicit saved state");
+        saved.organism_data_ref = None;
+        saved.organism_assets = None;
+        saved.organism_process_registry = None;
+
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(
+            &saved_state_to_json(&saved).expect("serialize legacy saved state"),
+        )
+        .expect("restore legacy saved state");
+
+        assert!(restored.organism_data.is_some());
+        assert!(restored.organism_assets.is_some());
+        assert!(restored.organism_process_registry.is_some());
+        assert!(restored.organism_process_registry().is_some());
     }
 }
