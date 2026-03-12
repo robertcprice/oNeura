@@ -470,6 +470,45 @@ def test_strict_structured_bundle_rejects_missing_operon_semantic_coverage(tmp_p
         compile_bundle_manifest(bundle_dir / "manifest.json")
 
 
+def test_strict_structured_bundle_rejects_missing_operon_entity_coverage(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    source_dir = Path("src/oneuro/whole_cell/assets/bundles/jcvi_syn3a").resolve()
+    for name in [
+        "metadata.json",
+        "gene_features.json",
+        "gene_products.json",
+        "gene_semantics.json",
+        "transcription_units.json",
+        "transcription_unit_semantics.json",
+        "chromosome_domains.json",
+        "pools.json",
+        "rnas.json",
+        "proteins.json",
+        "complexes.json",
+        "operon_semantics.json",
+        "protein_semantics.json",
+        "complex_semantics.json",
+        "program_defaults.json",
+    ]:
+        (bundle_dir / name).write_text((source_dir / name).read_text(), encoding="ascii")
+    operons = json.loads((source_dir / "operons.json").read_text(encoding="ascii"))
+    removed = operons.pop(0)["name"]
+    (bundle_dir / "operons.json").write_text(
+        json.dumps(operons, indent=2), encoding="ascii"
+    )
+    manifest = json.loads((source_dir / "manifest.json").read_text(encoding="ascii"))
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="ascii"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"requires explicit asset entity coverage but 1 operon\(s\) are missing: {removed}",
+    ):
+        compile_bundle_manifest(bundle_dir / "manifest.json")
+
+
 def test_strict_structured_bundle_rejects_missing_program_defaults(tmp_path):
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()

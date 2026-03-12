@@ -78,27 +78,48 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
         manifest.get("require_explicit_asset_semantics")
     )
     organism_spec = _compile_structured_bundle(path, manifest, source_hashes)
+    operons_overlay = _load_optional_json(path, manifest, "operons_json", source_hashes) or []
+    rnas_overlay = _load_optional_json(path, manifest, "rnas_json", source_hashes) or []
+    proteins_overlay = (
+        _load_optional_json(path, manifest, "proteins_json", source_hashes) or []
+    )
+    complexes_overlay = (
+        _load_optional_json(path, manifest, "complexes_json", source_hashes) or []
+    )
+    operon_semantics_overlay = (
+        _load_optional_json(path, manifest, "operon_semantics_json", source_hashes) or []
+    )
+    protein_semantics_overlay = (
+        _load_optional_json(path, manifest, "protein_semantics_json", source_hashes) or []
+    )
+    complex_semantics_overlay = (
+        _load_optional_json(path, manifest, "complex_semantics_json", source_hashes) or []
+    )
+    _load_optional_json(path, manifest, "program_defaults_json", source_hashes)
+    _validate_explicit_asset_contracts(manifest, source_hashes)
 
     organism_spec = _with_compiled_chromosome_domains(organism_spec)
-    asset_package = _compile_genome_asset_package(organism_spec)
+    if require_explicit_asset_entities:
+        asset_package = _empty_genome_asset_package(organism_spec)
+    else:
+        asset_package = _compile_genome_asset_package(organism_spec)
     asset_package = _apply_asset_entity_overlays(
         asset_package,
-        _load_optional_json(path, manifest, "operons_json", source_hashes) or [],
-        _load_optional_json(path, manifest, "rnas_json", source_hashes) or [],
-        _load_optional_json(path, manifest, "proteins_json", source_hashes) or [],
-        _load_optional_json(path, manifest, "complexes_json", source_hashes) or [],
+        operons_overlay,
+        rnas_overlay,
+        proteins_overlay,
+        complexes_overlay,
         derive_semantics=not require_explicit_asset_semantics,
     )
     if require_explicit_asset_entities:
         _validate_explicit_asset_entities(asset_package)
+        _validate_explicit_asset_entity_coverage(organism_spec, asset_package)
     asset_package = _apply_asset_semantic_overlays(
         asset_package,
-        _load_optional_json(path, manifest, "operon_semantics_json", source_hashes) or [],
-        _load_optional_json(path, manifest, "protein_semantics_json", source_hashes) or [],
-        _load_optional_json(path, manifest, "complex_semantics_json", source_hashes) or [],
+        operon_semantics_overlay,
+        protein_semantics_overlay,
+        complex_semantics_overlay,
     )
-    _load_optional_json(path, manifest, "program_defaults_json", source_hashes)
-    _validate_explicit_asset_contracts(manifest, source_hashes)
     if require_explicit_asset_semantics:
         _validate_explicit_asset_semantics(asset_package)
     return CompiledOrganismBundle(
@@ -723,6 +744,63 @@ def _validate_explicit_asset_semantics(asset_package: Dict[str, Any]) -> None:
         )
 
 
+def _validate_explicit_asset_entity_coverage(
+    organism_spec: Dict[str, Any], asset_package: Dict[str, Any]
+) -> None:
+    genes = list(organism_spec.get("genes", []))
+    transcription_units = list(organism_spec.get("transcription_units", []))
+    operons = list(asset_package.get("operons", []))
+    rnas = list(asset_package.get("rnas", []))
+    proteins = list(asset_package.get("proteins", []))
+    complexes = list(asset_package.get("complexes", []))
+
+    genes_in_units = {
+        gene_name
+        for unit in transcription_units
+        for gene_name in unit.get("genes", [])
+    }
+    expected_operons = {
+        unit["name"] for unit in transcription_units
+    } | {gene["gene"] for gene in genes if gene["gene"] not in genes_in_units}
+    operon_names = {operon["name"] for operon in operons}
+    missing_operons = sorted(expected_operons - operon_names)
+    if missing_operons:
+        raise ValueError(
+            "bundle requires explicit asset entity coverage but "
+            f"{len(missing_operons)} operon(s) are missing: "
+            + ", ".join(missing_operons)
+        )
+
+    rna_genes = {rna["gene"] for rna in rnas}
+    missing_rnas = sorted(gene["gene"] for gene in genes if gene["gene"] not in rna_genes)
+    if missing_rnas:
+        raise ValueError(
+            "bundle requires explicit asset entity coverage but "
+            f"{len(missing_rnas)} RNA gene(s) are missing: "
+            + ", ".join(missing_rnas)
+        )
+
+    protein_genes = {protein["gene"] for protein in proteins}
+    missing_proteins = sorted(
+        gene["gene"] for gene in genes if gene["gene"] not in protein_genes
+    )
+    if missing_proteins:
+        raise ValueError(
+            "bundle requires explicit asset entity coverage but "
+            f"{len(missing_proteins)} protein gene(s) are missing: "
+            + ", ".join(missing_proteins)
+        )
+
+    complex_operons = {complex_spec["operon"] for complex_spec in complexes}
+    missing_complexes = sorted(expected_operons - complex_operons)
+    if missing_complexes:
+        raise ValueError(
+            "bundle requires explicit asset entity coverage but "
+            f"{len(missing_complexes)} complex operon(s) are missing: "
+            + ", ".join(missing_complexes)
+        )
+
+
 def _derive_operon_semantics(asset_package: Dict[str, Any]) -> list[Dict[str, Any]]:
     semantics = []
     for operon in asset_package.get("operons", []):
@@ -1188,6 +1266,24 @@ def _compile_genome_asset_package(spec: Dict[str, Any]) -> Dict[str, Any]:
         "protein_semantics": protein_semantics,
         "complex_semantics": complex_semantics,
         "complexes": complexes,
+        "pools": list(spec.get("pools", [])),
+    }
+
+
+def _empty_genome_asset_package(spec: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "organism": spec["organism"],
+        "chromosome_length_bp": int(spec["chromosome_length_bp"]),
+        "origin_bp": int(spec["origin_bp"]),
+        "terminus_bp": int(spec["terminus_bp"]),
+        "chromosome_domains": list(spec.get("chromosome_domains", [])),
+        "operons": [],
+        "operon_semantics": [],
+        "rnas": [],
+        "proteins": [],
+        "protein_semantics": [],
+        "complex_semantics": [],
+        "complexes": [],
         "pools": list(spec.get("pools", [])),
     }
 

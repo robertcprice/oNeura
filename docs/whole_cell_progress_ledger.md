@@ -1258,3 +1258,25 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `strict bundle compilation now trusts explicit asset packages end to end, but JSON/state ingress still contains compatibility-only semantic backfills and broader source coverage is still needed so more bundles can run without any inferred fallback metadata`
+
+### 2026-03-12 - Phase 7 / Stop Strict Bundles From Bootstrapping Derived Assets
+
+- Summary:
+  - changed the strict bundle compile path in both Python and Rust to start from an explicit empty asset package seeded only with organism/pool/domain state instead of first deriving operons, RNAs, proteins, and complexes from the organism spec and then overlaying explicit files on top
+  - added strict asset-entity coverage validation against the organism source contract, so strict bundles now fail if any expected operon, RNA, protein, or operon-linked complex is missing from the explicit asset files
+  - kept derived asset-package compilation as a compatibility path for non-strict bundles only, further separating explicit bottom-up execution from fallback synthesis
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `strict bundle compilation now requires explicit asset coverage, but compatibility-only normalization and semantic backfills still exist at JSON/state ingress and the remaining active parser/resolver boundaries still need to be split into explicit-vs-legacy paths`

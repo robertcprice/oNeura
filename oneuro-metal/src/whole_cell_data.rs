@@ -3558,6 +3558,24 @@ pub fn compile_genome_asset_package(spec: &WholeCellOrganismSpec) -> WholeCellGe
     }
 }
 
+fn empty_genome_asset_package(spec: &WholeCellOrganismSpec) -> WholeCellGenomeAssetPackage {
+    WholeCellGenomeAssetPackage {
+        organism: spec.organism.clone(),
+        chromosome_length_bp: spec.chromosome_length_bp,
+        origin_bp: spec.origin_bp,
+        terminus_bp: spec.terminus_bp,
+        chromosome_domains: spec.chromosome_domains.clone(),
+        operons: Vec::new(),
+        operon_semantics: Vec::new(),
+        rnas: Vec::new(),
+        proteins: Vec::new(),
+        protein_semantics: Vec::new(),
+        complex_semantics: Vec::new(),
+        complexes: Vec::new(),
+        pools: spec.pools.clone(),
+    }
+}
+
 pub fn compile_genome_process_registry(
     package: &WholeCellGenomeAssetPackage,
 ) -> WholeCellGenomeProcessRegistry {
@@ -4999,6 +5017,105 @@ fn validate_explicit_asset_entities(assets: &WholeCellGenomeAssetPackage) -> Res
     validate_explicit_complex_assets(&assets.complexes)
 }
 
+fn validate_explicit_asset_entity_coverage(
+    organism: &WholeCellOrganismSpec,
+    assets: &WholeCellGenomeAssetPackage,
+) -> Result<(), String> {
+    let genes_in_units: HashMap<String, ()> = organism
+        .transcription_units
+        .iter()
+        .flat_map(|unit| unit.genes.iter().cloned())
+        .map(|gene| (gene, ()))
+        .collect();
+    let expected_operons: HashMap<String, ()> = organism
+        .transcription_units
+        .iter()
+        .map(|unit| (unit.name.clone(), ()))
+        .chain(
+            organism
+                .genes
+                .iter()
+                .filter(|gene| !genes_in_units.contains_key(&gene.gene))
+                .map(|gene| (gene.gene.clone(), ())),
+        )
+        .collect();
+    let operon_names: HashMap<String, ()> = assets
+        .operons
+        .iter()
+        .map(|operon| (operon.name.clone(), ()))
+        .collect();
+    let missing_operons: Vec<String> = expected_operons
+        .keys()
+        .filter(|name| !operon_names.contains_key(*name))
+        .cloned()
+        .collect();
+    if !missing_operons.is_empty() {
+        return Err(format!(
+            "bundle requires explicit asset entity coverage but {} operon(s) are missing: {}",
+            missing_operons.len(),
+            missing_operons.join(", ")
+        ));
+    }
+
+    let rna_genes: HashMap<String, ()> = assets
+        .rnas
+        .iter()
+        .map(|rna| (rna.gene.clone(), ()))
+        .collect();
+    let missing_rnas: Vec<String> = organism
+        .genes
+        .iter()
+        .filter(|gene| !rna_genes.contains_key(&gene.gene))
+        .map(|gene| gene.gene.clone())
+        .collect();
+    if !missing_rnas.is_empty() {
+        return Err(format!(
+            "bundle requires explicit asset entity coverage but {} RNA gene(s) are missing: {}",
+            missing_rnas.len(),
+            missing_rnas.join(", ")
+        ));
+    }
+
+    let protein_genes: HashMap<String, ()> = assets
+        .proteins
+        .iter()
+        .map(|protein| (protein.gene.clone(), ()))
+        .collect();
+    let missing_proteins: Vec<String> = organism
+        .genes
+        .iter()
+        .filter(|gene| !protein_genes.contains_key(&gene.gene))
+        .map(|gene| gene.gene.clone())
+        .collect();
+    if !missing_proteins.is_empty() {
+        return Err(format!(
+            "bundle requires explicit asset entity coverage but {} protein gene(s) are missing: {}",
+            missing_proteins.len(),
+            missing_proteins.join(", ")
+        ));
+    }
+
+    let complex_operons: HashMap<String, ()> = assets
+        .complexes
+        .iter()
+        .map(|complex| (complex.operon.clone(), ()))
+        .collect();
+    let missing_complexes: Vec<String> = expected_operons
+        .keys()
+        .filter(|name| !complex_operons.contains_key(*name))
+        .cloned()
+        .collect();
+    if !missing_complexes.is_empty() {
+        return Err(format!(
+            "bundle requires explicit asset entity coverage but {} complex operon(s) are missing: {}",
+            missing_complexes.len(),
+            missing_complexes.join(", ")
+        ));
+    }
+
+    Ok(())
+}
+
 fn validate_explicit_operon_semantics(assets: &WholeCellGenomeAssetPackage) -> Result<(), String> {
     let semantics: HashMap<&str, &WholeCellOperonSemanticSpec> = assets
         .operon_semantics
@@ -5154,11 +5271,13 @@ fn merge_explicit_asset_semantics_into_entities(assets: &mut WholeCellGenomeAsse
 }
 
 fn finalize_bundle_asset_package(
+    organism: &WholeCellOrganismSpec,
     manifest: &WholeCellOrganismBundleManifest,
     mut assets: WholeCellGenomeAssetPackage,
 ) -> Result<WholeCellGenomeAssetPackage, String> {
     if manifest.require_explicit_asset_entities {
         validate_explicit_asset_entities(&assets)?;
+        validate_explicit_asset_entity_coverage(organism, &assets)?;
     }
     if manifest.require_explicit_asset_semantics {
         merge_explicit_asset_semantics_into_entities(&mut assets);
@@ -5743,10 +5862,14 @@ fn compile_genome_asset_package_from_bundle_manifest_path(
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
     validate_bundle_asset_contracts(&manifest)?;
     let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
-    let assets = compile_genome_asset_package(&organism);
+    let assets = if manifest.require_explicit_asset_entities {
+        empty_genome_asset_package(&organism)
+    } else {
+        compile_genome_asset_package(&organism)
+    };
     let assets = apply_bundle_asset_entity_overlays(&manifest_path_obj, &manifest, assets)?;
     let assets = apply_bundle_asset_semantic_overlays(&manifest_path_obj, &manifest, assets)?;
-    finalize_bundle_asset_package(&manifest, assets)
+    finalize_bundle_asset_package(&organism, &manifest, assets)
 }
 
 fn apply_bundle_program_defaults(
@@ -5948,8 +6071,12 @@ pub fn bundled_syn3a_organism_spec() -> Result<WholeCellOrganismSpec, String> {
 fn compile_embedded_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetPackage, String> {
     let manifest = parse_bundle_manifest_json(BUNDLED_SYN3A_BUNDLE_MANIFEST_JSON)?;
     validate_bundle_asset_contracts(&manifest)?;
-    let mut assets =
-        bundled_syn3a_organism_spec().map(|organism| compile_genome_asset_package(&organism))?;
+    let organism = bundled_syn3a_organism_spec()?;
+    let mut assets = if manifest.require_explicit_asset_entities {
+        empty_genome_asset_package(&organism)
+    } else {
+        compile_genome_asset_package(&organism)
+    };
     assets.operons =
         serde_json::from_str::<Vec<WholeCellOperonSpec>>(BUNDLED_SYN3A_BUNDLE_OPERONS_JSON)
             .map_err(|error| format!("failed to parse embedded Syn3A operons: {error}"))?;
@@ -5978,7 +6105,7 @@ fn compile_embedded_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetP
         BUNDLED_SYN3A_BUNDLE_COMPLEX_SEMANTICS_JSON,
     )
     .map_err(|error| format!("failed to parse embedded Syn3A complex semantics: {error}"))?;
-    finalize_bundle_asset_package(&manifest, assets)
+    finalize_bundle_asset_package(&organism, &manifest, assets)
 }
 
 pub fn bundled_syn3a_genome_asset_package_json() -> Result<&'static str, String> {
@@ -6369,6 +6496,19 @@ mod tests {
             .expect_err("missing strict operon semantic coverage should fail");
 
         assert!(error.contains("requires explicit asset semantics"));
+        assert!(error.contains(&removed.name));
+    }
+
+    #[test]
+    fn explicit_asset_entity_coverage_requires_operon_presence() {
+        let organism = bundled_syn3a_organism_spec().expect("bundled organism");
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let removed = package.operons.pop().expect("bundled operon");
+
+        let error = validate_explicit_asset_entity_coverage(&organism, &package)
+            .expect_err("missing strict operon coverage should fail");
+
+        assert!(error.contains("requires explicit asset entity coverage"));
         assert!(error.contains(&removed.name));
     }
 
