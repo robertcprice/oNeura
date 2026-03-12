@@ -3141,6 +3141,11 @@ impl WholeCellSimulator {
     }
 
     fn assembly_inventory(&self) -> WholeCellAssemblyInventory {
+        if let Some(assets) = self.organism_assets.as_ref() {
+            if !self.named_complexes.is_empty() {
+                return self.aggregate_named_complex_assembly_state(assets);
+            }
+        }
         if self.complex_assembly.total_complexes() > 1.0e-6 {
             self.complex_assembly
         } else {
@@ -12282,6 +12287,33 @@ mod tests {
         assert!(reduced_fluxes.translation_capacity <= baseline_fluxes.translation_capacity);
         assert!(reduced_fluxes.transcription_capacity <= baseline_fluxes.transcription_capacity);
         assert!(reduced_fluxes.replication_capacity <= baseline_fluxes.replication_capacity);
+    }
+
+    #[test]
+    fn test_assembly_inventory_prefers_named_complex_state_when_assets_exist() {
+        let mut sim =
+            WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
+        let assets = sim
+            .organism_assets
+            .clone()
+            .expect("compiled genome asset package");
+        sim.initialize_complex_assembly_state();
+        for state in &mut sim.named_complexes {
+            state.subunit_pool *= 0.25;
+            state.nucleation_intermediate *= 0.15;
+            state.elongation_intermediate *= 0.20;
+            state.abundance *= 0.30;
+            state.target_abundance *= 0.35;
+        }
+        let expected = sim.aggregate_named_complex_assembly_state(&assets);
+        sim.complex_assembly = WholeCellComplexAssemblyState::default();
+
+        let inventory = sim.assembly_inventory();
+
+        assert!((inventory.ribosome_complexes - expected.ribosome_complexes).abs() < 1.0e-6);
+        assert!((inventory.rnap_complexes - expected.rnap_complexes).abs() < 1.0e-6);
+        assert!((inventory.replisome_complexes - expected.replisome_complexes).abs() < 1.0e-6);
+        assert!((inventory.ftsz_target - expected.ftsz_target).abs() < 1.0e-6);
     }
 
     #[test]

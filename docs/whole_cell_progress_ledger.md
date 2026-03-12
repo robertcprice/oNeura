@@ -1686,3 +1686,18 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `the active assembly path now uses component capacity instead of a static abundance prior, but other runtime channels still collapse explicit inventories into heuristic subsystem shares and should be pushed toward direct local species ownership next`
+
+### 2026-03-12 - Phase 7 / Named-Complex Inventory Authority
+
+- Summary:
+  - made assembly inventory prefer live named-complex state when compiled assets are present, so the active runtime no longer falls back to derived aggregate targets while explicit complex state already exists
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_assembly_inventory_prefers_named_complex_state_when_assets_exist --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `named-complex inventory now owns the active assembly rollup, but the downstream process-capacity rules still compress explicit inventories into coarse subsystem scalars and remain a good next target for bottom-up replacement`
