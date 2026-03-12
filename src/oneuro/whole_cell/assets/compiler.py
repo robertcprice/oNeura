@@ -96,34 +96,34 @@ def compile_legacy_named_bundle(name: str) -> CompiledOrganismBundle:
 def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle:
     """Compile an organism bundle manifest into runtime-ready JSON payloads."""
 
-    return _compile_bundle_manifest_impl(manifest_path, allow_legacy_derived_assets=False)
+    return _compile_explicit_bundle_manifest(manifest_path)
 
 
 def compile_legacy_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle:
     """Compile an organism bundle manifest through the legacy derived-asset path."""
 
-    return _compile_bundle_manifest_impl(manifest_path, allow_legacy_derived_assets=True)
+    return _compile_legacy_bundle_manifest(manifest_path)
 
 
-def _compile_bundle_manifest_impl(
-    manifest_path: Path | str, *, allow_legacy_derived_assets: bool
-) -> CompiledOrganismBundle:
-    """Compile an organism bundle manifest into runtime-ready JSON payloads."""
-
+def _load_bundle_manifest_inputs(
+    manifest_path: Path | str,
+) -> tuple[
+    Path,
+    Dict[str, Any],
+    Dict[str, str],
+    Dict[str, Any],
+    list[Dict[str, Any]],
+    list[Dict[str, Any]],
+    list[Dict[str, Any]],
+    list[Dict[str, Any]],
+    list[Dict[str, Any]],
+    list[Dict[str, Any]],
+    list[Dict[str, Any]],
+]:
     path = Path(manifest_path).expanduser().resolve()
     manifest = _load_json(path)
     source_hashes: Dict[str, str] = {"manifest.json": _sha256_path(path)}
     _validate_manifest_mode(manifest)
-    _validate_bundle_compile_entrypoint(
-        manifest, allow_legacy_derived_assets=allow_legacy_derived_assets
-    )
-    manifest_allows_legacy_derived_assets = bool(
-        manifest.get("allow_legacy_derived_assets")
-    )
-    require_explicit_asset_entities = bool(manifest.get("require_explicit_asset_entities"))
-    require_explicit_asset_semantics = bool(
-        manifest.get("require_explicit_asset_semantics")
-    )
     organism_spec = _compile_structured_bundle(path, manifest, source_hashes)
     operons_overlay = _load_optional_json(path, manifest, "operons_json", source_hashes) or []
     rnas_overlay = _load_optional_json(path, manifest, "rnas_json", source_hashes) or []
@@ -143,14 +143,50 @@ def _compile_bundle_manifest_impl(
         _load_optional_json(path, manifest, "complex_semantics_json", source_hashes) or []
     )
     _load_optional_json(path, manifest, "program_defaults_json", source_hashes)
+    return (
+        path,
+        manifest,
+        source_hashes,
+        organism_spec,
+        operons_overlay,
+        rnas_overlay,
+        proteins_overlay,
+        complexes_overlay,
+        operon_semantics_overlay,
+        protein_semantics_overlay,
+        complex_semantics_overlay,
+    )
+
+
+def _compile_explicit_bundle_manifest(
+    manifest_path: Path | str,
+) -> CompiledOrganismBundle:
+    """Compile an organism bundle manifest through the explicit structured path."""
+
+    (
+        path,
+        manifest,
+        source_hashes,
+        organism_spec,
+        operons_overlay,
+        rnas_overlay,
+        proteins_overlay,
+        complexes_overlay,
+        operon_semantics_overlay,
+        protein_semantics_overlay,
+        complex_semantics_overlay,
+    ) = _load_bundle_manifest_inputs(manifest_path)
+    _validate_bundle_compile_entrypoint(
+        manifest, allow_legacy_derived_assets=False
+    )
     _validate_explicit_asset_contracts(manifest, source_hashes)
+    require_explicit_asset_entities = bool(manifest.get("require_explicit_asset_entities"))
+    require_explicit_asset_semantics = bool(
+        manifest.get("require_explicit_asset_semantics")
+    )
 
     organism_spec = _with_compiled_chromosome_domains(organism_spec)
-    if require_explicit_asset_entities:
-        asset_package = _empty_genome_asset_package(organism_spec)
-    else:
-        assert manifest_allows_legacy_derived_assets
-        asset_package = _compile_genome_asset_package(organism_spec)
+    asset_package = _empty_genome_asset_package(organism_spec)
     asset_package = _apply_asset_entity_overlays(
         asset_package,
         operons_overlay,
@@ -170,6 +206,53 @@ def _compile_bundle_manifest_impl(
     )
     if require_explicit_asset_semantics:
         _validate_explicit_asset_semantics(asset_package)
+    return CompiledOrganismBundle(
+        manifest_path=str(path),
+        organism=organism_spec["organism"],
+        organism_spec=organism_spec,
+        genome_asset_package=asset_package,
+        source_hashes=source_hashes,
+    )
+
+
+def _compile_legacy_bundle_manifest(
+    manifest_path: Path | str,
+) -> CompiledOrganismBundle:
+    """Compile an organism bundle manifest through the legacy derived-asset path."""
+
+    (
+        path,
+        manifest,
+        source_hashes,
+        organism_spec,
+        operons_overlay,
+        rnas_overlay,
+        proteins_overlay,
+        complexes_overlay,
+        operon_semantics_overlay,
+        protein_semantics_overlay,
+        complex_semantics_overlay,
+    ) = _load_bundle_manifest_inputs(manifest_path)
+    _validate_bundle_compile_entrypoint(
+        manifest, allow_legacy_derived_assets=True
+    )
+
+    organism_spec = _with_compiled_chromosome_domains(organism_spec)
+    asset_package = _compile_genome_asset_package(organism_spec)
+    asset_package = _apply_asset_entity_overlays(
+        asset_package,
+        operons_overlay,
+        rnas_overlay,
+        proteins_overlay,
+        complexes_overlay,
+        derive_semantics=True,
+    )
+    asset_package = _apply_asset_semantic_overlays(
+        asset_package,
+        operon_semantics_overlay,
+        protein_semantics_overlay,
+        complex_semantics_overlay,
+    )
     return CompiledOrganismBundle(
         manifest_path=str(path),
         organism=organism_spec["organism"],

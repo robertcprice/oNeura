@@ -1570,3 +1570,19 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiler.py still combines explicit manifest dispatch with the legacy-derived asset entrypoint, so the next cleanup target is isolating the explicit-vs-legacy bundle orchestration boundary itself`
+
+### 2026-03-12 - Phase 1 / Explicit And Legacy Compiler Split
+
+- Summary:
+  - removed the boolean-gated manifest compiler path in `assets/compiler.py` and split it into explicit and legacy compile flows, so the normal structured-bundle compiler no longer branches through the legacy-derived asset mode at runtime
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/asset_overlays.py src/oneuro/whole_cell/assets/derived_assets.py src/oneuro/whole_cell/assets/source_normalization.py src/oneuro/whole_cell/assets/exporter.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiler.py still owns low-level manifest/source loading and file format readers, so the next cleanup target is separating raw source ingress from the explicit compiler entrypoint without widening the active runtime path again`
