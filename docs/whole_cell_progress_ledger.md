@@ -1671,3 +1671,18 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `explicit chromosome domains are now normalized instead of inferred, but more downstream bundle and runtime surfaces still need the same treatment so explicit sources fully own the active path`
+
+### 2026-03-12 - Phase 7 / Component-Limited Complex Assembly Targets
+
+- Summary:
+  - shifted the active named-complex assembly path away from static `basal_abundance` targets and toward component-limited assembly capacity, so strict-bundle complex targets now respond more directly to available subunits and mature protein output
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_named_complex_target_tracks_component_capacity_over_static_prior --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the active assembly path now uses component capacity instead of a static abundance prior, but other runtime channels still collapse explicit inventories into heuristic subsystem shares and should be pushed toward direct local species ownership next`
