@@ -1732,3 +1732,21 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `process capacities now come straight from explicit runtime state, but several downstream stage drive mixes and fallback inventory targets still depend on generic scalar-rule surrogates instead of explicit local channel execution`
+
+### 2026-03-12 - Phase 7 / Direct Stage Flux And Drive Execution
+
+- Summary:
+  - removed the generic scalar-rule wrappers from the active CME, ODE, BD, and geometry stage flux or drive path, so transcription, translation, membrane flux, replication drive, segregation drive, membrane growth, and constriction now execute directly from explicit capacities and local runtime signals
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_process_fluxes_follow_explicit_channel_inventory --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_cme_stage_follows_explicit_inventory_channels --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the active stage drives are now direct, but energy/resource rules and fallback inventory targets still retain generic scalar-rule or derived-surrogate behavior and are the next bottom-up removal target`
