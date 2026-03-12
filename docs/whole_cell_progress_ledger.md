@@ -1500,3 +1500,20 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `bundled export helpers still share implementation with compiler.py; the next cleanup target is moving those implementation details fully behind the exporter boundary`
+
+### 2026-03-12 - Phase 1 / Exporter Implementation Split
+
+- Summary:
+  - moved whole-cell bundle export and structured-bundle emission implementation out of `compiler.py` and into `assets/exporter.py`, leaving the compiler module focused on manifest ingestion, validation, and compilation while keeping the public Python API unchanged
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `src/oneuro/whole_cell/assets/exporter.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/exporter.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the exporter now owns the implementation, but the next cleanup target is isolating any remaining migration-only normalization helpers that still live in compiler.py for explicit/legacy compatibility`
