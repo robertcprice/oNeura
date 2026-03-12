@@ -2380,6 +2380,7 @@ impl WholeCellSimulator {
             if !self.named_complexes.is_empty() {
                 return self.aggregate_named_complex_assembly_state(assets);
             }
+            return self.complex_assembly;
         }
         if self.complex_assembly.total_complexes() > 1.0e-6 {
             self.complex_assembly
@@ -6211,6 +6212,10 @@ impl WholeCellSimulator {
                 return;
             }
         }
+        if self.organism_assets.is_some() {
+            self.complex_assembly = WholeCellComplexAssemblyState::default();
+            return;
+        }
         let target = self.derived_complex_assembly_target();
         self.complex_assembly = WholeCellComplexAssemblyState {
             atp_band_complexes: target.atp_band_target,
@@ -6226,6 +6231,13 @@ impl WholeCellSimulator {
 
     fn update_complex_assembly_state(&mut self, dt: f32) {
         if self.update_named_complexes_state(dt) {
+            self.sync_runtime_process_species(dt);
+            return;
+        }
+        if self.organism_assets.is_some() {
+            if self.complex_assembly.total_complexes() <= 1.0e-6 {
+                self.complex_assembly = WholeCellComplexAssemblyState::default();
+            }
             self.sync_runtime_process_species(dt);
             return;
         }
@@ -12060,6 +12072,42 @@ mod tests {
         assert!((aggregate.ftsz_degradation_rate - 0.5).abs() < 1.0e-6);
         assert!(aggregate.replisome_complexes.abs() < 1.0e-6);
         assert!(aggregate.atp_band_complexes.abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_explicit_asset_inventory_does_not_fall_back_to_derived_targets() {
+        let mut sim =
+            WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
+        sim.named_complexes.clear();
+        sim.complex_assembly = WholeCellComplexAssemblyState {
+            atp_band_complexes: 3.0,
+            ribosome_complexes: 17.0,
+            rnap_complexes: 11.0,
+            replisome_complexes: 5.0,
+            membrane_complexes: 9.0,
+            ftsz_polymer: 13.0,
+            dnaa_activity: 7.0,
+            atp_band_target: 4.0,
+            ribosome_target: 18.0,
+            rnap_target: 12.0,
+            replisome_target: 6.0,
+            membrane_target: 10.0,
+            ftsz_target: 14.0,
+            dnaa_target: 8.0,
+            ..WholeCellComplexAssemblyState::default()
+        };
+
+        let inventory = sim.assembly_inventory();
+
+        assert!((inventory.atp_band_complexes - 3.0).abs() < 1.0e-6);
+        assert!((inventory.ribosome_complexes - 17.0).abs() < 1.0e-6);
+        assert!((inventory.rnap_complexes - 11.0).abs() < 1.0e-6);
+        assert!((inventory.replisome_complexes - 5.0).abs() < 1.0e-6);
+        assert!((inventory.membrane_complexes - 9.0).abs() < 1.0e-6);
+        assert!((inventory.ftsz_polymer - 13.0).abs() < 1.0e-6);
+        assert!((inventory.dnaa_activity - 7.0).abs() < 1.0e-6);
+        assert!((inventory.ribosome_target - 18.0).abs() < 1.0e-6);
+        assert!((inventory.ftsz_target - 14.0).abs() < 1.0e-6);
     }
 
     #[test]

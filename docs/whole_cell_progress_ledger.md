@@ -1769,3 +1769,20 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `base resource signals and diagnostic pools are now off the active path, but fallback inventory targets and several derived summary rollups still rely on surrogate or scalar-rule behavior instead of explicit local channel ownership`
+
+### 2026-03-12 - Phase 7 / Explicit Assembly Inventory Fallback Narrowing
+
+- Summary:
+  - removed the live derived-target fallback from the explicit asset assembly inventory path, so structured bundles now use named-complex aggregation or persisted complex state instead of regenerating heuristic complex targets
+  - kept the derived complex-target path as a legacy-only fallback for non-asset runtimes
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_explicit_asset_inventory_does_not_fall_back_to_derived_targets --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the explicit assembly path no longer regenerates derived targets, but legacy fallback inventory targets and several derived summary rollups still need to be pushed behind compatibility-only boundaries`
