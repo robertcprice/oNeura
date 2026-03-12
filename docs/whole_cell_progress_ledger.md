@@ -1023,3 +1023,21 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `the bundled Syn3A native path now uses explicit structured sources, but the broader compatibility layer still supports legacy monolithic organism ingestion and should continue shrinking as more organisms move onto explicit bundle contracts`
+
+### 2026-03-11 - Phase 7 / Remove Dead Syn3A Monolith Artifact Slice
+
+- Summary:
+  - removed the unused `oneuro-metal/specs/whole_cell_syn3a_organism.json` file after the native Rust bundled Syn3A path stopped depending on it
+  - updated the top-level execution plan to point at the structured Syn3A bundle directory as the authoritative bundled organism source path instead of the deleted monolithic file
+  - kept the bundled program reference spec intact, so only the dead organism monolith was removed
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/specs/whole_cell_syn3a_organism.json`
+- Tests run:
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the dead bundled Syn3A monolith is gone, but the broader bundle compiler still supports legacy organism_spec_json ingestion for compatibility and should keep shrinking as more organisms live entirely on structured-source contracts`
