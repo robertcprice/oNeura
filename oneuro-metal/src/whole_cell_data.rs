@@ -4936,6 +4936,246 @@ fn validate_explicit_pool_metadata(pools: &[WholeCellMoleculePoolSpec]) -> Resul
     }
 }
 
+fn validate_explicit_operon_assets(operons: &[WholeCellOperonSpec]) -> Result<(), String> {
+    let missing: Vec<String> = operons
+        .iter()
+        .filter(|operon| {
+            operon.asset_class.is_none()
+                || operon.complex_family.is_none()
+                || operon.subsystem_targets.is_empty()
+        })
+        .map(|operon| operon.name.clone())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle requires explicit asset entities but {} operon(s) are incomplete: {}",
+            missing.len(),
+            missing.join(", ")
+        ))
+    }
+}
+
+fn validate_explicit_protein_assets(
+    proteins: &[WholeCellProteinProductSpec],
+) -> Result<(), String> {
+    let missing: Vec<String> = proteins
+        .iter()
+        .filter(|protein| protein.subsystem_targets.is_empty())
+        .map(|protein| protein.id.clone())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle requires explicit asset entities but {} protein(s) are incomplete: {}",
+            missing.len(),
+            missing.join(", ")
+        ))
+    }
+}
+
+fn validate_explicit_complex_assets(complexes: &[WholeCellComplexSpec]) -> Result<(), String> {
+    let missing: Vec<String> = complexes
+        .iter()
+        .filter(|complex| complex.subsystem_targets.is_empty())
+        .map(|complex| complex.id.clone())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle requires explicit asset entities but {} complex(es) are incomplete: {}",
+            missing.len(),
+            missing.join(", ")
+        ))
+    }
+}
+
+fn validate_explicit_asset_entities(assets: &WholeCellGenomeAssetPackage) -> Result<(), String> {
+    validate_explicit_operon_assets(&assets.operons)?;
+    validate_explicit_protein_assets(&assets.proteins)?;
+    validate_explicit_complex_assets(&assets.complexes)
+}
+
+fn validate_explicit_operon_semantics(assets: &WholeCellGenomeAssetPackage) -> Result<(), String> {
+    let semantics: HashMap<&str, &WholeCellOperonSemanticSpec> = assets
+        .operon_semantics
+        .iter()
+        .map(|semantic| (semantic.name.as_str(), semantic))
+        .collect();
+    let missing: Vec<String> = assets
+        .operons
+        .iter()
+        .filter(|operon| {
+            semantics
+                .get(operon.name.as_str())
+                .map_or(true, |semantic| semantic.subsystem_targets.is_empty())
+        })
+        .map(|operon| operon.name.clone())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle requires explicit asset semantics but {} operon semantic entry(s) are incomplete: {}",
+            missing.len(),
+            missing.join(", ")
+        ))
+    }
+}
+
+fn validate_explicit_protein_semantics(assets: &WholeCellGenomeAssetPackage) -> Result<(), String> {
+    let semantics: HashMap<&str, &WholeCellProteinSemanticSpec> = assets
+        .protein_semantics
+        .iter()
+        .map(|semantic| (semantic.id.as_str(), semantic))
+        .collect();
+    let missing: Vec<String> = assets
+        .proteins
+        .iter()
+        .filter(|protein| {
+            semantics
+                .get(protein.id.as_str())
+                .map_or(true, |semantic| semantic.subsystem_targets.is_empty())
+        })
+        .map(|protein| protein.id.clone())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle requires explicit asset semantics but {} protein semantic entry(s) are incomplete: {}",
+            missing.len(),
+            missing.join(", ")
+        ))
+    }
+}
+
+fn validate_explicit_complex_semantics(assets: &WholeCellGenomeAssetPackage) -> Result<(), String> {
+    let semantics: HashMap<&str, &WholeCellComplexSemanticSpec> = assets
+        .complex_semantics
+        .iter()
+        .map(|semantic| (semantic.id.as_str(), semantic))
+        .collect();
+    let missing: Vec<String> = assets
+        .complexes
+        .iter()
+        .filter(|complex| {
+            semantics
+                .get(complex.id.as_str())
+                .map_or(true, |semantic| semantic.subsystem_targets.is_empty())
+        })
+        .map(|complex| complex.id.clone())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle requires explicit asset semantics but {} complex semantic entry(s) are incomplete: {}",
+            missing.len(),
+            missing.join(", ")
+        ))
+    }
+}
+
+fn validate_explicit_asset_semantics(assets: &WholeCellGenomeAssetPackage) -> Result<(), String> {
+    validate_explicit_operon_semantics(assets)?;
+    validate_explicit_protein_semantics(assets)?;
+    validate_explicit_complex_semantics(assets)
+}
+
+fn merge_explicit_asset_semantics_into_entities(assets: &mut WholeCellGenomeAssetPackage) {
+    let operon_semantics: HashMap<String, WholeCellOperonSemanticSpec> = assets
+        .operon_semantics
+        .iter()
+        .cloned()
+        .map(|semantic| (semantic.name.clone(), semantic))
+        .collect();
+    for operon in &mut assets.operons {
+        if let Some(semantic) = operon_semantics.get(&operon.name) {
+            operon.asset_class = Some(semantic.asset_class);
+            operon.complex_family = Some(semantic.complex_family);
+            if operon.subsystem_targets.is_empty() {
+                operon.subsystem_targets = semantic.subsystem_targets.clone();
+            } else {
+                push_unique_subsystem_targets(
+                    &mut operon.subsystem_targets,
+                    &semantic.subsystem_targets,
+                );
+            }
+        }
+    }
+
+    let protein_semantics: HashMap<String, WholeCellProteinSemanticSpec> = assets
+        .protein_semantics
+        .iter()
+        .cloned()
+        .map(|semantic| (semantic.id.clone(), semantic))
+        .collect();
+    for protein in &mut assets.proteins {
+        if let Some(semantic) = protein_semantics.get(&protein.id) {
+            protein.asset_class = semantic.asset_class;
+            if protein.subsystem_targets.is_empty() {
+                protein.subsystem_targets = semantic.subsystem_targets.clone();
+            } else {
+                push_unique_subsystem_targets(
+                    &mut protein.subsystem_targets,
+                    &semantic.subsystem_targets,
+                );
+            }
+        }
+    }
+
+    let complex_semantics: HashMap<String, WholeCellComplexSemanticSpec> = assets
+        .complex_semantics
+        .iter()
+        .cloned()
+        .map(|semantic| (semantic.id.clone(), semantic))
+        .collect();
+    for complex in &mut assets.complexes {
+        if let Some(semantic) = complex_semantics.get(&complex.id) {
+            complex.asset_class = semantic.asset_class;
+            complex.family = semantic.family;
+            complex.membrane_inserted = semantic.membrane_inserted;
+            complex.chromosome_coupled = semantic.chromosome_coupled;
+            complex.division_coupled = semantic.division_coupled;
+            if complex.subsystem_targets.is_empty() {
+                complex.subsystem_targets = semantic.subsystem_targets.clone();
+            } else {
+                push_unique_subsystem_targets(
+                    &mut complex.subsystem_targets,
+                    &semantic.subsystem_targets,
+                );
+            }
+        }
+    }
+}
+
+fn finalize_bundle_asset_package(
+    manifest: &WholeCellOrganismBundleManifest,
+    mut assets: WholeCellGenomeAssetPackage,
+) -> Result<WholeCellGenomeAssetPackage, String> {
+    if manifest.require_explicit_asset_entities {
+        validate_explicit_asset_entities(&assets)?;
+    }
+    if manifest.require_explicit_asset_semantics {
+        merge_explicit_asset_semantics_into_entities(&mut assets);
+        validate_explicit_asset_semantics(&assets)?;
+        return Ok(assets);
+    }
+    if manifest.require_explicit_asset_entities {
+        assets.operon_semantics = compile_operon_semantic_specs(&assets.operons);
+        assets.protein_semantics = compile_protein_semantic_specs(&assets.proteins);
+        assets.complex_semantics = compile_complex_semantic_specs(&assets.complexes);
+        return Ok(assets);
+    }
+    Ok(with_normalized_asset_semantic_metadata(
+        with_normalized_asset_pool_metadata(assets),
+    ))
+}
+
 fn pool_concentration_for_field(
     pools: &[WholeCellMoleculePoolSpec],
     field: WholeCellBulkField,
@@ -5427,9 +5667,7 @@ fn apply_bundle_asset_semantic_overlays(
             )
         })?;
     }
-    Ok(with_normalized_asset_semantic_metadata(
-        with_normalized_asset_pool_metadata(assets),
-    ))
+    Ok(assets)
 }
 
 fn apply_bundle_asset_entity_overlays(
@@ -5492,9 +5730,7 @@ fn apply_bundle_asset_entity_overlays(
         assets.protein_semantics.clear();
         assets.complex_semantics.clear();
     }
-    Ok(with_normalized_asset_semantic_metadata(
-        with_normalized_asset_pool_metadata(assets),
-    ))
+    Ok(assets)
 }
 
 fn compile_genome_asset_package_from_bundle_manifest_path(
@@ -5509,7 +5745,8 @@ fn compile_genome_asset_package_from_bundle_manifest_path(
     let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
     let assets = compile_genome_asset_package(&organism);
     let assets = apply_bundle_asset_entity_overlays(&manifest_path_obj, &manifest, assets)?;
-    apply_bundle_asset_semantic_overlays(&manifest_path_obj, &manifest, assets)
+    let assets = apply_bundle_asset_semantic_overlays(&manifest_path_obj, &manifest, assets)?;
+    finalize_bundle_asset_package(&manifest, assets)
 }
 
 fn apply_bundle_program_defaults(
@@ -5741,9 +5978,7 @@ fn compile_embedded_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetP
         BUNDLED_SYN3A_BUNDLE_COMPLEX_SEMANTICS_JSON,
     )
     .map_err(|error| format!("failed to parse embedded Syn3A complex semantics: {error}"))?;
-    Ok(with_normalized_asset_semantic_metadata(
-        with_normalized_asset_pool_metadata(assets),
-    ))
+    finalize_bundle_asset_package(&manifest, assets)
 }
 
 pub fn bundled_syn3a_genome_asset_package_json() -> Result<&'static str, String> {
@@ -6104,6 +6339,66 @@ mod tests {
             .complexes
             .iter()
             .any(|complex| !complex.subsystem_targets.is_empty()));
+    }
+
+    #[test]
+    fn explicit_asset_entity_validation_rejects_incomplete_operons() {
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let operon = package.operons.first_mut().expect("operon");
+        let operon_name = operon.name.clone();
+        operon.asset_class = None;
+        operon.complex_family = None;
+        operon.subsystem_targets.clear();
+
+        let error = validate_explicit_asset_entities(&package)
+            .expect_err("incomplete strict operon assets should fail");
+
+        assert!(error.contains("requires explicit asset entities"));
+        assert!(error.contains(&operon_name));
+    }
+
+    #[test]
+    fn explicit_asset_semantic_validation_requires_full_operon_coverage() {
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let removed = package
+            .operon_semantics
+            .pop()
+            .expect("bundled operon semantic");
+
+        let error = validate_explicit_asset_semantics(&package)
+            .expect_err("missing strict operon semantic coverage should fail");
+
+        assert!(error.contains("requires explicit asset semantics"));
+        assert!(error.contains(&removed.name));
+    }
+
+    #[test]
+    fn explicit_asset_semantics_merge_restores_entity_fields() {
+        let mut package = bundled_syn3a_genome_asset_package().expect("bundled asset package");
+        let semantic = package
+            .operon_semantics
+            .first()
+            .expect("bundled operon semantic")
+            .clone();
+        let operon = package
+            .operons
+            .iter_mut()
+            .find(|operon| operon.name == semantic.name)
+            .expect("matching operon");
+        operon.asset_class = None;
+        operon.complex_family = None;
+        operon.subsystem_targets.clear();
+
+        merge_explicit_asset_semantics_into_entities(&mut package);
+
+        let restored = package
+            .operons
+            .iter()
+            .find(|operon| operon.name == semantic.name)
+            .expect("restored operon");
+        assert_eq!(restored.asset_class, Some(semantic.asset_class));
+        assert_eq!(restored.complex_family, Some(semantic.complex_family));
+        assert_eq!(restored.subsystem_targets, semantic.subsystem_targets);
     }
 
     #[test]

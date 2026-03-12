@@ -73,6 +73,10 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
     manifest = _load_json(path)
     source_hashes: Dict[str, str] = {"manifest.json": _sha256_path(path)}
     _validate_manifest_mode(manifest)
+    require_explicit_asset_entities = bool(manifest.get("require_explicit_asset_entities"))
+    require_explicit_asset_semantics = bool(
+        manifest.get("require_explicit_asset_semantics")
+    )
     organism_spec = _compile_structured_bundle(path, manifest, source_hashes)
 
     organism_spec = _with_compiled_chromosome_domains(organism_spec)
@@ -83,7 +87,10 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
         _load_optional_json(path, manifest, "rnas_json", source_hashes) or [],
         _load_optional_json(path, manifest, "proteins_json", source_hashes) or [],
         _load_optional_json(path, manifest, "complexes_json", source_hashes) or [],
+        derive_semantics=not require_explicit_asset_semantics,
     )
+    if require_explicit_asset_entities:
+        _validate_explicit_asset_entities(asset_package)
     asset_package = _apply_asset_semantic_overlays(
         asset_package,
         _load_optional_json(path, manifest, "operon_semantics_json", source_hashes) or [],
@@ -92,6 +99,8 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
     )
     _load_optional_json(path, manifest, "program_defaults_json", source_hashes)
     _validate_explicit_asset_contracts(manifest, source_hashes)
+    if require_explicit_asset_semantics:
+        _validate_explicit_asset_semantics(asset_package)
     return CompiledOrganismBundle(
         manifest_path=str(path),
         organism=organism_spec["organism"],
@@ -589,6 +598,8 @@ def _apply_asset_entity_overlays(
     rnas_overlay: list[Dict[str, Any]],
     proteins_overlay: list[Dict[str, Any]],
     complexes_overlay: list[Dict[str, Any]],
+    *,
+    derive_semantics: bool = True,
 ) -> Dict[str, Any]:
     compiled = dict(asset_package)
     entity_overrides = False
@@ -605,10 +616,111 @@ def _apply_asset_entity_overlays(
         compiled["complexes"] = [dict(complex_spec) for complex_spec in complexes_overlay]
         entity_overrides = True
     if entity_overrides:
-        compiled["operon_semantics"] = _derive_operon_semantics(compiled)
-        compiled["protein_semantics"] = _derive_protein_semantics(compiled)
-        compiled["complex_semantics"] = _derive_complex_semantics(compiled)
+        if derive_semantics:
+            compiled["operon_semantics"] = _derive_operon_semantics(compiled)
+            compiled["protein_semantics"] = _derive_protein_semantics(compiled)
+            compiled["complex_semantics"] = _derive_complex_semantics(compiled)
+        else:
+            compiled["operon_semantics"] = []
+            compiled["protein_semantics"] = []
+            compiled["complex_semantics"] = []
     return compiled
+
+
+def _validate_explicit_asset_entities(asset_package: Dict[str, Any]) -> None:
+    operons = asset_package.get("operons", [])
+    proteins = asset_package.get("proteins", [])
+    complexes = asset_package.get("complexes", [])
+
+    missing_operons = [
+        operon["name"]
+        for operon in operons
+        if not operon.get("asset_class")
+        or not operon.get("complex_family")
+        or not operon.get("subsystem_targets")
+    ]
+    if missing_operons:
+        raise ValueError(
+            "bundle requires explicit asset entities but "
+            f"{len(missing_operons)} operon(s) are incomplete: "
+            + ", ".join(missing_operons)
+        )
+
+    missing_proteins = [
+        protein["id"]
+        for protein in proteins
+        if not protein.get("asset_class") or not protein.get("subsystem_targets")
+    ]
+    if missing_proteins:
+        raise ValueError(
+            "bundle requires explicit asset entities but "
+            f"{len(missing_proteins)} protein(s) are incomplete: "
+            + ", ".join(missing_proteins)
+        )
+
+    missing_complexes = [
+        complex_spec["id"]
+        for complex_spec in complexes
+        if not complex_spec.get("asset_class")
+        or not complex_spec.get("family")
+        or not complex_spec.get("subsystem_targets")
+    ]
+    if missing_complexes:
+        raise ValueError(
+            "bundle requires explicit asset entities but "
+            f"{len(missing_complexes)} complex(es) are incomplete: "
+            + ", ".join(missing_complexes)
+        )
+
+
+def _validate_explicit_asset_semantics(asset_package: Dict[str, Any]) -> None:
+    operon_semantics = {
+        semantic["name"]: semantic for semantic in asset_package.get("operon_semantics", [])
+    }
+    missing_operon_semantics = [
+        operon["name"]
+        for operon in asset_package.get("operons", [])
+        if operon["name"] not in operon_semantics
+        or not operon_semantics[operon["name"]].get("subsystem_targets")
+    ]
+    if missing_operon_semantics:
+        raise ValueError(
+            "bundle requires explicit asset semantics but "
+            f"{len(missing_operon_semantics)} operon semantic entry(s) are incomplete: "
+            + ", ".join(missing_operon_semantics)
+        )
+
+    protein_semantics = {
+        semantic["id"]: semantic for semantic in asset_package.get("protein_semantics", [])
+    }
+    missing_protein_semantics = [
+        protein["id"]
+        for protein in asset_package.get("proteins", [])
+        if protein["id"] not in protein_semantics
+        or not protein_semantics[protein["id"]].get("subsystem_targets")
+    ]
+    if missing_protein_semantics:
+        raise ValueError(
+            "bundle requires explicit asset semantics but "
+            f"{len(missing_protein_semantics)} protein semantic entry(s) are incomplete: "
+            + ", ".join(missing_protein_semantics)
+        )
+
+    complex_semantics = {
+        semantic["id"]: semantic for semantic in asset_package.get("complex_semantics", [])
+    }
+    missing_complex_semantics = [
+        complex_spec["id"]
+        for complex_spec in asset_package.get("complexes", [])
+        if complex_spec["id"] not in complex_semantics
+        or not complex_semantics[complex_spec["id"]].get("subsystem_targets")
+    ]
+    if missing_complex_semantics:
+        raise ValueError(
+            "bundle requires explicit asset semantics but "
+            f"{len(missing_complex_semantics)} complex semantic entry(s) are incomplete: "
+            + ", ".join(missing_complex_semantics)
+        )
 
 
 def _derive_operon_semantics(asset_package: Dict[str, Any]) -> list[Dict[str, Any]]:

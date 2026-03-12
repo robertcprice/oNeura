@@ -292,6 +292,7 @@ def test_explicit_asset_bundle_rejects_missing_operon_source(tmp_path):
         "transcription_unit_semantics.json",
         "chromosome_domains.json",
         "pools.json",
+        "operons.json",
         "rnas.json",
         "proteins.json",
         "complexes.json",
@@ -384,6 +385,87 @@ def test_strict_structured_bundle_rejects_missing_pool_bulk_field(tmp_path):
     with pytest.raises(
         ValueError,
         match="requires explicit pool metadata but 1 pool\\(s\\) are incomplete: ATP",
+    ):
+        compile_bundle_manifest(bundle_dir / "manifest.json")
+
+
+def test_strict_structured_bundle_rejects_incomplete_operon_asset_entity(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    source_dir = Path("src/oneuro/whole_cell/assets/bundles/jcvi_syn3a").resolve()
+    for name in [
+        "metadata.json",
+        "gene_features.json",
+        "gene_products.json",
+        "gene_semantics.json",
+        "transcription_units.json",
+        "transcription_unit_semantics.json",
+        "chromosome_domains.json",
+        "pools.json",
+        "rnas.json",
+        "proteins.json",
+        "complexes.json",
+        "operon_semantics.json",
+        "protein_semantics.json",
+        "complex_semantics.json",
+        "program_defaults.json",
+    ]:
+        (bundle_dir / name).write_text((source_dir / name).read_text(), encoding="ascii")
+    operons = json.loads((source_dir / "operons.json").read_text(encoding="ascii"))
+    target = operons[0]["name"]
+    operons[0].pop("asset_class", None)
+    (bundle_dir / "operons.json").write_text(
+        json.dumps(operons, indent=2), encoding="ascii"
+    )
+    manifest = json.loads((source_dir / "manifest.json").read_text(encoding="ascii"))
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="ascii"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"requires explicit asset entities but 1 operon\(s\) are incomplete: {target}",
+    ):
+        compile_bundle_manifest(bundle_dir / "manifest.json")
+
+
+def test_strict_structured_bundle_rejects_missing_operon_semantic_coverage(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    source_dir = Path("src/oneuro/whole_cell/assets/bundles/jcvi_syn3a").resolve()
+    for name in [
+        "metadata.json",
+        "gene_features.json",
+        "gene_products.json",
+        "gene_semantics.json",
+        "transcription_units.json",
+        "transcription_unit_semantics.json",
+        "chromosome_domains.json",
+        "pools.json",
+        "operons.json",
+        "rnas.json",
+        "proteins.json",
+        "complexes.json",
+        "protein_semantics.json",
+        "complex_semantics.json",
+        "program_defaults.json",
+    ]:
+        (bundle_dir / name).write_text((source_dir / name).read_text(), encoding="ascii")
+    operon_semantics = json.loads(
+        (source_dir / "operon_semantics.json").read_text(encoding="ascii")
+    )
+    removed = operon_semantics.pop(0)["name"]
+    (bundle_dir / "operon_semantics.json").write_text(
+        json.dumps(operon_semantics, indent=2), encoding="ascii"
+    )
+    manifest = json.loads((source_dir / "manifest.json").read_text(encoding="ascii"))
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="ascii"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"requires explicit asset semantics but 1 operon semantic entry\(s\) are incomplete: {removed}",
     ):
         compile_bundle_manifest(bundle_dir / "manifest.json")
 

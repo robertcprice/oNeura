@@ -1235,3 +1235,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `strict bundle compilation now enforces explicit pool metadata, but explicit asset-package validation still shares some normalization logic and compatibility-only semantic backfills still remain at JSON/data ingress`
+
+### 2026-03-12 - Phase 7 / Remove Strict Asset Package Self-Healing
+
+- Summary:
+  - removed the strict-bundle asset-package self-healing path in both the Python and Rust compilers, so explicit asset entities and semantic overlays are no longer silently re-normalized after load
+  - added strict validation for explicit operon, protein, and complex entity metadata plus full semantic-map coverage, making strict bundles fail when those source contracts are incomplete instead of regenerating missing asset meaning downstream
+  - changed the native Rust strict path to merge explicit semantic overlays directly onto entity records and otherwise return explicit asset packages as-is, keeping normalization as a compatibility-only path for non-strict bundles
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `strict bundle compilation now trusts explicit asset packages end to end, but JSON/state ingress still contains compatibility-only semantic backfills and broader source coverage is still needed so more bundles can run without any inferred fallback metadata`
