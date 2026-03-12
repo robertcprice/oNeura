@@ -82,6 +82,12 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
 
     organism_spec = _with_compiled_chromosome_domains(organism_spec)
     asset_package = _compile_genome_asset_package(organism_spec)
+    asset_package = _apply_asset_semantic_overlays(
+        asset_package,
+        _load_optional_json(path, manifest, "operon_semantics_json", source_hashes) or [],
+        _load_optional_json(path, manifest, "protein_semantics_json", source_hashes) or [],
+        _load_optional_json(path, manifest, "complex_semantics_json", source_hashes) or [],
+    )
     return CompiledOrganismBundle(
         manifest_path=str(path),
         organism=organism_spec["organism"],
@@ -191,6 +197,7 @@ def write_structured_bundle_sources(
     out_dir = Path(output_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    asset_package = _compile_genome_asset_package(organism_spec)
     metadata = {
         "organism": organism_spec["organism"],
         "chromosome_length_bp": int(organism_spec["chromosome_length_bp"]),
@@ -248,6 +255,9 @@ def write_structured_bundle_sources(
     ]
     chromosome_domains = list(organism_spec.get("chromosome_domains", []))
     pools = list(organism_spec.get("pools", []))
+    operon_semantics = list(asset_package.get("operon_semantics", []))
+    protein_semantics = list(asset_package.get("protein_semantics", []))
+    complex_semantics = list(asset_package.get("complex_semantics", []))
     manifest = {
         "organism": organism_spec["organism"],
         "source_dataset": source_dataset
@@ -262,6 +272,9 @@ def write_structured_bundle_sources(
         "transcription_unit_semantics_json": "transcription_unit_semantics.json",
         "chromosome_domains_json": "chromosome_domains.json",
         "pools_json": "pools.json",
+        "operon_semantics_json": "operon_semantics.json",
+        "protein_semantics_json": "protein_semantics.json",
+        "complex_semantics_json": "complex_semantics.json",
     }
 
     written = {
@@ -274,6 +287,9 @@ def write_structured_bundle_sources(
         "transcription_unit_semantics": out_dir / "transcription_unit_semantics.json",
         "chromosome_domains": out_dir / "chromosome_domains.json",
         "pools": out_dir / "pools.json",
+        "operon_semantics": out_dir / "operon_semantics.json",
+        "protein_semantics": out_dir / "protein_semantics.json",
+        "complex_semantics": out_dir / "complex_semantics.json",
     }
 
     payloads = {
@@ -286,10 +302,127 @@ def write_structured_bundle_sources(
         "transcription_unit_semantics": transcription_unit_semantics,
         "chromosome_domains": chromosome_domains,
         "pools": pools,
+        "operon_semantics": operon_semantics,
+        "protein_semantics": protein_semantics,
+        "complex_semantics": complex_semantics,
     }
     for key, path in written.items():
         path.write_text(json.dumps(payloads[key], indent=2), encoding="ascii")
     return {key: str(path) for key, path in written.items()}
+
+
+def _apply_asset_semantic_overlays(
+    asset_package: Dict[str, Any],
+    operon_semantics_overlay: list[Dict[str, Any]],
+    protein_semantics_overlay: list[Dict[str, Any]],
+    complex_semantics_overlay: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    compiled = dict(asset_package)
+    operons = [dict(operon) for operon in compiled.get("operons", [])]
+    proteins = [dict(protein) for protein in compiled.get("proteins", [])]
+    complexes = [dict(complex_spec) for complex_spec in compiled.get("complexes", [])]
+
+    operon_semantics = {
+        semantic["name"]: dict(semantic)
+        for semantic in compiled.get("operon_semantics", [])
+    }
+    for semantic in operon_semantics_overlay:
+        merged = operon_semantics.setdefault(semantic["name"], {"name": semantic["name"]})
+        if semantic.get("asset_class"):
+            merged["asset_class"] = semantic["asset_class"]
+        if semantic.get("complex_family"):
+            merged["complex_family"] = semantic["complex_family"]
+        merged_targets = list(merged.get("subsystem_targets", []))
+        for target in semantic.get("subsystem_targets", []):
+            if target not in merged_targets:
+                merged_targets.append(target)
+        merged["subsystem_targets"] = merged_targets
+    for operon in operons:
+        semantic = operon_semantics.get(operon["name"])
+        if semantic is None:
+            continue
+        operon["asset_class"] = semantic.get("asset_class", operon.get("asset_class"))
+        operon["complex_family"] = semantic.get(
+            "complex_family", operon.get("complex_family")
+        )
+        targets = list(operon.get("subsystem_targets", []))
+        for target in semantic.get("subsystem_targets", []):
+            if target not in targets:
+                targets.append(target)
+        operon["subsystem_targets"] = targets
+
+    protein_semantics = {
+        semantic["id"]: dict(semantic)
+        for semantic in compiled.get("protein_semantics", [])
+    }
+    for semantic in protein_semantics_overlay:
+        merged = protein_semantics.setdefault(semantic["id"], {"id": semantic["id"]})
+        if semantic.get("asset_class"):
+            merged["asset_class"] = semantic["asset_class"]
+        merged_targets = list(merged.get("subsystem_targets", []))
+        for target in semantic.get("subsystem_targets", []):
+            if target not in merged_targets:
+                merged_targets.append(target)
+        merged["subsystem_targets"] = merged_targets
+    for protein in proteins:
+        semantic = protein_semantics.get(protein["id"])
+        if semantic is None:
+            continue
+        protein["asset_class"] = semantic.get("asset_class", protein.get("asset_class"))
+        targets = list(protein.get("subsystem_targets", []))
+        for target in semantic.get("subsystem_targets", []):
+            if target not in targets:
+                targets.append(target)
+        protein["subsystem_targets"] = targets
+
+    complex_semantics = {
+        semantic["id"]: dict(semantic)
+        for semantic in compiled.get("complex_semantics", [])
+    }
+    for semantic in complex_semantics_overlay:
+        merged = complex_semantics.setdefault(semantic["id"], {"id": semantic["id"]})
+        if semantic.get("asset_class"):
+            merged["asset_class"] = semantic["asset_class"]
+        if semantic.get("family"):
+            merged["family"] = semantic["family"]
+        for key in ("membrane_inserted", "chromosome_coupled", "division_coupled"):
+            if key in semantic:
+                merged[key] = bool(semantic[key])
+        merged_targets = list(merged.get("subsystem_targets", []))
+        for target in semantic.get("subsystem_targets", []):
+            if target not in merged_targets:
+                merged_targets.append(target)
+        merged["subsystem_targets"] = merged_targets
+    for complex_spec in complexes:
+        semantic = complex_semantics.get(complex_spec["id"])
+        if semantic is None:
+            continue
+        complex_spec["asset_class"] = semantic.get(
+            "asset_class", complex_spec.get("asset_class")
+        )
+        complex_spec["family"] = semantic.get("family", complex_spec.get("family"))
+        for key in ("membrane_inserted", "chromosome_coupled", "division_coupled"):
+            if key in semantic:
+                complex_spec[key] = bool(semantic[key])
+        targets = list(complex_spec.get("subsystem_targets", []))
+        for target in semantic.get("subsystem_targets", []):
+            if target not in targets:
+                targets.append(target)
+        complex_spec["subsystem_targets"] = targets
+
+    compiled["operons"] = operons
+    compiled["proteins"] = proteins
+    compiled["complexes"] = complexes
+    compiled["operon_semantics"] = sorted(
+        operon_semantics.values(), key=lambda semantic: semantic["name"]
+    )
+    compiled["protein_semantics"] = sorted(
+        protein_semantics.values(), key=lambda semantic: semantic["id"]
+    )
+    compiled["complex_semantics"] = sorted(
+        complex_semantics.values(), key=lambda semantic: semantic["id"]
+    )
+    return compiled
 
 
 def _compile_structured_bundle(

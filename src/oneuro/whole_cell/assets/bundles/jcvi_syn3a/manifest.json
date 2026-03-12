@@ -10,5 +10,8 @@
   "transcription_units_json": "transcription_units.json",
   "transcription_unit_semantics_json": "transcription_unit_semantics.json",
   "chromosome_domains_json": "chromosome_domains.json",
-  "pools_json": "pools.json"
+  "pools_json": "pools.json",
+  "operon_semantics_json": "operon_semantics.json",
+  "protein_semantics_json": "protein_semantics.json",
+  "complex_semantics_json": "complex_semantics.json"
 }

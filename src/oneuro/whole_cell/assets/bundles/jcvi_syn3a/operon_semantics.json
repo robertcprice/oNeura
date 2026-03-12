@@ -1,0 +1,75 @@
+[
+  {
+    "name": "energy_membrane_operon",
+    "asset_class": "energy",
+    "complex_family": "atp_synthase",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "name": "ribosome_biogenesis_operon",
+    "asset_class": "translation",
+    "complex_family": "ribosome",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "name": "translation_factor_operon",
+    "asset_class": "translation",
+    "complex_family": "generic",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "name": "replication_cycle_operon",
+    "asset_class": "replication",
+    "complex_family": "replisome",
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "name": "partitioning_unit",
+    "asset_class": "replication",
+    "complex_family": "replisome",
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "name": "membrane_homeostasis_operon",
+    "asset_class": "energy",
+    "complex_family": "atp_synthase",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand",
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "name": "division_ring_operon",
+    "asset_class": "constriction",
+    "complex_family": "divisome",
+    "subsystem_targets": [
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "name": "carbon_energy_unit",
+    "asset_class": "energy",
+    "complex_family": "atp_synthase",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "name": "quality_control_unit",
+    "asset_class": "quality_control",
+    "complex_family": "chaperone_client",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  }
+]

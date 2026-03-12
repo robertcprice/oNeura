@@ -34,6 +34,12 @@ const BUNDLED_SYN3A_BUNDLE_CHROMOSOME_DOMAINS_JSON: &str =
     include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/chromosome_domains.json");
 const BUNDLED_SYN3A_BUNDLE_POOLS_JSON: &str =
     include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/pools.json");
+const BUNDLED_SYN3A_BUNDLE_OPERON_SEMANTICS_JSON: &str =
+    include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/operon_semantics.json");
+const BUNDLED_SYN3A_BUNDLE_PROTEIN_SEMANTICS_JSON: &str =
+    include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/protein_semantics.json");
+const BUNDLED_SYN3A_BUNDLE_COMPLEX_SEMANTICS_JSON: &str =
+    include_str!("../../src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/complex_semantics.json");
 pub const WHOLE_CELL_CONTRACT_VERSION: &str = "whole_cell_phase0";
 pub const WHOLE_CELL_PROGRAM_SCHEMA_VERSION: u32 = 1;
 pub const WHOLE_CELL_SAVED_STATE_SCHEMA_VERSION: u32 = 1;
@@ -1463,6 +1469,12 @@ pub struct WholeCellOrganismBundleManifest {
     pub chromosome_domains_json: Option<String>,
     #[serde(default)]
     pub pools_json: Option<String>,
+    #[serde(default)]
+    pub operon_semantics_json: Option<String>,
+    #[serde(default)]
+    pub protein_semantics_json: Option<String>,
+    #[serde(default)]
+    pub complex_semantics_json: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -5162,6 +5174,65 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
     ))
 }
 
+fn apply_bundle_asset_semantic_overlays(
+    manifest_path: &Path,
+    manifest: &WholeCellOrganismBundleManifest,
+    mut assets: WholeCellGenomeAssetPackage,
+) -> Result<WholeCellGenomeAssetPackage, String> {
+    if let Some(operon_semantics_json) = manifest.operon_semantics_json.as_deref() {
+        let semantics_path = resolve_manifest_relative_path(manifest_path, operon_semantics_json)?;
+        assets.operon_semantics = serde_json::from_str::<Vec<WholeCellOperonSemanticSpec>>(
+            &read_text_file(&semantics_path, "operon semantic JSON")?,
+        )
+        .map_err(|error| {
+            format!(
+                "failed to parse operon semantics {}: {error}",
+                semantics_path.display()
+            )
+        })?;
+    }
+    if let Some(protein_semantics_json) = manifest.protein_semantics_json.as_deref() {
+        let semantics_path = resolve_manifest_relative_path(manifest_path, protein_semantics_json)?;
+        assets.protein_semantics = serde_json::from_str::<Vec<WholeCellProteinSemanticSpec>>(
+            &read_text_file(&semantics_path, "protein semantic JSON")?,
+        )
+        .map_err(|error| {
+            format!(
+                "failed to parse protein semantics {}: {error}",
+                semantics_path.display()
+            )
+        })?;
+    }
+    if let Some(complex_semantics_json) = manifest.complex_semantics_json.as_deref() {
+        let semantics_path = resolve_manifest_relative_path(manifest_path, complex_semantics_json)?;
+        assets.complex_semantics = serde_json::from_str::<Vec<WholeCellComplexSemanticSpec>>(
+            &read_text_file(&semantics_path, "complex semantic JSON")?,
+        )
+        .map_err(|error| {
+            format!(
+                "failed to parse complex semantics {}: {error}",
+                semantics_path.display()
+            )
+        })?;
+    }
+    Ok(with_normalized_asset_semantic_metadata(
+        with_normalized_asset_pool_metadata(assets),
+    ))
+}
+
+fn compile_genome_asset_package_from_bundle_manifest_path(
+    manifest_path: &str,
+) -> Result<WholeCellGenomeAssetPackage, String> {
+    let manifest_path_obj = Path::new(manifest_path).canonicalize().map_err(|error| {
+        format!("failed to resolve bundle manifest path {manifest_path}: {error}")
+    })?;
+    let manifest_json = read_text_file(&manifest_path_obj, "bundle manifest")?;
+    let manifest = parse_bundle_manifest_json(&manifest_json)?;
+    let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
+    let assets = compile_genome_asset_package(&organism);
+    apply_bundle_asset_semantic_overlays(&manifest_path_obj, &manifest, assets)
+}
+
 pub fn compile_program_spec_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<WholeCellProgramSpec, String> {
@@ -5171,7 +5242,13 @@ pub fn compile_program_spec_from_bundle_manifest_path(
     let manifest_json = read_text_file(&manifest_path_obj, "bundle manifest")?;
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
     let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
-    build_program_spec_from_organism(organism, manifest.source_dataset.clone())
+    let assets = compile_genome_asset_package_from_bundle_manifest_path(manifest_path)?;
+    let registry = compile_genome_process_registry(&assets);
+    let mut spec = build_program_spec_from_organism(organism, manifest.source_dataset.clone())?;
+    spec.organism_assets = Some(assets);
+    spec.organism_process_registry = Some(registry);
+    hydrate_program_spec(&mut spec)?;
+    Ok(spec)
 }
 
 pub fn compile_program_spec_json_from_bundle_manifest_path(
@@ -5193,8 +5270,7 @@ pub fn compile_organism_spec_json_from_bundle_manifest_path(
 pub fn compile_genome_asset_package_json_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<String, String> {
-    let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
-    let assets = compile_genome_asset_package(&organism);
+    let assets = compile_genome_asset_package_from_bundle_manifest_path(manifest_path)?;
     serde_json::to_string_pretty(&assets)
         .map_err(|error| format!("failed to serialize compiled genome asset package: {error}"))
 }
@@ -5202,8 +5278,7 @@ pub fn compile_genome_asset_package_json_from_bundle_manifest_path(
 pub fn compile_genome_process_registry_json_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<String, String> {
-    let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
-    let assets = compile_genome_asset_package(&organism);
+    let assets = compile_genome_asset_package_from_bundle_manifest_path(manifest_path)?;
     let registry = compile_genome_process_registry(&assets);
     serde_json::to_string_pretty(&registry)
         .map_err(|error| format!("failed to serialize compiled genome process registry: {error}"))
@@ -5313,6 +5388,26 @@ pub fn bundled_syn3a_organism_spec() -> Result<WholeCellOrganismSpec, String> {
         .clone()
 }
 
+fn compile_embedded_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetPackage, String> {
+    let mut assets =
+        bundled_syn3a_organism_spec().map(|organism| compile_genome_asset_package(&organism))?;
+    assets.operon_semantics = serde_json::from_str::<Vec<WholeCellOperonSemanticSpec>>(
+        BUNDLED_SYN3A_BUNDLE_OPERON_SEMANTICS_JSON,
+    )
+    .map_err(|error| format!("failed to parse embedded Syn3A operon semantics: {error}"))?;
+    assets.protein_semantics = serde_json::from_str::<Vec<WholeCellProteinSemanticSpec>>(
+        BUNDLED_SYN3A_BUNDLE_PROTEIN_SEMANTICS_JSON,
+    )
+    .map_err(|error| format!("failed to parse embedded Syn3A protein semantics: {error}"))?;
+    assets.complex_semantics = serde_json::from_str::<Vec<WholeCellComplexSemanticSpec>>(
+        BUNDLED_SYN3A_BUNDLE_COMPLEX_SEMANTICS_JSON,
+    )
+    .map_err(|error| format!("failed to parse embedded Syn3A complex semantics: {error}"))?;
+    Ok(with_normalized_asset_semantic_metadata(
+        with_normalized_asset_pool_metadata(assets),
+    ))
+}
+
 pub fn bundled_syn3a_genome_asset_package_json() -> Result<&'static str, String> {
     static BUNDLED_ASSET_JSON: OnceLock<Result<String, String>> = OnceLock::new();
     match BUNDLED_ASSET_JSON.get_or_init(|| {
@@ -5331,9 +5426,7 @@ pub fn bundled_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetPackag
     static BUNDLED_ASSET_PACKAGE: OnceLock<Result<WholeCellGenomeAssetPackage, String>> =
         OnceLock::new();
     BUNDLED_ASSET_PACKAGE
-        .get_or_init(|| {
-            bundled_syn3a_organism_spec().map(|organism| compile_genome_asset_package(&organism))
-        })
+        .get_or_init(compile_embedded_syn3a_genome_asset_package)
         .clone()
 }
 

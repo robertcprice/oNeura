@@ -1,0 +1,116 @@
+[
+  {
+    "id": "atp_synthase_catalytic_core_protein",
+    "asset_class": "energy",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "id": "electron_transport_membrane_module_protein",
+    "asset_class": "energy",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "id": "ribosome_small_subunit_core_protein",
+    "asset_class": "translation",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "ribosome_large_subunit_core_protein",
+    "asset_class": "translation",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "rrna_processing_module_protein",
+    "asset_class": "translation",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "translation_factor_cycle_protein",
+    "asset_class": "translation",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  },
+  {
+    "id": "dna_initiation_module_protein",
+    "asset_class": "replication",
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "dna_polymerase_processivity_module_protein",
+    "asset_class": "replication",
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "nucleotide_salvage_cycle_protein",
+    "asset_class": "replication",
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "chromosome_partitioning_scaffold_protein",
+    "asset_class": "replication",
+    "subsystem_targets": [
+      "ReplisomeTrack"
+    ]
+  },
+  {
+    "id": "lipid_activation_module_protein",
+    "asset_class": "energy",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand",
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "membrane_transport_homeostasis_protein",
+    "asset_class": "energy",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand",
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "ftsz_ring_polymerization_core_protein",
+    "asset_class": "constriction",
+    "subsystem_targets": [
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "septum_envelope_remodeling_protein",
+    "asset_class": "constriction",
+    "subsystem_targets": [
+      "FtsZSeptumRing"
+    ]
+  },
+  {
+    "id": "central_carbon_oxidation_core_protein",
+    "asset_class": "energy",
+    "subsystem_targets": [
+      "AtpSynthaseMembraneBand"
+    ]
+  },
+  {
+    "id": "chaperone_quality_control_core_protein",
+    "asset_class": "quality_control",
+    "subsystem_targets": [
+      "RibosomePolysomeCluster"
+    ]
+  }
+]
