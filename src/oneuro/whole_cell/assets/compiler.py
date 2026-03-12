@@ -66,14 +66,40 @@ def compile_named_bundle(name: str) -> CompiledOrganismBundle:
     return compile_bundle_manifest(manifest_path)
 
 
+def compile_legacy_named_bundle(name: str) -> CompiledOrganismBundle:
+    """Compile a packaged organism bundle through the legacy derived-asset path."""
+
+    manifest_path = (_BUNDLES_ROOT / name / "manifest.json").resolve()
+    return compile_legacy_bundle_manifest(manifest_path)
+
+
 def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle:
+    """Compile an organism bundle manifest into runtime-ready JSON payloads."""
+
+    return _compile_bundle_manifest_impl(manifest_path, allow_legacy_derived_assets=False)
+
+
+def compile_legacy_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle:
+    """Compile an organism bundle manifest through the legacy derived-asset path."""
+
+    return _compile_bundle_manifest_impl(manifest_path, allow_legacy_derived_assets=True)
+
+
+def _compile_bundle_manifest_impl(
+    manifest_path: Path | str, *, allow_legacy_derived_assets: bool
+) -> CompiledOrganismBundle:
     """Compile an organism bundle manifest into runtime-ready JSON payloads."""
 
     path = Path(manifest_path).expanduser().resolve()
     manifest = _load_json(path)
     source_hashes: Dict[str, str] = {"manifest.json": _sha256_path(path)}
     _validate_manifest_mode(manifest)
-    allow_legacy_derived_assets = bool(manifest.get("allow_legacy_derived_assets"))
+    _validate_bundle_compile_entrypoint(
+        manifest, allow_legacy_derived_assets=allow_legacy_derived_assets
+    )
+    manifest_allows_legacy_derived_assets = bool(
+        manifest.get("allow_legacy_derived_assets")
+    )
     require_explicit_asset_entities = bool(manifest.get("require_explicit_asset_entities"))
     require_explicit_asset_semantics = bool(
         manifest.get("require_explicit_asset_semantics")
@@ -103,7 +129,7 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
     if require_explicit_asset_entities:
         asset_package = _empty_genome_asset_package(organism_spec)
     else:
-        assert allow_legacy_derived_assets
+        assert manifest_allows_legacy_derived_assets
         asset_package = _compile_genome_asset_package(organism_spec)
     asset_package = _apply_asset_entity_overlays(
         asset_package,
@@ -461,6 +487,22 @@ def _validate_explicit_asset_contracts(
                 "bundle requires explicit program defaults but is missing "
                 "program_defaults_json"
             )
+
+
+def _validate_bundle_compile_entrypoint(
+    manifest: Dict[str, Any], *, allow_legacy_derived_assets: bool
+) -> None:
+    manifest_allows_legacy_derived_assets = bool(
+        manifest.get("allow_legacy_derived_assets")
+    )
+    if manifest_allows_legacy_derived_assets and not allow_legacy_derived_assets:
+        raise ValueError(
+            "legacy-derived-asset bundles must use compile_legacy_bundle_manifest"
+        )
+    if allow_legacy_derived_assets and not manifest_allows_legacy_derived_assets:
+        raise ValueError(
+            "compile_legacy_bundle_manifest requires allow_legacy_derived_assets in the manifest"
+        )
 
 
 def _default_program_defaults(organism_spec: Dict[str, Any]) -> Dict[str, Any]:

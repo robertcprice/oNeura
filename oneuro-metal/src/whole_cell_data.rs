@@ -5498,6 +5498,24 @@ fn validate_bundle_asset_contracts(
     Ok(())
 }
 
+fn validate_bundle_compile_entrypoint(
+    manifest: &WholeCellOrganismBundleManifest,
+    allow_legacy_derived_assets: bool,
+) -> Result<(), String> {
+    if manifest.allow_legacy_derived_assets && !allow_legacy_derived_assets {
+        return Err(
+            "legacy-derived-asset bundles must use legacy bundle compiler entrypoints".to_string(),
+        );
+    }
+    if allow_legacy_derived_assets && !manifest.allow_legacy_derived_assets {
+        return Err(
+            "legacy bundle compiler entrypoints require allow_legacy_derived_assets in the manifest"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 fn compile_embedded_syn3a_organism_spec() -> Result<WholeCellOrganismSpec, String> {
     let manifest = parse_bundle_manifest_json(BUNDLED_SYN3A_BUNDLE_MANIFEST_JSON)?;
     validate_bundle_manifest_mode(&manifest)?;
@@ -5877,11 +5895,19 @@ fn apply_bundle_asset_entity_overlays(
 fn compile_genome_asset_package_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<WholeCellGenomeAssetPackage, String> {
+    compile_genome_asset_package_from_bundle_manifest_path_with_mode(manifest_path, false)
+}
+
+fn compile_genome_asset_package_from_bundle_manifest_path_with_mode(
+    manifest_path: &str,
+    allow_legacy_derived_assets: bool,
+) -> Result<WholeCellGenomeAssetPackage, String> {
     let manifest_path_obj = Path::new(manifest_path).canonicalize().map_err(|error| {
         format!("failed to resolve bundle manifest path {manifest_path}: {error}")
     })?;
     let manifest_json = read_text_file(&manifest_path_obj, "bundle manifest")?;
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
+    validate_bundle_compile_entrypoint(&manifest, allow_legacy_derived_assets)?;
     validate_bundle_asset_contracts(&manifest)?;
     let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
     let assets = if manifest.require_explicit_asset_entities {
@@ -5893,6 +5919,12 @@ fn compile_genome_asset_package_from_bundle_manifest_path(
     let assets = apply_bundle_asset_entity_overlays(&manifest_path_obj, &manifest, assets)?;
     let assets = apply_bundle_asset_semantic_overlays(&manifest_path_obj, &manifest, assets)?;
     finalize_bundle_asset_package(&organism, &manifest, assets)
+}
+
+pub fn compile_legacy_genome_asset_package_from_bundle_manifest_path(
+    manifest_path: &str,
+) -> Result<WholeCellGenomeAssetPackage, String> {
+    compile_genome_asset_package_from_bundle_manifest_path_with_mode(manifest_path, true)
 }
 
 fn apply_bundle_program_defaults(
@@ -5938,13 +5970,24 @@ fn apply_bundle_program_defaults(
 pub fn compile_program_spec_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<WholeCellProgramSpec, String> {
+    compile_program_spec_from_bundle_manifest_path_with_mode(manifest_path, false)
+}
+
+fn compile_program_spec_from_bundle_manifest_path_with_mode(
+    manifest_path: &str,
+    allow_legacy_derived_assets: bool,
+) -> Result<WholeCellProgramSpec, String> {
     let manifest_path_obj = Path::new(manifest_path).canonicalize().map_err(|error| {
         format!("failed to resolve bundle manifest path {manifest_path}: {error}")
     })?;
     let manifest_json = read_text_file(&manifest_path_obj, "bundle manifest")?;
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
+    validate_bundle_compile_entrypoint(&manifest, allow_legacy_derived_assets)?;
     let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
-    let assets = compile_genome_asset_package_from_bundle_manifest_path(manifest_path)?;
+    let assets = compile_genome_asset_package_from_bundle_manifest_path_with_mode(
+        manifest_path,
+        allow_legacy_derived_assets,
+    )?;
     let registry = compile_genome_process_registry(&assets);
     let mut spec = build_program_spec_from_organism(organism, manifest.source_dataset.clone())?;
     spec.organism_assets = Some(assets);
@@ -5954,10 +5997,24 @@ pub fn compile_program_spec_from_bundle_manifest_path(
     Ok(spec)
 }
 
+pub fn compile_legacy_program_spec_from_bundle_manifest_path(
+    manifest_path: &str,
+) -> Result<WholeCellProgramSpec, String> {
+    compile_program_spec_from_bundle_manifest_path_with_mode(manifest_path, true)
+}
+
 pub fn compile_program_spec_json_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<String, String> {
     let spec = compile_program_spec_from_bundle_manifest_path(manifest_path)?;
+    serde_json::to_string_pretty(&spec)
+        .map_err(|error| format!("failed to serialize compiled program spec: {error}"))
+}
+
+pub fn compile_legacy_program_spec_json_from_bundle_manifest_path(
+    manifest_path: &str,
+) -> Result<String, String> {
+    let spec = compile_legacy_program_spec_from_bundle_manifest_path(manifest_path)?;
     serde_json::to_string_pretty(&spec)
         .map_err(|error| format!("failed to serialize compiled program spec: {error}"))
 }
@@ -5978,10 +6035,27 @@ pub fn compile_genome_asset_package_json_from_bundle_manifest_path(
         .map_err(|error| format!("failed to serialize compiled genome asset package: {error}"))
 }
 
+pub fn compile_legacy_genome_asset_package_json_from_bundle_manifest_path(
+    manifest_path: &str,
+) -> Result<String, String> {
+    let assets = compile_legacy_genome_asset_package_from_bundle_manifest_path(manifest_path)?;
+    serde_json::to_string_pretty(&assets)
+        .map_err(|error| format!("failed to serialize compiled genome asset package: {error}"))
+}
+
 pub fn compile_genome_process_registry_json_from_bundle_manifest_path(
     manifest_path: &str,
 ) -> Result<String, String> {
     let assets = compile_genome_asset_package_from_bundle_manifest_path(manifest_path)?;
+    let registry = compile_genome_process_registry(&assets);
+    serde_json::to_string_pretty(&registry)
+        .map_err(|error| format!("failed to serialize compiled genome process registry: {error}"))
+}
+
+pub fn compile_legacy_genome_process_registry_json_from_bundle_manifest_path(
+    manifest_path: &str,
+) -> Result<String, String> {
+    let assets = compile_legacy_genome_asset_package_from_bundle_manifest_path(manifest_path)?;
     let registry = compile_genome_process_registry(&assets);
     serde_json::to_string_pretty(&registry)
         .map_err(|error| format!("failed to serialize compiled genome process registry: {error}"))
@@ -6629,6 +6703,60 @@ mod tests {
         .expect("manifest");
 
         validate_bundle_asset_contracts(&manifest).expect("legacy derived assets opt-in");
+    }
+
+    #[test]
+    fn validate_bundle_compile_entrypoint_rejects_legacy_manifest_on_standard_path() {
+        let manifest = parse_bundle_manifest_json(
+            r#"{
+                "organism": "Legacy-demo",
+                "allow_legacy_derived_assets": true,
+                "metadata_json": "metadata.json",
+                "gene_features_json": "gene_features.json",
+                "gene_products_json": "gene_products.json",
+                "gene_semantics_json": "gene_semantics.json",
+                "transcription_units_json": "transcription_units.json",
+                "transcription_unit_semantics_json": "transcription_unit_semantics.json",
+                "chromosome_domains_json": "chromosome_domains.json",
+                "pools_json": "pools.json"
+            }"#,
+        )
+        .expect("manifest");
+
+        let error = validate_bundle_compile_entrypoint(&manifest, false)
+            .expect_err("standard compiler should reject legacy manifest");
+        assert!(error.contains("legacy bundle compiler"));
+    }
+
+    #[test]
+    fn validate_bundle_compile_entrypoint_rejects_legacy_entrypoint_for_explicit_manifest() {
+        let manifest = parse_bundle_manifest_json(
+            r#"{
+                "organism": "Explicit-demo",
+                "require_explicit_asset_entities": true,
+                "require_explicit_asset_semantics": true,
+                "metadata_json": "metadata.json",
+                "gene_features_json": "gene_features.json",
+                "gene_products_json": "gene_products.json",
+                "gene_semantics_json": "gene_semantics.json",
+                "transcription_units_json": "transcription_units.json",
+                "transcription_unit_semantics_json": "transcription_unit_semantics.json",
+                "chromosome_domains_json": "chromosome_domains.json",
+                "pools_json": "pools.json",
+                "operons_json": "operons.json",
+                "rnas_json": "rnas.json",
+                "proteins_json": "proteins.json",
+                "complexes_json": "complexes.json",
+                "operon_semantics_json": "operon_semantics.json",
+                "protein_semantics_json": "protein_semantics.json",
+                "complex_semantics_json": "complex_semantics.json"
+            }"#,
+        )
+        .expect("manifest");
+
+        let error = validate_bundle_compile_entrypoint(&manifest, true)
+            .expect_err("legacy compiler should reject explicit manifest");
+        assert!(error.contains("allow_legacy_derived_assets"));
     }
 
     #[test]

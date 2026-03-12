@@ -1434,3 +1434,30 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiler-time normalization helpers still exist for legacy parsers and explicit migration/export tooling, so the next cleanup target is deciding which of those should move into a dedicated migration module instead of staying beside the live compiler`
+
+### 2026-03-12 - Phase 1 / Split Explicit And Legacy Bundle Compiler Entrypoints
+
+- Summary:
+  - added explicit legacy bundle compiler entrypoints in Python (`compile_legacy_bundle_manifest`, `compile_legacy_named_bundle`) and in Rust (`compile_legacy_*_from_bundle_manifest_path`, `from_legacy_bundle_manifest_path`) so legacy-derived asset compilation no longer shares the same top-level API surface as the standard structured-bundle compiler
+  - changed the standard bundle compile entrypoints to reject manifests with `allow_legacy_derived_assets`, forcing callers to be explicit at both the manifest level and the API level when they want legacy-derived asset compilation
+  - added Python and Rust regressions proving that standard compile entrypoints reject legacy-derived manifests, while the legacy compile entrypoints reject explicit manifests and only accept manifests that explicitly opt into legacy-derived assets
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `src/oneuro/whole_cell/assets/__init__.py`
+  - `src/oneuro/whole_cell/__init__.py`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `oneuro-metal/src/lib.rs`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/lib.rs oneuro-metal/src/whole_cell.rs`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `legacy normalization and export/migration helpers still live beside the main compiler code, so the next cleanup target is isolating those migration-only transforms from the active explicit compiler implementation`

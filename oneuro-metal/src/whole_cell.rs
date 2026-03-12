@@ -22,6 +22,7 @@ use crate::substrate_ir::{
 use crate::whole_cell_data::{
     bundled_syn3a_genome_asset_package_json, bundled_syn3a_program_spec,
     bundled_syn3a_program_spec_json, compile_genome_process_registry,
+    compile_legacy_program_spec_from_bundle_manifest_path,
     compile_program_spec_from_bundle_manifest_path, derive_organism_profile,
     initialize_runtime_reaction_state, initialize_runtime_species_state,
     parse_legacy_program_spec_json, parse_legacy_saved_state_json, parse_program_spec_json,
@@ -8318,6 +8319,12 @@ impl WholeCellSimulator {
     /// Create a simulator from a native organism bundle manifest path.
     pub fn from_bundle_manifest_path(manifest_path: &str) -> Result<Self, String> {
         compile_program_spec_from_bundle_manifest_path(manifest_path).map(Self::from_program_spec)
+    }
+
+    /// Create a simulator from a legacy-derived-asset bundle manifest path.
+    pub fn from_legacy_bundle_manifest_path(manifest_path: &str) -> Result<Self, String> {
+        compile_legacy_program_spec_from_bundle_manifest_path(manifest_path)
+            .map(Self::from_program_spec)
     }
 
     /// Return the bundled Syn3A reference spec JSON.

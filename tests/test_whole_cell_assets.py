@@ -7,6 +7,8 @@ from oneuro.whole_cell import (
     RustWholeCellSimulator,
     available_bundles,
     compile_bundle_manifest,
+    compile_legacy_bundle_manifest,
+    compile_legacy_named_bundle,
     compile_named_bundle,
     write_structured_bundle_sources,
     write_compiled_bundle,
@@ -387,13 +389,27 @@ def test_bundle_allows_legacy_derived_assets_with_opt_in(tmp_path):
         json.dumps(manifest, indent=2), encoding="ascii"
     )
 
-    bundle = compile_bundle_manifest(bundle_dir / "manifest.json")
+    with pytest.raises(
+        ValueError,
+        match="legacy-derived-asset bundles must use compile_legacy_bundle_manifest",
+    ):
+        compile_bundle_manifest(bundle_dir / "manifest.json")
+
+    bundle = compile_legacy_bundle_manifest(bundle_dir / "manifest.json")
 
     assert bundle.organism == "Mgen-minimal-demo"
     assert bundle.summary()["operon_count"] >= 3
     assert bundle.summary()["complex_count"] >= 3
     assert "operons_json" not in bundle.source_hashes
     assert "complex_semantics_json" not in bundle.source_hashes
+
+
+def test_compile_legacy_named_bundle_rejects_nonlegacy_bundles():
+    with pytest.raises(
+        ValueError,
+        match="compile_legacy_bundle_manifest requires allow_legacy_derived_assets in the manifest",
+    ):
+        compile_legacy_named_bundle("mgen_minimal_demo")
 
 
 def test_explicit_asset_bundle_rejects_missing_operon_source(tmp_path):
