@@ -2311,6 +2311,50 @@ fn with_normalized_asset_pool_metadata(
     package
 }
 
+fn normalize_runtime_species_bulk_fields_from_registry(
+    species: &mut [WholeCellSpeciesRuntimeState],
+    registry: Option<&WholeCellGenomeProcessRegistry>,
+) {
+    let registry_bulk_fields = registry
+        .map(|registry| {
+            registry
+                .species
+                .iter()
+                .map(|species| (species.id.clone(), species.bulk_field))
+                .collect::<HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+    for runtime_species in species {
+        if runtime_species.bulk_field.is_some()
+            || runtime_species.species_class != WholeCellSpeciesClass::Pool
+        {
+            continue;
+        }
+        if let Some(bulk_field) = registry_bulk_fields
+            .get(&runtime_species.id)
+            .copied()
+            .flatten()
+        {
+            runtime_species.bulk_field = Some(bulk_field);
+        }
+    }
+}
+
+fn backfill_legacy_runtime_species_bulk_fields(species: &mut [WholeCellSpeciesRuntimeState]) {
+    for runtime_species in species {
+        if runtime_species.bulk_field.is_some()
+            || runtime_species.species_class != WholeCellSpeciesClass::Pool
+        {
+            continue;
+        }
+        if let Some(bulk_field) = infer_pool_bulk_field(&runtime_species.id)
+            .or_else(|| infer_pool_bulk_field(&runtime_species.name))
+        {
+            runtime_species.bulk_field = Some(bulk_field);
+        }
+    }
+}
+
 fn compile_operon_semantic_specs(
     operons: &[WholeCellOperonSpec],
 ) -> Vec<WholeCellOperonSemanticSpec> {
@@ -5756,7 +5800,9 @@ pub fn parse_saved_state_json(state_json: &str) -> Result<WholeCellSavedState, S
     let mut state: WholeCellSavedState = serde_json::from_str(state_json)
         .map_err(|error| format!("failed to parse saved state: {error}"))?;
     if let Some(organism) = state.organism_data.take() {
-        state.organism_data = Some(with_compiled_chromosome_domains(organism));
+        state.organism_data = Some(with_compiled_chromosome_domains(
+            with_normalized_pool_metadata(organism),
+        ));
     }
     if let (Some(organism), Some(assets)) =
         (state.organism_data.as_ref(), state.organism_assets.as_mut())
@@ -5790,6 +5836,11 @@ pub fn parse_saved_state_json(state_json: &str) -> Result<WholeCellSavedState, S
             state.organism_process_registry = Some(compile_genome_process_registry(assets));
         }
     }
+    normalize_runtime_species_bulk_fields_from_registry(
+        &mut state.organism_species,
+        state.organism_process_registry.as_ref(),
+    );
+    backfill_legacy_runtime_species_bulk_fields(&mut state.organism_species);
     populate_saved_state_contract_metadata(&mut state)?;
     Ok(state)
 }
@@ -5821,6 +5872,65 @@ mod tests {
             .join("manifest.json")
             .display()
             .to_string()
+    }
+
+    fn minimal_saved_state_from_spec(spec: &WholeCellProgramSpec) -> WholeCellSavedState {
+        WholeCellSavedState {
+            program_name: spec.program_name.clone(),
+            contract: WholeCellContractSchema::default(),
+            provenance: WholeCellProvenance::default(),
+            organism_data_ref: spec.organism_data_ref.clone(),
+            organism_data: spec.organism_data.clone(),
+            organism_assets: spec.organism_assets.clone(),
+            organism_expression: WholeCellOrganismExpressionState::default(),
+            organism_process_registry: spec.organism_process_registry.clone(),
+            chromosome_state: WholeCellChromosomeState::default(),
+            membrane_division_state: WholeCellMembraneDivisionState::default(),
+            organism_species: Vec::new(),
+            organism_reactions: Vec::new(),
+            complex_assembly: WholeCellComplexAssemblyState::default(),
+            named_complexes: Vec::new(),
+            scheduler_state: WholeCellSchedulerState::default(),
+            config: spec.config.clone(),
+            core: WholeCellSavedCoreState {
+                time_ms: 0.0,
+                step_count: 0,
+                adp_mm: 0.2,
+                glucose_mm: 0.3,
+                oxygen_mm: 0.4,
+                ftsz: 1.0,
+                dnaa: 1.0,
+                active_ribosomes: 1.0,
+                active_rnap: 1.0,
+                genome_bp: 10,
+                replicated_bp: 0,
+                chromosome_separation_nm: 1.0,
+                radius_nm: 100.0,
+                surface_area_nm2: 10.0,
+                volume_nm3: 10.0,
+                division_progress: 0.0,
+                metabolic_load: 1.0,
+                quantum_profile: WholeCellQuantumProfile::default(),
+            },
+            lattice: WholeCellLatticeState {
+                atp: vec![1.0; spec.config.x_dim * spec.config.y_dim * spec.config.z_dim],
+                amino_acids: vec![1.0; spec.config.x_dim * spec.config.y_dim * spec.config.z_dim],
+                nucleotides: vec![1.0; spec.config.x_dim * spec.config.y_dim * spec.config.z_dim],
+                membrane_precursors: vec![
+                    1.0;
+                    spec.config.x_dim * spec.config.y_dim * spec.config.z_dim
+                ],
+            },
+            spatial_fields: None,
+            local_chemistry: None,
+            chemistry_report: LocalChemistryReport::default(),
+            chemistry_site_reports: Vec::new(),
+            last_md_probe: None,
+            scheduled_subsystem_probes: Vec::new(),
+            subsystem_states: Vec::new(),
+            md_translation_scale: 1.0,
+            md_membrane_scale: 1.0,
+        }
     }
 
     #[test]
@@ -6637,62 +6747,7 @@ mod tests {
     #[test]
     fn saved_state_json_hydrates_contract_defaults() {
         let spec = bundled_syn3a_program_spec().expect("bundled spec");
-        let mut saved = WholeCellSavedState {
-            program_name: spec.program_name.clone(),
-            contract: WholeCellContractSchema::default(),
-            provenance: WholeCellProvenance::default(),
-            organism_data_ref: spec.organism_data_ref.clone(),
-            organism_data: spec.organism_data.clone(),
-            organism_assets: spec.organism_assets.clone(),
-            organism_expression: WholeCellOrganismExpressionState::default(),
-            organism_process_registry: spec.organism_process_registry.clone(),
-            chromosome_state: WholeCellChromosomeState::default(),
-            membrane_division_state: WholeCellMembraneDivisionState::default(),
-            organism_species: Vec::new(),
-            organism_reactions: Vec::new(),
-            complex_assembly: WholeCellComplexAssemblyState::default(),
-            named_complexes: Vec::new(),
-            scheduler_state: WholeCellSchedulerState::default(),
-            config: spec.config.clone(),
-            core: WholeCellSavedCoreState {
-                time_ms: 0.0,
-                step_count: 0,
-                adp_mm: 0.2,
-                glucose_mm: 0.3,
-                oxygen_mm: 0.4,
-                ftsz: 1.0,
-                dnaa: 1.0,
-                active_ribosomes: 1.0,
-                active_rnap: 1.0,
-                genome_bp: 10,
-                replicated_bp: 0,
-                chromosome_separation_nm: 1.0,
-                radius_nm: 100.0,
-                surface_area_nm2: 10.0,
-                volume_nm3: 10.0,
-                division_progress: 0.0,
-                metabolic_load: 1.0,
-                quantum_profile: WholeCellQuantumProfile::default(),
-            },
-            lattice: WholeCellLatticeState {
-                atp: vec![1.0; spec.config.x_dim * spec.config.y_dim * spec.config.z_dim],
-                amino_acids: vec![1.0; spec.config.x_dim * spec.config.y_dim * spec.config.z_dim],
-                nucleotides: vec![1.0; spec.config.x_dim * spec.config.y_dim * spec.config.z_dim],
-                membrane_precursors: vec![
-                    1.0;
-                    spec.config.x_dim * spec.config.y_dim * spec.config.z_dim
-                ],
-            },
-            spatial_fields: None,
-            local_chemistry: None,
-            chemistry_report: LocalChemistryReport::default(),
-            chemistry_site_reports: Vec::new(),
-            last_md_probe: None,
-            scheduled_subsystem_probes: Vec::new(),
-            subsystem_states: Vec::new(),
-            md_translation_scale: 1.0,
-            md_membrane_scale: 1.0,
-        };
+        let mut saved = minimal_saved_state_from_spec(&spec);
 
         let json = saved_state_to_json(&saved).expect("saved json");
         saved.contract.contract_version.clear();
@@ -6710,6 +6765,68 @@ mod tests {
         assert!(reparsed.provenance.compiled_ir_hash.is_some());
         assert!(reparsed.provenance.run_manifest_hash.is_some());
         assert!(reparsed.organism_process_registry.is_some());
+    }
+
+    #[test]
+    fn parse_saved_state_json_backfills_legacy_pool_bulk_fields_at_boundary() {
+        let spec = bundled_syn3a_program_spec().expect("bundled spec");
+        let mut saved = minimal_saved_state_from_spec(&spec);
+        let organism = saved.organism_data.as_mut().expect("organism");
+        let atp_pool = organism
+            .pools
+            .iter_mut()
+            .find(|pool| pool.bulk_field == Some(WholeCellBulkField::ATP))
+            .expect("ATP pool");
+        atp_pool.bulk_field = None;
+
+        let reparsed = parse_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
+            .expect("reparsed saved state");
+
+        let stored_pool = reparsed
+            .organism_data
+            .as_ref()
+            .expect("stored organism")
+            .pools
+            .iter()
+            .find(|pool| pool.species.eq_ignore_ascii_case("atp"))
+            .expect("stored ATP pool");
+        assert_eq!(stored_pool.bulk_field, Some(WholeCellBulkField::ATP));
+    }
+
+    #[test]
+    fn parse_saved_state_json_backfills_runtime_pool_bulk_fields_at_boundary() {
+        let spec = bundled_syn3a_program_spec().expect("bundled spec");
+        let mut saved = minimal_saved_state_from_spec(&spec);
+        saved.organism_data = None;
+        saved.organism_assets = None;
+        saved.organism_process_registry = None;
+        saved.organism_species = vec![WholeCellSpeciesRuntimeState {
+            id: "opaque_runtime_pool".to_string(),
+            name: "ATP".to_string(),
+            species_class: WholeCellSpeciesClass::Pool,
+            compartment: "cytosol".to_string(),
+            asset_class: WholeCellAssetClass::Energy,
+            basal_abundance: 8.0,
+            bulk_field: None,
+            operon: None,
+            parent_complex: None,
+            subsystem_targets: Vec::new(),
+            spatial_scope: WholeCellSpatialScope::WellMixed,
+            patch_domain: WholeCellPatchDomain::Distributed,
+            chromosome_domain: None,
+            count: 8.0,
+            anchor_count: 8.0,
+            synthesis_rate: 0.0,
+            turnover_rate: 0.0,
+        }];
+
+        let reparsed = parse_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
+            .expect("reparsed saved state");
+
+        assert_eq!(
+            reparsed.organism_species[0].bulk_field,
+            Some(WholeCellBulkField::ATP)
+        );
     }
 
     #[test]

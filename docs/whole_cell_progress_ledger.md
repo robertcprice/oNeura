@@ -1191,3 +1191,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `the in-repo monolithic manifest path is gone, but explicit structured-source coverage still needs to expand across more downstream state descriptions so fewer semantics and runtime defaults depend on compatibility-only inference`
+
+### 2026-03-12 - Phase 7 / Move Legacy Pool Backfill To Parse Boundaries
+
+- Summary:
+  - removed name-based pool metadata and runtime-species bulk-field backfill from the live simulator initialization and restore paths, so active whole-cell execution now relies on explicit metadata or registry wiring instead of runtime name heuristics
+  - moved the remaining saved-state compatibility fill into `parse_saved_state_json`, where organism pool metadata and pool runtime-species bulk fields are normalized once at the data boundary before the simulator sees them
+  - updated Rust regressions so legacy saved-state payloads still regain pool metadata at parse time while simulator initialization now only uses explicit pool fields
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `rustfmt oneuro-metal/src/whole_cell.rs oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `runtime pool inference is now out of the active whole-cell path, but compatibility-only semantic and pool backfills still exist at JSON/data ingress and more downstream descriptions still need fully explicit structured-source coverage`
