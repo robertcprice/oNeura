@@ -4919,6 +4919,23 @@ fn validate_explicit_transcription_unit_semantics(
     }
 }
 
+fn validate_explicit_pool_metadata(pools: &[WholeCellMoleculePoolSpec]) -> Result<(), String> {
+    let missing: Vec<String> = pools
+        .iter()
+        .filter(|pool| pool.bulk_field.is_none())
+        .map(|pool| pool.species.clone())
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "bundle requires explicit pool metadata but {} pool(s) are incomplete: {}",
+            missing.len(),
+            missing.join(", ")
+        ))
+    }
+}
+
 fn pool_concentration_for_field(
     pools: &[WholeCellMoleculePoolSpec],
     field: WholeCellBulkField,
@@ -4935,9 +4952,6 @@ fn build_program_spec_from_organism(
     organism: WholeCellOrganismSpec,
     source_dataset: Option<String>,
 ) -> Result<WholeCellProgramSpec, String> {
-    let organism = with_compiled_chromosome_domains(with_normalized_semantic_metadata(
-        with_normalized_pool_metadata(organism),
-    ));
     let assets = compile_genome_asset_package(&organism);
     let process_registry = compile_genome_process_registry(&assets);
     let mut spec = WholeCellProgramSpec {
@@ -5149,30 +5163,43 @@ fn compile_embedded_syn3a_organism_spec() -> Result<WholeCellOrganismSpec, Strin
     let mut pools =
         serde_json::from_str::<Vec<WholeCellMoleculePoolSpec>>(BUNDLED_SYN3A_BUNDLE_POOLS_JSON)
             .map_err(|error| format!("failed to parse embedded Syn3A pools: {error}"))?;
-    normalize_pool_metadata(&mut pools);
+    if manifest.require_explicit_organism_sources {
+        validate_explicit_pool_metadata(&pools)?;
+    } else {
+        normalize_pool_metadata(&mut pools);
+    }
 
     let chromosome_domains = serde_json::from_str::<Vec<WholeCellChromosomeDomainSpec>>(
         BUNDLED_SYN3A_BUNDLE_CHROMOSOME_DOMAINS_JSON,
     )
     .map_err(|error| format!("failed to parse embedded Syn3A chromosome domains: {error}"))?;
 
-    Ok(with_compiled_chromosome_domains(
-        with_normalized_semantic_metadata(with_normalized_pool_metadata(WholeCellOrganismSpec {
-            organism: manifest
-                .organism
-                .clone()
-                .unwrap_or_else(|| metadata.organism.clone()),
-            chromosome_length_bp: chromosome_length_bp.max(1),
-            origin_bp: metadata.origin_bp.min(chromosome_length_bp.max(1)),
-            terminus_bp: metadata.terminus_bp.min(chromosome_length_bp.max(1)),
-            geometry: metadata.geometry,
-            composition: metadata.composition,
-            chromosome_domains,
-            pools,
-            genes,
-            transcription_units,
-        })),
-    ))
+    let spec = WholeCellOrganismSpec {
+        organism: manifest
+            .organism
+            .clone()
+            .unwrap_or_else(|| metadata.organism.clone()),
+        chromosome_length_bp: chromosome_length_bp.max(1),
+        origin_bp: metadata.origin_bp.min(chromosome_length_bp.max(1)),
+        terminus_bp: metadata.terminus_bp.min(chromosome_length_bp.max(1)),
+        geometry: metadata.geometry,
+        composition: metadata.composition,
+        chromosome_domains,
+        pools,
+        genes,
+        transcription_units,
+    };
+
+    if manifest.require_explicit_organism_sources
+        || manifest.require_explicit_gene_semantics
+        || manifest.require_explicit_transcription_unit_semantics
+    {
+        Ok(with_compiled_chromosome_domains(spec))
+    } else {
+        Ok(with_compiled_chromosome_domains(
+            with_normalized_semantic_metadata(with_normalized_pool_metadata(spec)),
+        ))
+    }
 }
 
 pub fn compile_organism_spec_from_bundle_manifest_path(
@@ -5292,9 +5319,9 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
         validate_explicit_transcription_unit_semantics(&transcription_units)?;
     }
 
-    let pools = if let Some(pools_json) = manifest.pools_json.as_deref() {
+    let mut pools = if let Some(pools_json) = manifest.pools_json.as_deref() {
         let pools_path = resolve_manifest_relative_path(&manifest_path, pools_json)?;
-        let mut pools = serde_json::from_str::<Vec<WholeCellMoleculePoolSpec>>(&read_text_file(
+        serde_json::from_str::<Vec<WholeCellMoleculePoolSpec>>(&read_text_file(
             &pools_path,
             "pool JSON",
         )?)
@@ -5303,12 +5330,15 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
                 "failed to parse molecule pools {}: {error}",
                 pools_path.display()
             )
-        })?;
-        normalize_pool_metadata(&mut pools);
-        pools
+        })?
     } else {
         Vec::new()
     };
+    if manifest.require_explicit_organism_sources {
+        validate_explicit_pool_metadata(&pools)?;
+    } else {
+        normalize_pool_metadata(&mut pools);
+    }
 
     let chromosome_domains = if let Some(chromosome_domains_json) =
         manifest.chromosome_domains_json.as_deref()
@@ -5328,23 +5358,32 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
         Vec::new()
     };
 
-    Ok(with_compiled_chromosome_domains(
-        with_normalized_semantic_metadata(with_normalized_pool_metadata(WholeCellOrganismSpec {
-            organism: manifest
-                .organism
-                .clone()
-                .unwrap_or_else(|| metadata.organism.clone()),
-            chromosome_length_bp: chromosome_length_bp.max(1),
-            origin_bp: metadata.origin_bp.min(chromosome_length_bp.max(1)),
-            terminus_bp: metadata.terminus_bp.min(chromosome_length_bp.max(1)),
-            geometry: metadata.geometry,
-            composition: metadata.composition,
-            chromosome_domains,
-            pools,
-            genes,
-            transcription_units,
-        })),
-    ))
+    let spec = WholeCellOrganismSpec {
+        organism: manifest
+            .organism
+            .clone()
+            .unwrap_or_else(|| metadata.organism.clone()),
+        chromosome_length_bp: chromosome_length_bp.max(1),
+        origin_bp: metadata.origin_bp.min(chromosome_length_bp.max(1)),
+        terminus_bp: metadata.terminus_bp.min(chromosome_length_bp.max(1)),
+        geometry: metadata.geometry,
+        composition: metadata.composition,
+        chromosome_domains,
+        pools,
+        genes,
+        transcription_units,
+    };
+
+    if manifest.require_explicit_organism_sources
+        || manifest.require_explicit_gene_semantics
+        || manifest.require_explicit_transcription_unit_semantics
+    {
+        Ok(with_compiled_chromosome_domains(spec))
+    } else {
+        Ok(with_compiled_chromosome_domains(
+            with_normalized_semantic_metadata(with_normalized_pool_metadata(spec)),
+        ))
+    }
 }
 
 fn apply_bundle_asset_semantic_overlays(

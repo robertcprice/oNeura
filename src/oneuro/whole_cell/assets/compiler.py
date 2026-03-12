@@ -752,6 +752,8 @@ def _compile_structured_bundle(
         )
         or []
     )
+    if manifest.get("require_explicit_organism_sources"):
+        _validate_explicit_pool_metadata(pools)
     if manifest.get("require_explicit_gene_semantics"):
         _validate_explicit_gene_semantics(compiled_genes)
     if manifest.get("require_explicit_transcription_unit_semantics"):
@@ -821,6 +823,19 @@ def _validate_explicit_gene_semantics(genes: list[Dict[str, Any]]) -> None:
         raise ValueError(
             "bundle requires explicit gene semantics but "
             f"{len(missing)} gene(s) are incomplete: {', '.join(missing)}"
+        )
+
+
+def _validate_explicit_pool_metadata(pools: list[Dict[str, Any]]) -> None:
+    missing = [
+        pool.get("species", f"pool_{index}")
+        for index, pool in enumerate(pools)
+        if not pool.get("bulk_field")
+    ]
+    if missing:
+        raise ValueError(
+            "bundle requires explicit pool metadata but "
+            f"{len(missing)} pool(s) are incomplete: {', '.join(missing)}"
         )
 
 

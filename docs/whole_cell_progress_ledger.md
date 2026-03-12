@@ -1212,3 +1212,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `runtime pool inference is now out of the active whole-cell path, but compatibility-only semantic and pool backfills still exist at JSON/data ingress and more downstream descriptions still need fully explicit structured-source coverage`
+
+### 2026-03-12 - Phase 7 / Enforce Explicit Pool Metadata In Strict Bundles
+
+- Summary:
+  - added explicit pool-metadata validation to the strict structured-bundle path in both the Python and Rust compilers, so strict bundles now fail if any pool omits its declared `bulk_field`
+  - updated the native bundled-organism compile path to trust explicit organism-level pool and semantic metadata when strict manifest flags are enabled instead of renormalizing those fields after load
+  - removed one more active-path normalization layer from the Rust bundle program-spec compiler by making it build from the already compiled organism payload rather than re-normalizing the organism again
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `strict bundle compilation now enforces explicit pool metadata, but explicit asset-package validation still shares some normalization logic and compatibility-only semantic backfills still remain at JSON/data ingress`
