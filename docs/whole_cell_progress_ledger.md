@@ -1603,3 +1603,20 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiler.py still owns manifest contract validation, so the next cleanup target is splitting manifest contract checking from compile orchestration if we keep narrowing the active compiler surface`
+
+### 2026-03-12 - Phase 1 / Manifest Contract Helper Split
+
+- Summary:
+  - moved manifest contract checks for explicit asset requirements and legacy-entrypoint gating out of `assets/compiler.py` and into `assets/manifest_contracts.py`, leaving compiler closer to a pure orchestration layer
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `src/oneuro/whole_cell/assets/manifest_contracts.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/asset_overlays.py src/oneuro/whole_cell/assets/derived_assets.py src/oneuro/whole_cell/assets/manifest_contracts.py src/oneuro/whole_cell/assets/source_ingress.py src/oneuro/whole_cell/assets/source_normalization.py src/oneuro/whole_cell/assets/exporter.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiler.py is now mostly orchestration, so the next cleanup target is optional further consolidation of shared type/contract helpers rather than untangling mixed explicit-vs-legacy logic`
