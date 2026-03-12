@@ -1586,3 +1586,20 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiler.py still owns low-level manifest/source loading and file format readers, so the next cleanup target is separating raw source ingress from the explicit compiler entrypoint without widening the active runtime path again`
+
+### 2026-03-12 - Phase 1 / Source Ingress Helper Split
+
+- Summary:
+  - moved raw manifest/source loading, FASTA and GFF readers, hash/load helpers, and structured-source ingress into `assets/source_ingress.py`, so `assets/compiler.py` now focuses on compile orchestration instead of file parsing
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `src/oneuro/whole_cell/assets/source_ingress.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/asset_overlays.py src/oneuro/whole_cell/assets/derived_assets.py src/oneuro/whole_cell/assets/source_ingress.py src/oneuro/whole_cell/assets/source_normalization.py src/oneuro/whole_cell/assets/exporter.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `compiler.py still owns manifest contract validation, so the next cleanup target is splitting manifest contract checking from compile orchestration if we keep narrowing the active compiler surface`
