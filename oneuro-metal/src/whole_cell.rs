@@ -223,8 +223,6 @@ struct WholeCellSpatialCouplingCache {
     patch_overlap: [[f32; 5]; 5],
 }
 
-const CHROMOSOME_SEQUENCE_DOMAIN_COUNT: usize = 4;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
 enum SubsystemEstimatorSignal {
@@ -1664,13 +1662,6 @@ impl WholeCellSimulator {
         }
     }
 
-    fn fallback_chromosome_domain_index(midpoint_bp: u32, genome_bp: u32) -> u32 {
-        let genome_bp = genome_bp.max(1);
-        (((CHROMOSOME_SEQUENCE_DOMAIN_COUNT as u32) * midpoint_bp.min(genome_bp.saturating_sub(1)))
-            / genome_bp)
-            .min((CHROMOSOME_SEQUENCE_DOMAIN_COUNT - 1) as u32)
-    }
-
     fn compiled_chromosome_domains(&self) -> Option<&[WholeCellChromosomeDomainSpec]> {
         self.organism_data
             .as_ref()
@@ -1682,6 +1673,12 @@ impl WholeCellSimulator {
                 self.organism_assets.as_ref().and_then(|assets| {
                     (!assets.chromosome_domains.is_empty())
                         .then_some(assets.chromosome_domains.as_slice())
+                })
+            })
+            .or_else(|| {
+                self.organism_process_registry.as_ref().and_then(|registry| {
+                    (!registry.chromosome_domains.is_empty())
+                        .then_some(registry.chromosome_domains.as_slice())
                 })
             })
     }
@@ -1713,13 +1710,13 @@ impl WholeCellSimulator {
                 return index as u32;
             }
         }
-        Self::fallback_chromosome_domain_index(midpoint_bp, genome_bp)
+        0
     }
 
     fn chromosome_domain_count(&self) -> usize {
         self.compiled_chromosome_domains()
             .map(|domains| domains.len().max(1))
-            .unwrap_or(CHROMOSOME_SEQUENCE_DOMAIN_COUNT)
+            .unwrap_or(1)
     }
 
     fn chromosome_domain_index_by_id(&self, domain_id: &str) -> Option<u32> {
@@ -7773,40 +7770,38 @@ impl WholeCellSimulator {
     fn chromosome_domain_weights(&self, domain_index: u32) -> Vec<f32> {
         let total_voxels = self.lattice.total_voxels();
         let x_dim = self.lattice.x_dim.max(1);
-        let (axial_center, base_spread) = if let Some(domains) = self.compiled_chromosome_domains()
-        {
-            if let Some(domain) = domains.get(domain_index as usize) {
-                (
-                    domain.axial_center_fraction.clamp(0.02, 0.98),
-                    domain.axial_spread_fraction.clamp(0.05, 0.30),
-                )
+        let selected_domain = self.compiled_chromosome_domains().and_then(|domains| {
+            if domains.is_empty() {
+                None
             } else {
-                let fallback_fraction =
-                    (domain_index.min((CHROMOSOME_SEQUENCE_DOMAIN_COUNT - 1) as u32) as f32 + 0.5)
-                        / CHROMOSOME_SEQUENCE_DOMAIN_COUNT as f32;
-                (0.18 + 0.64 * fallback_fraction, 0.16)
+                let clamped_index = (domain_index as usize).min(domains.len().saturating_sub(1));
+                domains.get(clamped_index)
             }
-        } else {
-            let fallback_fraction =
-                (domain_index.min((CHROMOSOME_SEQUENCE_DOMAIN_COUNT - 1) as u32) as f32 + 0.5)
-                    / CHROMOSOME_SEQUENCE_DOMAIN_COUNT as f32;
-            (0.18 + 0.64 * fallback_fraction, 0.16)
-        };
-        let axial_spread = (base_spread
-            * (1.0
-                + 0.30 * (1.0 - self.chromosome_state.compaction_fraction.clamp(0.0, 1.0))
-                + 0.18 * (1.0 - self.chromosome_state.segregation_progress.clamp(0.0, 1.0))))
-        .clamp(0.06, 0.28);
+        });
         let nucleoid = self
             .spatial_fields
             .field_slice(IntracellularSpatialField::NucleoidOccupancy);
         let mut weights = vec![0.0; total_voxels];
-        for gid in 0..total_voxels {
-            let x = gid % x_dim;
-            let x_frac = (x as f32 + 0.5) / x_dim as f32;
-            let axial_term =
-                (-0.5 * ((x_frac - axial_center) / axial_spread.max(1.0e-3)).powi(2)).exp();
-            weights[gid] = nucleoid[gid].max(0.0) * axial_term;
+        if let Some(domain) = selected_domain {
+            let axial_center = domain.axial_center_fraction.clamp(0.02, 0.98);
+            let base_spread = domain.axial_spread_fraction.clamp(0.05, 0.30);
+            let axial_spread = (base_spread
+                * (1.0
+                    + 0.30 * (1.0 - self.chromosome_state.compaction_fraction.clamp(0.0, 1.0))
+                    + 0.18
+                        * (1.0 - self.chromosome_state.segregation_progress.clamp(0.0, 1.0))))
+            .clamp(0.06, 0.28);
+            for gid in 0..total_voxels {
+                let x = gid % x_dim;
+                let x_frac = (x as f32 + 0.5) / x_dim as f32;
+                let axial_term =
+                    (-0.5 * ((x_frac - axial_center) / axial_spread.max(1.0e-3)).powi(2)).exp();
+                weights[gid] = nucleoid[gid].max(0.0) * axial_term;
+            }
+        } else {
+            for gid in 0..total_voxels {
+                weights[gid] = nucleoid[gid].max(0.0);
+            }
         }
         weights
     }
@@ -9909,6 +9904,69 @@ mod tests {
             (domain_last_center - domain_last.axial_center_fraction).abs()
                 < (domain_last_center - domain_zero.axial_center_fraction).abs()
         );
+    }
+
+    #[test]
+    fn test_registry_chromosome_domains_bias_weight_peaks_without_assets() {
+        let mut sim = WholeCellSimulator::new(WholeCellConfig::default());
+        sim.organism_data = None;
+        sim.organism_assets = None;
+        sim.organism_process_registry = Some(WholeCellGenomeProcessRegistry {
+            organism: "registry-domain-test".to_string(),
+            chromosome_domains: vec![
+                WholeCellChromosomeDomainSpec {
+                    id: "domain_left".to_string(),
+                    start_bp: 0,
+                    end_bp: 399,
+                    axial_center_fraction: 0.22,
+                    axial_spread_fraction: 0.14,
+                    genes: Vec::new(),
+                    transcription_units: Vec::new(),
+                    operons: Vec::new(),
+                },
+                WholeCellChromosomeDomainSpec {
+                    id: "domain_right".to_string(),
+                    start_bp: 400,
+                    end_bp: 799,
+                    axial_center_fraction: 0.78,
+                    axial_spread_fraction: 0.14,
+                    genes: Vec::new(),
+                    transcription_units: Vec::new(),
+                    operons: Vec::new(),
+                },
+            ],
+            species: Vec::new(),
+            reactions: Vec::new(),
+        });
+
+        let weighted_x_center = |weights: &[f32], x_dim: usize| -> f32 {
+            let mut weighted_sum = 0.0;
+            let mut total_weight = 0.0;
+            for (gid, weight) in weights.iter().enumerate() {
+                let x = gid % x_dim;
+                weighted_sum += *weight * (x as f32 + 0.5) / x_dim as f32;
+                total_weight += *weight;
+            }
+            if total_weight <= 1.0e-6 {
+                0.5
+            } else {
+                weighted_sum / total_weight
+            }
+        };
+
+        let left_center =
+            weighted_x_center(&sim.chromosome_domain_weights(0), sim.lattice.x_dim.max(1));
+        let right_center =
+            weighted_x_center(&sim.chromosome_domain_weights(1), sim.lattice.x_dim.max(1));
+
+        assert_eq!(sim.chromosome_domain_count(), 2);
+        assert_eq!(sim.chromosome_domain_index_by_id("domain_left"), Some(0));
+        assert_eq!(sim.chromosome_domain_index_by_id("domain_right"), Some(1));
+        assert_eq!(sim.chromosome_domain_index(100, 800), 0);
+        assert_eq!(sim.chromosome_domain_index(700, 800), 1);
+        assert!(left_center < right_center);
+        assert!((left_center - 0.22).abs() < (left_center - 0.78).abs());
+        assert!((right_center - 0.78).abs() < (right_center - 0.22).abs());
     }
 
     #[test]

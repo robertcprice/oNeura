@@ -1620,3 +1620,19 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `compiler.py is now mostly orchestration, so the next cleanup target is optional further consolidation of shared type/contract helpers rather than untangling mixed explicit-vs-legacy logic`
+
+### 2026-03-12 - Phase 7 / Runtime Chromosome Domain Authority
+
+- Summary:
+  - made compiled chromosome domains from the native process registry participate directly in runtime domain indexing and weighting, and removed the old fixed quartile fallback from the active chromosome-domain path in the native simulator
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_compiled_chromosome_domain_centers_bias_weight_peaks --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_registry_chromosome_domains_bias_weight_peaks_without_assets --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `domain-local runtime behavior now prefers compiled domains over the fixed quartile fallback, but other coarse fallback scales remain in the native runtime and should be replaced with compiled metadata or direct local state as we keep deepening the bottom-up path`
