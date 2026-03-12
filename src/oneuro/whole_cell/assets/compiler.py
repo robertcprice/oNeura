@@ -72,6 +72,7 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
     path = Path(manifest_path).expanduser().resolve()
     manifest = _load_json(path)
     source_hashes: Dict[str, str] = {"manifest.json": _sha256_path(path)}
+    _validate_manifest_mode(manifest)
 
     if "organism_spec_json" in manifest:
         spec_path = _resolve_manifest_path(path, manifest["organism_spec_json"])
@@ -95,6 +96,7 @@ def compile_bundle_manifest(manifest_path: Path | str) -> CompiledOrganismBundle
         _load_optional_json(path, manifest, "protein_semantics_json", source_hashes) or [],
         _load_optional_json(path, manifest, "complex_semantics_json", source_hashes) or [],
     )
+    _validate_explicit_asset_contracts(manifest, source_hashes)
     return CompiledOrganismBundle(
         manifest_path=str(path),
         organism=organism_spec["organism"],
@@ -195,8 +197,11 @@ def write_structured_bundle_sources(
     output_dir: Path | str,
     *,
     source_dataset: str | None = None,
+    require_structured_bundle: bool = True,
     require_explicit_gene_semantics: bool = True,
     require_explicit_transcription_unit_semantics: bool = True,
+    require_explicit_asset_entities: bool = True,
+    require_explicit_asset_semantics: bool = True,
 ) -> Dict[str, str]:
     """Write a structured source bundle from a compiled organism spec."""
 
@@ -273,8 +278,11 @@ def write_structured_bundle_sources(
         "organism": organism_spec["organism"],
         "source_dataset": source_dataset
         or f"{organism_spec['organism'].lower().replace(' ', '_').replace('-', '_')}_structured",
+        "require_structured_bundle": require_structured_bundle,
         "require_explicit_gene_semantics": require_explicit_gene_semantics,
         "require_explicit_transcription_unit_semantics": require_explicit_transcription_unit_semantics,
+        "require_explicit_asset_entities": require_explicit_asset_entities,
+        "require_explicit_asset_semantics": require_explicit_asset_semantics,
         "metadata_json": "metadata.json",
         "gene_features_json": "gene_features.json",
         "gene_products_json": "gene_products.json",
@@ -332,6 +340,44 @@ def write_structured_bundle_sources(
     for key, path in written.items():
         path.write_text(json.dumps(payloads[key], indent=2), encoding="ascii")
     return {key: str(path) for key, path in written.items()}
+
+
+def _validate_manifest_mode(manifest: Dict[str, Any]) -> None:
+    if manifest.get("require_structured_bundle") and "organism_spec_json" in manifest:
+        raise ValueError(
+            "bundle requires structured sources and may not define organism_spec_json"
+        )
+
+
+def _validate_explicit_asset_contracts(
+    manifest: Dict[str, Any],
+    source_hashes: Dict[str, str],
+) -> None:
+    if manifest.get("require_explicit_asset_entities"):
+        required_entity_keys = {
+            "operons_json",
+            "rnas_json",
+            "proteins_json",
+            "complexes_json",
+        }
+        missing = sorted(key for key in required_entity_keys if key not in source_hashes)
+        if missing:
+            raise ValueError(
+                "bundle requires explicit asset entities but is missing "
+                + ", ".join(missing)
+            )
+    if manifest.get("require_explicit_asset_semantics"):
+        required_semantic_keys = {
+            "operon_semantics_json",
+            "protein_semantics_json",
+            "complex_semantics_json",
+        }
+        missing = sorted(key for key in required_semantic_keys if key not in source_hashes)
+        if missing:
+            raise ValueError(
+                "bundle requires explicit asset semantics but is missing "
+                + ", ".join(missing)
+            )
 
 
 def _apply_asset_semantic_overlays(

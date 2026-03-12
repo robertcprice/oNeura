@@ -241,3 +241,69 @@ def test_explicit_semantic_bundle_rejects_missing_gene_overlay(tmp_path):
 
     with pytest.raises(ValueError, match="missing gene_semantics_json"):
         compile_bundle_manifest(bundle_dir / "manifest.json")
+
+
+def test_strict_structured_bundle_rejects_organism_spec_json(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    organism_spec = {
+        "organism": "Bad-bundle",
+        "chromosome_length_bp": 1000,
+        "origin_bp": 0,
+        "terminus_bp": 500,
+        "geometry": {"radius_nm": 100.0, "chromosome_radius_fraction": 0.5, "membrane_fraction": 0.2},
+        "composition": {"dry_mass_fg": 1.0, "gc_fraction": 0.3, "protein_fraction": 0.5, "rna_fraction": 0.2, "lipid_fraction": 0.1},
+        "chromosome_domains": [],
+        "pools": [],
+        "genes": [],
+        "transcription_units": [],
+    }
+    (bundle_dir / "organism.json").write_text(
+        json.dumps(organism_spec, indent=2), encoding="ascii"
+    )
+    manifest = {
+        "organism": "Bad-bundle",
+        "require_structured_bundle": True,
+        "organism_spec_json": "organism.json",
+    }
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="ascii"
+    )
+
+    with pytest.raises(
+        ValueError, match="requires structured sources and may not define organism_spec_json"
+    ):
+        compile_bundle_manifest(bundle_dir / "manifest.json")
+
+
+def test_explicit_asset_bundle_rejects_missing_operon_source(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    source_dir = Path("src/oneuro/whole_cell/assets/bundles/jcvi_syn3a").resolve()
+    for name in [
+        "metadata.json",
+        "gene_features.json",
+        "gene_products.json",
+        "gene_semantics.json",
+        "transcription_units.json",
+        "transcription_unit_semantics.json",
+        "chromosome_domains.json",
+        "pools.json",
+        "rnas.json",
+        "proteins.json",
+        "complexes.json",
+        "operon_semantics.json",
+        "protein_semantics.json",
+        "complex_semantics.json",
+    ]:
+        (bundle_dir / name).write_text((source_dir / name).read_text(), encoding="ascii")
+    manifest = json.loads((source_dir / "manifest.json").read_text(encoding="ascii"))
+    manifest.pop("operons_json", None)
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="ascii"
+    )
+
+    with pytest.raises(
+        ValueError, match="requires explicit asset entities but is missing operons_json"
+    ):
+        compile_bundle_manifest(bundle_dir / "manifest.json")

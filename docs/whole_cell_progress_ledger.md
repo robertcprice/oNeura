@@ -1096,3 +1096,26 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `asset entities and asset semantics can now come from explicit source files, but the remaining legacy organism_spec_json compatibility path still exists and more downstream state descriptions still need to move onto explicit structured-source contracts to make inference a compatibility-only path`
+
+### 2026-03-11 - Phase 7 / Strict Structured Bundle Enforcement Slice
+
+- Summary:
+  - added explicit structured-bundle enforcement flags so a bundle can reject the legacy `organism_spec_json` path and require explicit asset-entity and asset-semantic source files instead of silently falling back to inferred package generation
+  - wired those checks through both the Python bundle compiler and the native Rust manifest compiler, so strict bundles fail fast when they drift back toward monolithic or inferred ingestion
+  - enabled the stricter contract on the checked-in Syn3A structured bundle and added Python regressions covering both the `organism_spec_json` rejection path and missing explicit asset-entity sources
+- Files changed:
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+  - `src/oneuro/whole_cell/assets/bundles/jcvi_syn3a/manifest.json`
+  - `src/oneuro/whole_cell/assets/compiler.py`
+  - `tests/test_whole_cell_assets.py`
+- Tests run:
+  - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
+  - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `rustfmt oneuro-metal/src/whole_cell_data.rs`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `strict structured bundles now exist for Syn3A, but the broader compatibility layer still supports legacy organism_spec_json ingestion for older bundles and more state surfaces still need explicit structured contracts before inference stops being the normal fallback`

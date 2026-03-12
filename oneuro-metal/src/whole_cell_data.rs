@@ -1454,9 +1454,15 @@ pub struct WholeCellOrganismBundleManifest {
     #[serde(default)]
     pub organism_spec_json: Option<String>,
     #[serde(default)]
+    pub require_structured_bundle: bool,
+    #[serde(default)]
     pub require_explicit_gene_semantics: bool,
     #[serde(default)]
     pub require_explicit_transcription_unit_semantics: bool,
+    #[serde(default)]
+    pub require_explicit_asset_entities: bool,
+    #[serde(default)]
+    pub require_explicit_asset_semantics: bool,
     #[serde(default)]
     pub metadata_json: Option<String>,
     #[serde(default)]
@@ -4943,8 +4949,63 @@ fn parse_bundle_manifest_json(
         .map_err(|error| format!("failed to parse organism bundle manifest: {error}"))
 }
 
+fn validate_bundle_manifest_mode(manifest: &WholeCellOrganismBundleManifest) -> Result<(), String> {
+    if manifest.require_structured_bundle && manifest.organism_spec_json.is_some() {
+        return Err(
+            "bundle requires structured sources and may not define organism_spec_json".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_bundle_asset_contracts(
+    manifest: &WholeCellOrganismBundleManifest,
+) -> Result<(), String> {
+    if manifest.require_explicit_asset_entities {
+        let mut missing = Vec::new();
+        if manifest.operons_json.is_none() {
+            missing.push("operons_json");
+        }
+        if manifest.rnas_json.is_none() {
+            missing.push("rnas_json");
+        }
+        if manifest.proteins_json.is_none() {
+            missing.push("proteins_json");
+        }
+        if manifest.complexes_json.is_none() {
+            missing.push("complexes_json");
+        }
+        if !missing.is_empty() {
+            return Err(format!(
+                "bundle requires explicit asset entities but is missing {}",
+                missing.join(", ")
+            ));
+        }
+    }
+    if manifest.require_explicit_asset_semantics {
+        let mut missing = Vec::new();
+        if manifest.operon_semantics_json.is_none() {
+            missing.push("operon_semantics_json");
+        }
+        if manifest.protein_semantics_json.is_none() {
+            missing.push("protein_semantics_json");
+        }
+        if manifest.complex_semantics_json.is_none() {
+            missing.push("complex_semantics_json");
+        }
+        if !missing.is_empty() {
+            return Err(format!(
+                "bundle requires explicit asset semantics but is missing {}",
+                missing.join(", ")
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn compile_embedded_syn3a_organism_spec() -> Result<WholeCellOrganismSpec, String> {
     let manifest = parse_bundle_manifest_json(BUNDLED_SYN3A_BUNDLE_MANIFEST_JSON)?;
+    validate_bundle_manifest_mode(&manifest)?;
     let metadata: WholeCellOrganismBundleMetadata =
         serde_json::from_str(BUNDLED_SYN3A_BUNDLE_METADATA_JSON)
             .map_err(|error| format!("failed to parse embedded Syn3A bundle metadata: {error}"))?;
@@ -5022,6 +5083,7 @@ pub fn compile_organism_spec_from_bundle_manifest_path(
     })?;
     let manifest_json = read_text_file(&manifest_path, "bundle manifest")?;
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
+    validate_bundle_manifest_mode(&manifest)?;
 
     if let Some(spec_relative) = manifest.organism_spec_json.as_deref() {
         let spec_path = resolve_manifest_relative_path(&manifest_path, spec_relative)?;
@@ -5309,6 +5371,7 @@ fn compile_genome_asset_package_from_bundle_manifest_path(
     })?;
     let manifest_json = read_text_file(&manifest_path_obj, "bundle manifest")?;
     let manifest = parse_bundle_manifest_json(&manifest_json)?;
+    validate_bundle_asset_contracts(&manifest)?;
     let organism = compile_organism_spec_from_bundle_manifest_path(manifest_path)?;
     let assets = compile_genome_asset_package(&organism);
     let assets = apply_bundle_asset_entity_overlays(&manifest_path_obj, &manifest, assets)?;
@@ -5471,6 +5534,8 @@ pub fn bundled_syn3a_organism_spec() -> Result<WholeCellOrganismSpec, String> {
 }
 
 fn compile_embedded_syn3a_genome_asset_package() -> Result<WholeCellGenomeAssetPackage, String> {
+    let manifest = parse_bundle_manifest_json(BUNDLED_SYN3A_BUNDLE_MANIFEST_JSON)?;
+    validate_bundle_asset_contracts(&manifest)?;
     let mut assets =
         bundled_syn3a_organism_spec().map(|organism| compile_genome_asset_package(&organism))?;
     assets.operons =
