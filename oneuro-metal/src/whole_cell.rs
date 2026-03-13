@@ -2505,7 +2505,17 @@ impl WholeCellSimulator {
             return self.complex_assembly;
         }
         if !self.named_complexes.is_empty() {
-            return self.aggregate_named_complex_assembly_state_without_assets();
+            let aggregate = self.aggregate_named_complex_assembly_state_without_assets();
+            if self.complex_assembly.total_complexes() > 1.0e-6 {
+                // Bundle-less explicit named-complex state is the preferred
+                // source of truth, but some legacy compatibility payloads only
+                // carry coarse channel totals for channels the current
+                // family/subsystem semantics cannot represent exactly yet.
+                // Preserve those persisted explicit channel totals until richer
+                // named-complex detail exists for them too.
+                return self.merge_bundleless_assembly_channels(aggregate, self.complex_assembly);
+            }
+            return aggregate;
         }
         if self.complex_assembly.total_complexes() > 1.0e-6 {
             self.complex_assembly
@@ -2589,6 +2599,89 @@ impl WholeCellSimulator {
                 * (0.55 + 0.45 * membrane_signal))
                 .clamp(0.30, 2.60),
         }
+    }
+
+    fn named_complexes_have_direct_channel_carrier(
+        &self,
+        channel_total: fn(&WholeCellAssemblyChannelShares) -> f32,
+    ) -> bool {
+        self.named_complexes.iter().any(|state| {
+            let shares = self.named_complex_inventory_shares_from_state(state);
+            let channel = channel_total(&shares);
+            channel > 1.0 - 1.0e-6 && (shares.total() - channel).abs() <= 1.0e-6
+        })
+    }
+
+    fn merge_bundleless_assembly_channels(
+        &self,
+        primary: WholeCellComplexAssemblyState,
+        fallback: WholeCellComplexAssemblyState,
+    ) -> WholeCellComplexAssemblyState {
+        let mut merged = primary;
+        if !self.named_complexes_have_direct_channel_carrier(|shares| shares.atp_band)
+            && fallback.atp_band_complexes.max(fallback.atp_band_target)
+                > merged.atp_band_complexes.max(merged.atp_band_target)
+        {
+            merged.atp_band_complexes = fallback.atp_band_complexes;
+            merged.atp_band_target = fallback.atp_band_target;
+            merged.atp_band_assembly_rate = fallback.atp_band_assembly_rate;
+            merged.atp_band_degradation_rate = fallback.atp_band_degradation_rate;
+        }
+        if !self.named_complexes_have_direct_channel_carrier(|shares| shares.ribosome)
+            && fallback.ribosome_complexes.max(fallback.ribosome_target)
+                > merged.ribosome_complexes.max(merged.ribosome_target)
+        {
+            merged.ribosome_complexes = fallback.ribosome_complexes;
+            merged.ribosome_target = fallback.ribosome_target;
+            merged.ribosome_assembly_rate = fallback.ribosome_assembly_rate;
+            merged.ribosome_degradation_rate = fallback.ribosome_degradation_rate;
+        }
+        if !self.named_complexes_have_direct_channel_carrier(|shares| shares.rnap)
+            && fallback.rnap_complexes.max(fallback.rnap_target)
+                > merged.rnap_complexes.max(merged.rnap_target)
+        {
+            merged.rnap_complexes = fallback.rnap_complexes;
+            merged.rnap_target = fallback.rnap_target;
+            merged.rnap_assembly_rate = fallback.rnap_assembly_rate;
+            merged.rnap_degradation_rate = fallback.rnap_degradation_rate;
+        }
+        if !self.named_complexes_have_direct_channel_carrier(|shares| shares.replisome)
+            && fallback.replisome_complexes.max(fallback.replisome_target)
+                > merged.replisome_complexes.max(merged.replisome_target)
+        {
+            merged.replisome_complexes = fallback.replisome_complexes;
+            merged.replisome_target = fallback.replisome_target;
+            merged.replisome_assembly_rate = fallback.replisome_assembly_rate;
+            merged.replisome_degradation_rate = fallback.replisome_degradation_rate;
+        }
+        if !self.named_complexes_have_direct_channel_carrier(|shares| shares.membrane)
+            && fallback.membrane_complexes.max(fallback.membrane_target)
+                > merged.membrane_complexes.max(merged.membrane_target)
+        {
+            merged.membrane_complexes = fallback.membrane_complexes;
+            merged.membrane_target = fallback.membrane_target;
+            merged.membrane_assembly_rate = fallback.membrane_assembly_rate;
+            merged.membrane_degradation_rate = fallback.membrane_degradation_rate;
+        }
+        if !self.named_complexes_have_direct_channel_carrier(|shares| shares.ftsz)
+            && fallback.ftsz_polymer.max(fallback.ftsz_target)
+                > merged.ftsz_polymer.max(merged.ftsz_target)
+        {
+            merged.ftsz_polymer = fallback.ftsz_polymer;
+            merged.ftsz_target = fallback.ftsz_target;
+            merged.ftsz_assembly_rate = fallback.ftsz_assembly_rate;
+            merged.ftsz_degradation_rate = fallback.ftsz_degradation_rate;
+        }
+        if !self.named_complexes_have_direct_channel_carrier(|shares| shares.dnaa)
+            && fallback.dnaa_activity.max(fallback.dnaa_target)
+                > merged.dnaa_activity.max(merged.dnaa_target)
+        {
+            merged.dnaa_activity = fallback.dnaa_activity;
+            merged.dnaa_target = fallback.dnaa_target;
+            merged.dnaa_assembly_rate = fallback.dnaa_assembly_rate;
+            merged.dnaa_degradation_rate = fallback.dnaa_degradation_rate;
+        }
+        merged
     }
 
     fn refresh_surrogate_pool_diagnostics(
@@ -7867,8 +7960,12 @@ impl WholeCellSimulator {
             };
             self.synchronize_membrane_division_summary();
             if !self.named_complexes.is_empty() {
-                self.complex_assembly =
-                    self.aggregate_named_complex_assembly_state_without_assets();
+                let aggregate = self.aggregate_named_complex_assembly_state_without_assets();
+                self.complex_assembly = if self.complex_assembly.total_complexes() > 1.0e-6 {
+                    self.merge_bundleless_assembly_channels(aggregate, self.complex_assembly)
+                } else {
+                    aggregate
+                };
             } else if self.complex_assembly.total_complexes() <= 1.0e-6 {
                 self.initialize_complex_assembly_state();
             }
@@ -13967,6 +14064,15 @@ mod tests {
         assert!((complex.ribosome_complexes - 19.0).abs() < 1.0e-6);
         assert!((complex.dnaa_activity - 9.5).abs() < 1.0e-6);
         assert!((complex.ftsz_polymer - 24.0).abs() < 1.0e-6);
+        assert!(!restored.named_complexes_state().is_empty());
+        assert!(restored
+            .named_complexes_state()
+            .iter()
+            .any(|complex| complex.family == WholeCellAssemblyFamily::Ribosome));
+        assert!(restored
+            .named_complexes_state()
+            .iter()
+            .any(|complex| complex.family == WholeCellAssemblyFamily::RnaPolymerase));
         assert!((snapshot.active_rnap - 12.0).abs() < 1.0e-6);
         assert!((snapshot.active_ribosomes - 19.0).abs() < 1.0e-6);
         assert!((snapshot.ftsz - 24.0).abs() < 1.0e-6);

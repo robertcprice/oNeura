@@ -2108,3 +2108,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `legacy compatibility is narrower again, but expression, local-chemistry, and named-complex detail still lack equally rich promotion on the remaining non-explicit migration and serialization paths`
+
+### 2026-03-12 - Phase 7 / Legacy Named-Complex Promotion
+
+- Summary:
+  - extended the legacy saved-state parser so coarse aggregate assembly channels now promote into explicit `named_complexes`, distributing through asset-backed complex specs when bundles are present and through generic family-level complex carriers when they are not
+  - updated the bundle-less assembly inventory path so explicit named-complex aggregation remains preferred, but any persisted aggregate channels that the current named-complex semantics still cannot represent exactly are preserved instead of being silently lost during restore
+  - added data-layer and runtime regressions proving legacy restore now yields explicit named-complex state alongside explicit chromosome, membrane, complex, and scheduler state on the compatibility path
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q parse_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `legacy compatibility is narrower again, but expression and local-chemistry detail still lack equally rich promotion on the remaining non-explicit migration and serialization paths, and some assembly channels still need richer direct named-complex carriers before persisted aggregate assembly can disappear completely`

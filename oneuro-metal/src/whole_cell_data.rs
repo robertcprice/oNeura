@@ -6917,6 +6917,346 @@ fn synthesize_legacy_complex_assembly_from_core(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LegacyAssemblyChannel {
+    AtpBand,
+    Ribosome,
+    Rnap,
+    Replisome,
+    Membrane,
+    Ftsz,
+    Dnaa,
+}
+
+fn legacy_complex_primary_channel_from_targets(
+    subsystem_targets: &[Syn3ASubsystemPreset],
+) -> Option<LegacyAssemblyChannel> {
+    if subsystem_targets.contains(&Syn3ASubsystemPreset::AtpSynthaseMembraneBand) {
+        return Some(LegacyAssemblyChannel::AtpBand);
+    }
+    if subsystem_targets.contains(&Syn3ASubsystemPreset::RibosomePolysomeCluster) {
+        return Some(LegacyAssemblyChannel::Ribosome);
+    }
+    if subsystem_targets.contains(&Syn3ASubsystemPreset::ReplisomeTrack) {
+        return Some(LegacyAssemblyChannel::Replisome);
+    }
+    if subsystem_targets.contains(&Syn3ASubsystemPreset::FtsZSeptumRing) {
+        return Some(LegacyAssemblyChannel::Ftsz);
+    }
+    None
+}
+
+fn legacy_complex_primary_channel_from_family(
+    family: WholeCellAssemblyFamily,
+) -> Option<LegacyAssemblyChannel> {
+    match family {
+        WholeCellAssemblyFamily::AtpSynthase => Some(LegacyAssemblyChannel::AtpBand),
+        WholeCellAssemblyFamily::Ribosome => Some(LegacyAssemblyChannel::Ribosome),
+        WholeCellAssemblyFamily::RnaPolymerase => Some(LegacyAssemblyChannel::Rnap),
+        WholeCellAssemblyFamily::Replisome => Some(LegacyAssemblyChannel::Replisome),
+        WholeCellAssemblyFamily::Transporter | WholeCellAssemblyFamily::MembraneEnzyme => {
+            Some(LegacyAssemblyChannel::Membrane)
+        }
+        WholeCellAssemblyFamily::Divisome => Some(LegacyAssemblyChannel::Ftsz),
+        WholeCellAssemblyFamily::ChaperoneClient | WholeCellAssemblyFamily::Generic => None,
+    }
+}
+
+fn legacy_complex_primary_channel_from_asset_class(
+    asset_class: WholeCellAssetClass,
+) -> Option<LegacyAssemblyChannel> {
+    match asset_class {
+        WholeCellAssetClass::Energy => Some(LegacyAssemblyChannel::AtpBand),
+        WholeCellAssetClass::Translation => Some(LegacyAssemblyChannel::Ribosome),
+        WholeCellAssetClass::Replication | WholeCellAssetClass::Segregation => {
+            Some(LegacyAssemblyChannel::Replisome)
+        }
+        WholeCellAssetClass::Membrane => Some(LegacyAssemblyChannel::Membrane),
+        WholeCellAssetClass::Constriction => Some(LegacyAssemblyChannel::Ftsz),
+        WholeCellAssetClass::QualityControl
+        | WholeCellAssetClass::Homeostasis
+        | WholeCellAssetClass::Generic => None,
+    }
+}
+
+fn legacy_complex_primary_channel_for_asset(
+    complex: &WholeCellComplexSpec,
+) -> Option<LegacyAssemblyChannel> {
+    legacy_complex_primary_channel_from_targets(&complex.subsystem_targets)
+        .or_else(|| legacy_complex_primary_channel_from_family(complex.family))
+        .or_else(|| legacy_complex_primary_channel_from_asset_class(complex.asset_class))
+}
+
+fn legacy_channel_amounts(
+    assembly: WholeCellComplexAssemblyState,
+    channel: LegacyAssemblyChannel,
+) -> (f32, f32, f32, f32) {
+    match channel {
+        LegacyAssemblyChannel::AtpBand => (
+            assembly.atp_band_complexes,
+            assembly.atp_band_target,
+            assembly.atp_band_assembly_rate,
+            assembly.atp_band_degradation_rate,
+        ),
+        LegacyAssemblyChannel::Ribosome => (
+            assembly.ribosome_complexes,
+            assembly.ribosome_target,
+            assembly.ribosome_assembly_rate,
+            assembly.ribosome_degradation_rate,
+        ),
+        LegacyAssemblyChannel::Rnap => (
+            assembly.rnap_complexes,
+            assembly.rnap_target,
+            assembly.rnap_assembly_rate,
+            assembly.rnap_degradation_rate,
+        ),
+        LegacyAssemblyChannel::Replisome => (
+            assembly.replisome_complexes,
+            assembly.replisome_target,
+            assembly.replisome_assembly_rate,
+            assembly.replisome_degradation_rate,
+        ),
+        LegacyAssemblyChannel::Membrane => (
+            assembly.membrane_complexes,
+            assembly.membrane_target,
+            assembly.membrane_assembly_rate,
+            assembly.membrane_degradation_rate,
+        ),
+        LegacyAssemblyChannel::Ftsz => (
+            assembly.ftsz_polymer,
+            assembly.ftsz_target,
+            assembly.ftsz_assembly_rate,
+            assembly.ftsz_degradation_rate,
+        ),
+        LegacyAssemblyChannel::Dnaa => (
+            assembly.dnaa_activity,
+            assembly.dnaa_target,
+            assembly.dnaa_assembly_rate,
+            assembly.dnaa_degradation_rate,
+        ),
+    }
+}
+
+fn legacy_channel_named_complex_metadata(
+    channel: LegacyAssemblyChannel,
+) -> (
+    &'static str,
+    WholeCellAssetClass,
+    WholeCellAssemblyFamily,
+    Vec<Syn3ASubsystemPreset>,
+) {
+    match channel {
+        LegacyAssemblyChannel::AtpBand => (
+            "legacy_atp_band_complex",
+            WholeCellAssetClass::Energy,
+            WholeCellAssemblyFamily::AtpSynthase,
+            vec![Syn3ASubsystemPreset::AtpSynthaseMembraneBand],
+        ),
+        LegacyAssemblyChannel::Ribosome => (
+            "legacy_ribosome_complex",
+            WholeCellAssetClass::Translation,
+            WholeCellAssemblyFamily::Ribosome,
+            vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
+        ),
+        LegacyAssemblyChannel::Rnap => (
+            "legacy_rnap_complex",
+            WholeCellAssetClass::Homeostasis,
+            WholeCellAssemblyFamily::RnaPolymerase,
+            Vec::new(),
+        ),
+        LegacyAssemblyChannel::Replisome => (
+            "legacy_replisome_complex",
+            WholeCellAssetClass::Replication,
+            WholeCellAssemblyFamily::Replisome,
+            vec![Syn3ASubsystemPreset::ReplisomeTrack],
+        ),
+        LegacyAssemblyChannel::Membrane => (
+            "legacy_membrane_complex",
+            WholeCellAssetClass::Membrane,
+            WholeCellAssemblyFamily::MembraneEnzyme,
+            Vec::new(),
+        ),
+        LegacyAssemblyChannel::Ftsz => (
+            "legacy_divisome_complex",
+            WholeCellAssetClass::Constriction,
+            WholeCellAssemblyFamily::Divisome,
+            vec![Syn3ASubsystemPreset::FtsZSeptumRing],
+        ),
+        LegacyAssemblyChannel::Dnaa => (
+            "legacy_dnaa_complex",
+            WholeCellAssetClass::Replication,
+            WholeCellAssemblyFamily::Replisome,
+            vec![Syn3ASubsystemPreset::ReplisomeTrack],
+        ),
+    }
+}
+
+fn legacy_named_complex_state_from_channel(
+    channel: LegacyAssemblyChannel,
+    abundance: f32,
+    target_abundance: f32,
+    assembly_rate: f32,
+    degradation_rate: f32,
+) -> WholeCellNamedComplexState {
+    let (id, asset_class, family, subsystem_targets) =
+        legacy_channel_named_complex_metadata(channel);
+    let target_abundance = target_abundance.max(abundance);
+    let insertion_progress = 1.0;
+    let assembly_progress = if target_abundance > 1.0e-6 {
+        (abundance / target_abundance).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    WholeCellNamedComplexState {
+        id: id.to_string(),
+        operon: id.to_string(),
+        asset_class,
+        family,
+        subsystem_targets,
+        subunit_pool: 0.0,
+        nucleation_intermediate: 0.0,
+        elongation_intermediate: 0.0,
+        abundance,
+        target_abundance,
+        assembly_rate,
+        degradation_rate,
+        nucleation_rate: 0.0,
+        elongation_rate: 0.0,
+        maturation_rate: 0.0,
+        component_satisfaction: 1.0,
+        structural_support: 1.0,
+        assembly_progress,
+        stalled_intermediate: 0.0,
+        damaged_abundance: 0.0,
+        limiting_component_signal: 0.0,
+        shared_component_pressure: 0.0,
+        insertion_progress,
+        failure_count: 0.0,
+    }
+}
+
+fn synthesize_legacy_named_complexes_from_assets(
+    assets: &WholeCellGenomeAssetPackage,
+    assembly: WholeCellComplexAssemblyState,
+) -> Vec<WholeCellNamedComplexState> {
+    let mut states = Vec::new();
+    for channel in [
+        LegacyAssemblyChannel::AtpBand,
+        LegacyAssemblyChannel::Ribosome,
+        LegacyAssemblyChannel::Rnap,
+        LegacyAssemblyChannel::Replisome,
+        LegacyAssemblyChannel::Membrane,
+        LegacyAssemblyChannel::Ftsz,
+        LegacyAssemblyChannel::Dnaa,
+    ] {
+        let matching = assets
+            .complexes
+            .iter()
+            .enumerate()
+            .filter(|(_, complex)| {
+                legacy_complex_primary_channel_for_asset(complex) == Some(channel)
+            })
+            .collect::<Vec<_>>();
+        if matching.is_empty() {
+            continue;
+        }
+        let (channel_abundance, channel_target, channel_assembly_rate, channel_degradation_rate) =
+            legacy_channel_amounts(assembly, channel);
+        let total_weight = matching
+            .iter()
+            .map(|(_, complex)| complex.basal_abundance.max(0.01))
+            .sum::<f32>()
+            .max(1.0e-6);
+        for (_, complex) in matching {
+            let weight = complex.basal_abundance.max(0.01) / total_weight;
+            let abundance = channel_abundance.max(0.0) * weight;
+            let target_abundance = channel_target.max(channel_abundance).max(0.0) * weight;
+            let assembly_rate = channel_assembly_rate.max(0.0) * weight;
+            let degradation_rate = channel_degradation_rate.max(0.0) * weight;
+            let assembly_progress = if target_abundance > 1.0e-6 {
+                (abundance / target_abundance).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            states.push(WholeCellNamedComplexState {
+                id: complex.id.clone(),
+                operon: complex.operon.clone(),
+                asset_class: complex.asset_class,
+                family: complex.family,
+                subsystem_targets: complex.subsystem_targets.clone(),
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance,
+                target_abundance,
+                assembly_rate,
+                degradation_rate,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            });
+        }
+    }
+    states
+}
+
+fn synthesize_legacy_named_complexes_from_assembly(
+    state: &WholeCellSavedState,
+) -> Vec<WholeCellNamedComplexState> {
+    let assembly = if state.complex_assembly.total_complexes() > 1.0e-6 {
+        state.complex_assembly
+    } else {
+        synthesize_legacy_complex_assembly_from_core(state)
+    };
+    if let Some(assets) = state.organism_assets.as_ref() {
+        let asset_states = synthesize_legacy_named_complexes_from_assets(assets, assembly);
+        if !asset_states.is_empty() {
+            return asset_states;
+        }
+    }
+    let mut states = Vec::new();
+    for channel in [
+        LegacyAssemblyChannel::AtpBand,
+        LegacyAssemblyChannel::Ribosome,
+        LegacyAssemblyChannel::Rnap,
+        LegacyAssemblyChannel::Replisome,
+        LegacyAssemblyChannel::Membrane,
+        LegacyAssemblyChannel::Ftsz,
+    ] {
+        let (abundance, target, assembly_rate, degradation_rate) =
+            legacy_channel_amounts(assembly, channel);
+        if abundance
+            .max(target)
+            .max(assembly_rate)
+            .max(degradation_rate)
+            <= 1.0e-6
+        {
+            continue;
+        }
+        states.push(legacy_named_complex_state_from_channel(
+            channel,
+            abundance.max(0.0),
+            target.max(abundance).max(0.0),
+            assembly_rate.max(0.0),
+            degradation_rate.max(0.0),
+        ));
+    }
+    // Keep DnaA-like activity on the persisted aggregate compatibility channel
+    // until there is a richer explicit named-complex carrier for it. The
+    // current family/subsystem semantics represent replisome-like occupancy
+    // well, but not a standalone DnaA activity channel.
+    states
+}
+
 fn legacy_saved_state_has_explicit_scheduler_state(state: &WholeCellSavedState) -> bool {
     !state.scheduler_state.stage_clocks.is_empty()
 }
@@ -6987,6 +7327,9 @@ fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
     }
     if state.complex_assembly.total_complexes() <= 1.0e-6 {
         state.complex_assembly = synthesize_legacy_complex_assembly_from_core(state);
+    }
+    if state.named_complexes.is_empty() && state.complex_assembly.total_complexes() > 1.0e-6 {
+        state.named_complexes = synthesize_legacy_named_complexes_from_assembly(state);
     }
     if !legacy_saved_state_has_explicit_membrane_state(state) {
         state.membrane_division_state = synthesize_legacy_membrane_state_from_core(state);
@@ -8671,6 +9014,7 @@ mod tests {
         saved.membrane_division_state = WholeCellMembraneDivisionState::default();
         saved.complex_assembly = WholeCellComplexAssemblyState::default();
         saved.scheduler_state = WholeCellSchedulerState::default();
+        saved.named_complexes.clear();
         saved.core.genome_bp = 1000;
         saved.core.replicated_bp = 620;
         saved.core.chromosome_separation_nm = 80.0;
@@ -8699,6 +9043,15 @@ mod tests {
         assert!((reparsed.complex_assembly.ribosome_complexes - 18.0).abs() < 1.0e-6);
         assert!((reparsed.complex_assembly.dnaa_activity - 9.0).abs() < 1.0e-6);
         assert!((reparsed.complex_assembly.ftsz_polymer - 23.0).abs() < 1.0e-6);
+        assert!(!reparsed.named_complexes.is_empty());
+        assert!(reparsed
+            .named_complexes
+            .iter()
+            .any(|complex| complex.family == WholeCellAssemblyFamily::Ribosome));
+        assert!(reparsed
+            .named_complexes
+            .iter()
+            .any(|complex| complex.family == WholeCellAssemblyFamily::RnaPolymerase));
         assert_eq!(reparsed.scheduler_state.stage_clocks.len(), 6);
         let cme = reparsed
             .scheduler_state
