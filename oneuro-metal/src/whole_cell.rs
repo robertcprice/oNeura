@@ -13914,4 +13914,60 @@ mod tests {
         assert!(restored.organism_process_registry.is_some());
         assert!(restored.organism_process_registry().is_some());
     }
+
+    #[test]
+    fn test_from_legacy_saved_state_json_promotes_core_summary_to_explicit_state() {
+        let simulator = WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A");
+        let mut saved = parse_saved_state_json(
+            &simulator
+                .save_state_json()
+                .expect("serialize explicit saved state"),
+        )
+        .expect("parse explicit saved state");
+        saved.organism_data_ref = None;
+        saved.organism_data = None;
+        saved.organism_assets = None;
+        saved.organism_process_registry = None;
+        saved.chromosome_state = WholeCellChromosomeState::default();
+        saved.membrane_division_state = WholeCellMembraneDivisionState::default();
+        saved.complex_assembly = WholeCellComplexAssemblyState::default();
+        saved.named_complexes.clear();
+        saved.core.genome_bp = 1000;
+        saved.core.replicated_bp = 610;
+        saved.core.chromosome_separation_nm = 75.0;
+        saved.core.radius_nm = 115.0;
+        saved.core.surface_area_nm2 = 170_000.0;
+        saved.core.volume_nm3 = 800_000.0;
+        saved.core.division_progress = 0.28;
+        saved.core.active_rnap = 12.0;
+        saved.core.active_ribosomes = 19.0;
+        saved.core.dnaa = 9.5;
+        saved.core.ftsz = 24.0;
+
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(
+            &saved_state_to_json(&saved).expect("serialize legacy saved state"),
+        )
+        .expect("restore legacy saved state");
+        let snapshot = restored.snapshot();
+        let chromosome = restored.chromosome_state();
+        let membrane = restored.membrane_division_state();
+        let complex = restored.complex_assembly_state();
+
+        assert!(restored.organism_assets.is_none());
+        assert_eq!(chromosome.chromosome_length_bp, 1000);
+        assert_eq!(chromosome.replicated_bp, 610);
+        assert!(chromosome.segregation_progress > 0.0);
+        assert!(!chromosome.forks.is_empty());
+        assert!(membrane.preferred_membrane_area_nm2 >= 170_000.0);
+        assert!((membrane.septum_radius_fraction - 0.72).abs() < 1.0e-6);
+        assert!((complex.rnap_complexes - 12.0).abs() < 1.0e-6);
+        assert!((complex.ribosome_complexes - 19.0).abs() < 1.0e-6);
+        assert!((complex.dnaa_activity - 9.5).abs() < 1.0e-6);
+        assert!((complex.ftsz_polymer - 24.0).abs() < 1.0e-6);
+        assert!((snapshot.active_rnap - 12.0).abs() < 1.0e-6);
+        assert!((snapshot.active_ribosomes - 19.0).abs() < 1.0e-6);
+        assert!((snapshot.ftsz - 24.0).abs() < 1.0e-6);
+        assert_eq!(snapshot.replicated_bp, 610);
+        assert!((snapshot.division_progress - 0.28).abs() < 1.0e-6);
+    }
 }

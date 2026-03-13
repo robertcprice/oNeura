@@ -10,6 +10,7 @@ use crate::whole_cell_submodels::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::f32::consts::PI;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -2128,6 +2129,28 @@ fn chromosome_domain_id_for_position(
                 })
                 .map(|domain| domain.id.clone())
         })
+}
+
+fn chromosome_domain_index_for_position(
+    domains: &[WholeCellChromosomeDomainSpec],
+    position_bp: u32,
+) -> u32 {
+    domains
+        .iter()
+        .enumerate()
+        .find(|(_, domain)| interval_contains_bp(domain.start_bp, domain.end_bp, position_bp))
+        .map(|(index, _)| index as u32)
+        .or_else(|| {
+            domains
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, domain)| {
+                    let center_bp = midpoint_bp(domain.start_bp, domain.end_bp);
+                    center_bp.abs_diff(position_bp)
+                })
+                .map(|(index, _)| index as u32)
+        })
+        .unwrap_or(0)
 }
 
 fn inferred_asset_class(
@@ -6543,6 +6566,369 @@ fn normalize_saved_state_runtime_species_from_registry(state: &mut WholeCellSave
     );
 }
 
+fn legacy_saved_state_has_explicit_chromosome_state(state: &WholeCellSavedState) -> bool {
+    state.chromosome_state.chromosome_length_bp > 1
+        || state.chromosome_state.replicated_bp > 0
+        || !state.chromosome_state.loci.is_empty()
+        || !state.chromosome_state.forks.is_empty()
+}
+
+fn legacy_saved_state_has_explicit_membrane_state(state: &WholeCellSavedState) -> bool {
+    state.membrane_division_state.preferred_membrane_area_nm2 > 1.0
+        || state.membrane_division_state.membrane_area_nm2 > 1.0
+}
+
+fn legacy_saved_state_domain_specs(
+    state: &WholeCellSavedState,
+) -> &[WholeCellChromosomeDomainSpec] {
+    if let Some(organism) = state.organism_data.as_ref() {
+        if !organism.chromosome_domains.is_empty() {
+            return &organism.chromosome_domains;
+        }
+    }
+    if let Some(assets) = state.organism_assets.as_ref() {
+        if !assets.chromosome_domains.is_empty() {
+            return &assets.chromosome_domains;
+        }
+    }
+    if let Some(registry) = state.organism_process_registry.as_ref() {
+        if !registry.chromosome_domains.is_empty() {
+            return &registry.chromosome_domains;
+        }
+    }
+    &[]
+}
+
+fn legacy_saved_state_chromosome_loci(
+    state: &WholeCellSavedState,
+    genome_bp: u32,
+    segregation_progress: f32,
+    replicated_fraction: f32,
+) -> Vec<WholeCellChromosomeLocusState> {
+    let Some(organism) = state.organism_data.as_ref() else {
+        return Vec::new();
+    };
+    let domains = legacy_saved_state_domain_specs(state);
+    organism
+        .genes
+        .iter()
+        .map(|feature| {
+            let midpoint =
+                midpoint_bp(feature.start_bp, feature.end_bp).min(genome_bp.saturating_sub(1));
+            WholeCellChromosomeLocusState {
+                id: feature.gene.clone(),
+                midpoint_bp: midpoint,
+                strand: feature.strand,
+                copy_number: 1.0,
+                accessibility: (0.82 + 0.16 * (1.0 - replicated_fraction)).clamp(0.55, 1.25),
+                torsional_stress: 0.0,
+                replicated: false,
+                segregating: segregation_progress > 0.45,
+                domain_index: chromosome_domain_index_for_position(domains, midpoint),
+            }
+        })
+        .collect()
+}
+
+fn legacy_chromosome_arm_length(
+    origin_bp: u32,
+    terminus_bp: u32,
+    direction: WholeCellChromosomeForkDirection,
+    genome_bp: u32,
+) -> u32 {
+    let genome_bp = genome_bp.max(1);
+    match direction {
+        WholeCellChromosomeForkDirection::Clockwise => {
+            if terminus_bp >= origin_bp {
+                terminus_bp - origin_bp
+            } else {
+                genome_bp - origin_bp + terminus_bp
+            }
+        }
+        WholeCellChromosomeForkDirection::CounterClockwise => {
+            if origin_bp >= terminus_bp {
+                origin_bp - terminus_bp
+            } else {
+                origin_bp + genome_bp - terminus_bp
+            }
+        }
+    }
+}
+
+fn legacy_chromosome_position_from_origin(
+    origin_bp: u32,
+    traveled_bp: u32,
+    direction: WholeCellChromosomeForkDirection,
+    genome_bp: u32,
+) -> u32 {
+    let genome_bp = genome_bp.max(1);
+    match direction {
+        WholeCellChromosomeForkDirection::Clockwise => {
+            origin_bp.wrapping_add(traveled_bp) % genome_bp
+        }
+        WholeCellChromosomeForkDirection::CounterClockwise => {
+            origin_bp
+                .wrapping_add(genome_bp)
+                .wrapping_sub(traveled_bp % genome_bp)
+                % genome_bp
+        }
+    }
+}
+
+fn legacy_chromosome_forks_from_progress(
+    genome_bp: u32,
+    origin_bp: u32,
+    terminus_bp: u32,
+    replicated_bp: u32,
+) -> Vec<WholeCellChromosomeForkState> {
+    if replicated_bp == 0 {
+        return Vec::new();
+    }
+    let genome_bp = genome_bp.max(1);
+    let replicated_bp = replicated_bp.min(genome_bp);
+    let arm_cw = legacy_chromosome_arm_length(
+        origin_bp,
+        terminus_bp,
+        WholeCellChromosomeForkDirection::Clockwise,
+        genome_bp,
+    );
+    let arm_ccw = legacy_chromosome_arm_length(
+        origin_bp,
+        terminus_bp,
+        WholeCellChromosomeForkDirection::CounterClockwise,
+        genome_bp,
+    );
+    let cw_traveled = (replicated_bp as f32 * 0.5).round() as u32;
+    let ccw_traveled = replicated_bp.saturating_sub(cw_traveled);
+    [
+        (
+            "fork_clockwise",
+            WholeCellChromosomeForkDirection::Clockwise,
+            cw_traveled.min(arm_cw),
+            arm_cw,
+        ),
+        (
+            "fork_counter_clockwise",
+            WholeCellChromosomeForkDirection::CounterClockwise,
+            ccw_traveled.min(arm_ccw),
+            arm_ccw,
+        ),
+    ]
+    .into_iter()
+    .map(|(id, direction, traveled_bp, arm_length)| {
+        let completed = traveled_bp >= arm_length;
+        WholeCellChromosomeForkState {
+            id: id.to_string(),
+            direction,
+            position_bp: legacy_chromosome_position_from_origin(
+                origin_bp,
+                traveled_bp,
+                direction,
+                genome_bp,
+            ),
+            traveled_bp,
+            active: !completed,
+            paused: false,
+            pause_pressure: 0.0,
+            collision_pressure: 0.0,
+            pause_events: 0,
+            completion_fraction: traveled_bp as f32 / arm_length.max(1) as f32,
+            completed,
+        }
+    })
+    .collect()
+}
+
+fn legacy_surface_area_from_radius(radius_nm: f32) -> f32 {
+    4.0 * PI * radius_nm * radius_nm
+}
+
+fn synthesize_legacy_chromosome_state_from_core(
+    state: &WholeCellSavedState,
+) -> WholeCellChromosomeState {
+    let genome_bp = state
+        .organism_data
+        .as_ref()
+        .map(|organism| organism.chromosome_length_bp.max(1))
+        .unwrap_or_else(|| state.core.genome_bp.max(1));
+    let origin_bp = state
+        .organism_data
+        .as_ref()
+        .map(|organism| organism.origin_bp.min(genome_bp))
+        .unwrap_or(0);
+    let terminus_bp = state
+        .organism_data
+        .as_ref()
+        .map(|organism| organism.terminus_bp.min(genome_bp))
+        .unwrap_or((genome_bp / 2).max(1));
+    let replicated_bp = state.core.replicated_bp.min(genome_bp);
+    let replicated_fraction = replicated_bp as f32 / genome_bp.max(1) as f32;
+    let segregation_progress = (state.core.chromosome_separation_nm
+        / (state.core.radius_nm.max(50.0) * 1.8).max(1.0))
+    .clamp(0.0, 1.0);
+    WholeCellChromosomeState {
+        chromosome_length_bp: genome_bp,
+        origin_bp,
+        terminus_bp,
+        initiation_potential: 0.35,
+        initiation_events: u32::from(replicated_bp > 0),
+        completion_events: u32::from(replicated_bp >= genome_bp),
+        replicated_bp,
+        replicated_fraction,
+        segregation_progress,
+        compaction_fraction: (0.32 + 0.20 * replicated_fraction).clamp(0.20, 0.90),
+        torsional_stress: 0.0,
+        mean_locus_accessibility: (0.82 + 0.16 * (1.0 - replicated_fraction)).clamp(0.55, 1.25),
+        forks: legacy_chromosome_forks_from_progress(
+            genome_bp,
+            origin_bp,
+            terminus_bp,
+            replicated_bp,
+        ),
+        loci: legacy_saved_state_chromosome_loci(
+            state,
+            genome_bp,
+            segregation_progress,
+            replicated_fraction,
+        ),
+    }
+}
+
+fn synthesize_legacy_membrane_state_from_core(
+    state: &WholeCellSavedState,
+) -> WholeCellMembraneDivisionState {
+    let preferred_area_nm2 = state
+        .core
+        .surface_area_nm2
+        .max(legacy_surface_area_from_radius(
+            state.core.radius_nm.max(50.0),
+        ))
+        .max(1.0);
+    let membrane_fraction = state
+        .organism_data
+        .as_ref()
+        .map(|organism| organism.geometry.membrane_fraction.clamp(0.05, 0.95))
+        .unwrap_or(default_membrane_fraction());
+    let cardiolipin_share = state
+        .organism_data
+        .as_ref()
+        .map(|organism| (0.08 + 0.40 * organism.composition.lipid_fraction).clamp(0.08, 0.32))
+        .unwrap_or(0.16);
+    let division_progress = state.core.division_progress.clamp(0.0, 0.99);
+    let septum_radius_fraction = (1.0 - division_progress).clamp(0.01, 1.0);
+    let septum_localization = (0.08 + 0.22 * division_progress).clamp(0.05, 0.60);
+    let divisome_order_progress = (0.06 + 0.28 * division_progress).clamp(0.0, 1.0);
+    let ring_occupancy = (0.05 + 0.30 * division_progress).clamp(0.0, 1.0);
+    let replicated_fraction = if state.chromosome_state.chromosome_length_bp > 1 {
+        state.chromosome_state.replicated_fraction
+    } else {
+        state.core.replicated_bp.min(state.core.genome_bp.max(1)) as f32
+            / state.core.genome_bp.max(1) as f32
+    };
+    let segregation_progress = if state.chromosome_state.chromosome_length_bp > 1 {
+        state.chromosome_state.segregation_progress
+    } else {
+        (state.core.chromosome_separation_nm / (state.core.radius_nm.max(50.0) * 1.8).max(1.0))
+            .clamp(0.0, 1.0)
+    };
+    let complex_assembly = if state.complex_assembly.total_complexes() > 1.0e-6 {
+        state.complex_assembly
+    } else {
+        synthesize_legacy_complex_assembly_from_core(state)
+    };
+    let membrane_protein_insertion = (complex_assembly.membrane_complexes
+        + 0.35 * complex_assembly.atp_band_complexes)
+        / (complex_assembly.membrane_target.max(8.0));
+    let membrane_protein_insertion = membrane_protein_insertion.clamp(0.0, 1.0);
+    let polar_patch_fraction =
+        (0.08 + 0.18 * cardiolipin_share + 0.06 * division_progress).clamp(0.05, 0.28);
+    let band_patch_fraction =
+        (0.26 + 0.18 * membrane_protein_insertion - 0.08 * division_progress).clamp(0.16, 0.50);
+    WholeCellMembraneDivisionState {
+        membrane_area_nm2: preferred_area_nm2,
+        preferred_membrane_area_nm2: preferred_area_nm2,
+        phospholipid_inventory_nm2: preferred_area_nm2 * (1.0 - cardiolipin_share),
+        cardiolipin_inventory_nm2: preferred_area_nm2 * cardiolipin_share,
+        septal_lipid_inventory_nm2: preferred_area_nm2 * septum_localization * 0.08,
+        membrane_band_lipid_inventory_nm2: preferred_area_nm2 * band_patch_fraction,
+        polar_lipid_inventory_nm2: preferred_area_nm2 * polar_patch_fraction,
+        membrane_protein_insertion,
+        insertion_debt: 0.0,
+        curvature_stress: (0.10 + 0.25 * division_progress).clamp(0.0, 1.5),
+        septum_localization,
+        divisome_occupancy: divisome_order_progress * ring_occupancy,
+        divisome_order_progress,
+        ring_occupancy,
+        ring_tension: (0.10 + 0.50 * division_progress).clamp(0.0, 1.5),
+        constriction_force: 0.0,
+        septum_radius_fraction,
+        septum_thickness_nm: (0.018 * state.core.radius_nm.max(50.0)).clamp(3.0, 12.0),
+        envelope_integrity: 1.0,
+        osmotic_balance: 1.0,
+        chromosome_occlusion: (1.0 - segregation_progress).clamp(0.0, 1.0)
+            * (0.35 + 0.65 * replicated_fraction.clamp(0.0, 1.0))
+            * (0.85 + 0.15 * membrane_fraction),
+        failure_pressure: 0.0,
+        band_turnover_pressure: 0.0,
+        pole_turnover_pressure: 0.0,
+        septum_turnover_pressure: 0.0,
+        scission_events: 0,
+    }
+}
+
+fn synthesize_legacy_complex_assembly_from_core(
+    state: &WholeCellSavedState,
+) -> WholeCellComplexAssemblyState {
+    let ftsz = state.core.ftsz.max(0.0);
+    let dnaa = state.core.dnaa.max(0.0);
+    let active_ribosomes = state.core.active_ribosomes.max(0.0);
+    let active_rnap = state.core.active_rnap.max(0.0);
+    let membrane_complexes = (0.45 * active_rnap + 0.25 * ftsz).max(0.0);
+    let replisome_complexes = (0.55 * dnaa + 0.20 * active_rnap).max(0.0);
+    WholeCellComplexAssemblyState {
+        atp_band_complexes: (0.30 * membrane_complexes).max(0.0),
+        ribosome_complexes: active_ribosomes,
+        rnap_complexes: active_rnap,
+        replisome_complexes,
+        membrane_complexes,
+        ftsz_polymer: ftsz,
+        dnaa_activity: dnaa,
+        atp_band_target: (0.34 * membrane_complexes).max(0.0),
+        ribosome_target: active_ribosomes,
+        rnap_target: active_rnap,
+        replisome_target: replisome_complexes,
+        membrane_target: membrane_complexes,
+        ftsz_target: ftsz,
+        dnaa_target: dnaa,
+        atp_band_assembly_rate: 0.0,
+        ribosome_assembly_rate: 0.0,
+        rnap_assembly_rate: 0.0,
+        replisome_assembly_rate: 0.0,
+        membrane_assembly_rate: 0.0,
+        ftsz_assembly_rate: 0.0,
+        dnaa_assembly_rate: 0.0,
+        atp_band_degradation_rate: 0.0,
+        ribosome_degradation_rate: 0.0,
+        rnap_degradation_rate: 0.0,
+        replisome_degradation_rate: 0.0,
+        membrane_degradation_rate: 0.0,
+        ftsz_degradation_rate: 0.0,
+        dnaa_degradation_rate: 0.0,
+    }
+}
+
+fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
+    if !legacy_saved_state_has_explicit_chromosome_state(state) {
+        state.chromosome_state = synthesize_legacy_chromosome_state_from_core(state);
+    }
+    if state.complex_assembly.total_complexes() <= 1.0e-6 {
+        state.complex_assembly = synthesize_legacy_complex_assembly_from_core(state);
+    }
+    if !legacy_saved_state_has_explicit_membrane_state(state) {
+        state.membrane_division_state = synthesize_legacy_membrane_state_from_core(state);
+    }
+}
+
 fn finalize_parsed_saved_state(
     mut state: WholeCellSavedState,
 ) -> Result<WholeCellSavedState, String> {
@@ -6584,6 +6970,7 @@ pub fn parse_legacy_saved_state_json(state_json: &str) -> Result<WholeCellSavedS
     refresh_saved_state_registry_from_assets_if_needed(&mut state);
     backfill_legacy_runtime_species_bulk_fields(&mut state.organism_species);
     normalize_saved_state_runtime_species_from_registry(&mut state);
+    hydrate_legacy_saved_state_explicit_state(&mut state);
     finalize_parsed_saved_state(state)
 }
 
@@ -8198,6 +8585,45 @@ mod tests {
         assert!(reparsed.organism_data.is_some());
         assert!(reparsed.organism_assets.is_some());
         assert!(reparsed.organism_process_registry.is_some());
+    }
+
+    #[test]
+    fn parse_legacy_saved_state_json_promotes_core_summary_to_explicit_state() {
+        let spec = bundled_syn3a_program_spec().expect("bundled spec");
+        let mut saved = minimal_saved_state_from_spec(&spec);
+        saved.organism_data_ref = None;
+        saved.organism_data = None;
+        saved.organism_assets = None;
+        saved.organism_process_registry = None;
+        saved.chromosome_state = WholeCellChromosomeState::default();
+        saved.membrane_division_state = WholeCellMembraneDivisionState::default();
+        saved.complex_assembly = WholeCellComplexAssemblyState::default();
+        saved.core.genome_bp = 1000;
+        saved.core.replicated_bp = 620;
+        saved.core.chromosome_separation_nm = 80.0;
+        saved.core.radius_nm = 120.0;
+        saved.core.surface_area_nm2 = 180_000.0;
+        saved.core.volume_nm3 = 900_000.0;
+        saved.core.division_progress = 0.35;
+        saved.core.active_rnap = 11.0;
+        saved.core.active_ribosomes = 18.0;
+        saved.core.dnaa = 9.0;
+        saved.core.ftsz = 23.0;
+
+        let reparsed =
+            parse_legacy_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
+                .expect("reparsed legacy saved state");
+
+        assert_eq!(reparsed.chromosome_state.chromosome_length_bp, 1000);
+        assert_eq!(reparsed.chromosome_state.replicated_bp, 620);
+        assert!(reparsed.chromosome_state.segregation_progress > 0.0);
+        assert!(!reparsed.chromosome_state.forks.is_empty());
+        assert!(reparsed.membrane_division_state.preferred_membrane_area_nm2 >= 180_000.0);
+        assert!((reparsed.membrane_division_state.septum_radius_fraction - 0.65).abs() < 1.0e-6);
+        assert!((reparsed.complex_assembly.rnap_complexes - 11.0).abs() < 1.0e-6);
+        assert!((reparsed.complex_assembly.ribosome_complexes - 18.0).abs() < 1.0e-6);
+        assert!((reparsed.complex_assembly.dnaa_activity - 9.0).abs() < 1.0e-6);
+        assert!((reparsed.complex_assembly.ftsz_polymer - 23.0).abs() < 1.0e-6);
     }
 
     #[test]

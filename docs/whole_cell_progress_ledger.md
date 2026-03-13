@@ -2066,3 +2066,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `the remaining compatibility-only surface is narrower again: legacy-only restore, snapshot, or migration paths still keep synchronized scalar summaries where richer explicit persisted payloads still do not exist`
+
+### 2026-03-12 - Phase 7 / Legacy Saved-State Core Summary Promotion
+
+- Summary:
+  - moved the legacy saved-state compatibility bridge farther down to the parser boundary by promoting coarse `saved.core` summary payloads into explicit chromosome, membrane, and complex-assembly state before restore-time runtime logic runs
+  - added legacy synthesis helpers for fork state, chromosome loci, membrane geometry, and coarse assembly totals so older saved states regain explicit biology layers without adding more restore-time branching in the live simulator
+  - added both data-layer and runtime regressions proving legacy saved states with stale or missing explicit biology still restore into explicit chromosome, membrane, and complex state that drives later snapshot and diagnostic boundaries
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q parse_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `legacy compatibility is narrower again, but expression, local-chemistry, scheduler, and named-complex detail still lack equally rich promotion on the remaining non-explicit migration and serialization paths`
