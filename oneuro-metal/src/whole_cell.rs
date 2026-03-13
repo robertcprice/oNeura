@@ -8492,7 +8492,8 @@ impl WholeCellSimulator {
         self.chemistry_site_reports = saved.chemistry_site_reports;
         self.last_md_probe = saved.last_md_probe;
         self.scheduled_subsystem_probes = saved.scheduled_subsystem_probes;
-        self.subsystem_states = if saved.subsystem_states.is_empty() {
+        let subsystem_states_were_missing = saved.subsystem_states.is_empty();
+        self.subsystem_states = if subsystem_states_were_missing {
             Syn3ASubsystemPreset::all()
                 .iter()
                 .copied()
@@ -8501,6 +8502,14 @@ impl WholeCellSimulator {
         } else {
             saved.subsystem_states
         };
+        // Saved chemistry sites need to repopulate persistent subsystem coupling
+        // state when older payloads only carried site reports. Without this
+        // refresh, restore would keep default subsystem scales until the next
+        // live chemistry bridge step even though the saved boundary already has
+        // explicit localized chemistry detail.
+        if subsystem_states_were_missing {
+            self.refresh_subsystem_chemistry_state();
+        }
         self.md_translation_scale = Self::finite_scale(saved.md_translation_scale, 1.0, 0.70, 1.45);
         self.md_membrane_scale = Self::finite_scale(saved.md_membrane_scale, 1.0, 0.70, 1.45);
         self.scheduler_state =
@@ -14692,6 +14701,7 @@ mod tests {
         let expected_saved =
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
         let expected_chemistry = expected_saved.chemistry_report;
+        let expected_sites = expected_saved.chemistry_site_reports.clone();
         let restored =
             WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
         let snapshot = restored.snapshot();
@@ -14723,6 +14733,21 @@ mod tests {
             .local_chemistry_report()
             .expect("promoted legacy local chemistry report");
         assert_eq!(chemistry, expected_chemistry);
+        let sites = restored.local_chemistry_sites();
+        assert_eq!(sites, expected_sites);
+        let replisome_state = restored
+            .subsystem_states()
+            .into_iter()
+            .find(|state| state.preset == Syn3ASubsystemPreset::ReplisomeTrack)
+            .expect("replisome subsystem state");
+        let replisome_site = sites
+            .iter()
+            .find(|site| site.preset == Syn3ASubsystemPreset::ReplisomeTrack)
+            .expect("replisome chemistry site");
+        assert_eq!(replisome_state.site_x, replisome_site.site_x);
+        assert_eq!(replisome_state.site_y, replisome_site.site_y);
+        assert_eq!(replisome_state.site_z, replisome_site.site_z);
+        assert!(replisome_state.demand_satisfaction > 0.7);
         assert!((snapshot.active_rnap - 12.0).abs() < 1.0e-6);
         assert!((snapshot.active_ribosomes - 19.0).abs() < 1.0e-6);
         assert!((snapshot.ftsz - 24.0).abs() < 1.0e-6);
@@ -14737,5 +14762,75 @@ mod tests {
             .stage_clocks
             .iter()
             .any(|clock| clock.run_count > 0));
+    }
+
+    #[test]
+    fn test_restore_saved_state_refreshes_subsystem_state_from_explicit_site_reports() {
+        let simulator = WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A");
+        let mut saved = parse_saved_state_json(
+            &simulator
+                .save_state_json()
+                .expect("serialize explicit saved state"),
+        )
+        .expect("parse explicit saved state");
+        saved.subsystem_states.clear();
+        saved.chemistry_report = LocalChemistryReport {
+            atp_support: 1.08,
+            translation_support: 1.04,
+            nucleotide_support: 1.22,
+            membrane_support: 0.94,
+            crowding_penalty: 0.81,
+            mean_glucose: 2.1,
+            mean_oxygen: 1.7,
+            mean_atp_flux: 1.5,
+            mean_carbon_dioxide: 0.42,
+        };
+        saved.chemistry_site_reports = vec![LocalChemistrySiteReport {
+            preset: Syn3ASubsystemPreset::ReplisomeTrack,
+            site: WholeCellChemistrySite::ChromosomeTrack,
+            patch_radius: 2,
+            site_x: 7,
+            site_y: 5,
+            site_z: 3,
+            localization_score: 0.84,
+            atp_support: 1.12,
+            translation_support: 0.92,
+            nucleotide_support: 1.34,
+            membrane_support: 0.88,
+            crowding_penalty: 0.79,
+            mean_glucose: 1.9,
+            mean_oxygen: 1.4,
+            mean_atp_flux: 1.7,
+            mean_carbon_dioxide: 0.46,
+            mean_nitrate: 0.31,
+            mean_ammonium: 0.22,
+            mean_proton: 0.19,
+            mean_phosphorus: 0.41,
+            assembly_component_availability: 0.83,
+            assembly_occupancy: 0.78,
+            assembly_stability: 0.91,
+            assembly_turnover: 0.18,
+            substrate_draw: 0.36,
+            energy_draw: 0.28,
+            biosynthetic_draw: 0.44,
+            byproduct_load: 0.17,
+            demand_satisfaction: 0.88,
+        }];
+
+        let restored = WholeCellSimulator::from_saved_state_json(
+            &saved_state_to_json(&saved).expect("serialize refreshed saved state"),
+        )
+        .expect("restore explicit saved state");
+
+        let replisome_state = restored
+            .subsystem_states()
+            .into_iter()
+            .find(|state| state.preset == Syn3ASubsystemPreset::ReplisomeTrack)
+            .expect("replisome subsystem state");
+        assert_eq!(replisome_state.site_x, 7);
+        assert_eq!(replisome_state.site_y, 5);
+        assert_eq!(replisome_state.site_z, 3);
+        assert!(replisome_state.replication_scale > 1.0);
+        assert!(replisome_state.demand_satisfaction > 0.8);
     }
 }

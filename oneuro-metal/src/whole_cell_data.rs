@@ -6578,17 +6578,6 @@ fn legacy_saved_state_has_explicit_membrane_state(state: &WholeCellSavedState) -
         || state.membrane_division_state.membrane_area_nm2 > 1.0
 }
 
-fn legacy_saved_state_has_explicit_local_chemistry_state(state: &WholeCellSavedState) -> bool {
-    state.local_chemistry.is_some()
-        || state.chemistry_report != LocalChemistryReport::default()
-        || !state.chemistry_site_reports.is_empty()
-        || state.last_md_probe.is_some()
-        || !state.scheduled_subsystem_probes.is_empty()
-        || !state.subsystem_states.is_empty()
-        || (state.md_translation_scale - 1.0).abs() > 1.0e-6
-        || (state.md_membrane_scale - 1.0).abs() > 1.0e-6
-}
-
 fn legacy_saved_state_mean(values: &[f32]) -> f32 {
     if values.is_empty() {
         0.0
@@ -6705,6 +6694,383 @@ fn synthesize_legacy_local_chemistry_report_from_core(
         mean_atp_flux: mean_atp_flux.max(0.0),
         mean_carbon_dioxide,
     }
+}
+
+fn legacy_saved_state_chemistry_report(state: &WholeCellSavedState) -> LocalChemistryReport {
+    if state.chemistry_report != LocalChemistryReport::default() {
+        state.chemistry_report
+    } else {
+        synthesize_legacy_local_chemistry_report_from_core(state)
+    }
+}
+
+fn legacy_saved_state_complex_assembly(state: &WholeCellSavedState) -> WholeCellComplexAssemblyState {
+    if state.complex_assembly.total_complexes() > 1.0e-6 {
+        state.complex_assembly
+    } else {
+        synthesize_legacy_complex_assembly_from_core(state)
+    }
+}
+
+fn legacy_saved_state_membrane_state(state: &WholeCellSavedState) -> WholeCellMembraneDivisionState {
+    if legacy_saved_state_has_explicit_membrane_state(state) {
+        state.membrane_division_state.clone()
+    } else {
+        synthesize_legacy_membrane_state_from_core(state)
+    }
+}
+
+fn legacy_saved_state_chromosome_state(state: &WholeCellSavedState) -> WholeCellChromosomeState {
+    if legacy_saved_state_has_explicit_chromosome_state(state) {
+        state.chromosome_state.clone()
+    } else {
+        synthesize_legacy_chromosome_state_from_core(state)
+    }
+}
+
+fn legacy_saved_state_site_coordinates(
+    state: &WholeCellSavedState,
+    preset: Syn3ASubsystemPreset,
+    chromosome: &WholeCellChromosomeState,
+    membrane: &WholeCellMembraneDivisionState,
+) -> (usize, usize, usize, usize) {
+    let x_dim = state.config.x_dim.max(1);
+    let y_dim = state.config.y_dim.max(1);
+    let z_dim = state.config.z_dim.max(1);
+    let x_mid = (x_dim - 1) / 2;
+    let y_mid = (y_dim - 1) / 2;
+    let z_mid = (z_dim - 1) / 2;
+    let patch_radius = (x_dim.min(y_dim).max(6) / 6).clamp(1, 4);
+    match preset {
+        Syn3ASubsystemPreset::AtpSynthaseMembraneBand => {
+            let membrane_band_bias =
+                legacy_saved_state_saturating_signal(membrane.membrane_band_lipid_inventory_nm2, 5_000.0);
+            let z = ((z_dim as f32 - 1.0) * (0.70 + 0.20 * membrane_band_bias))
+                .round()
+                .clamp(0.0, z_dim.saturating_sub(1) as f32) as usize;
+            (x_mid, y_mid, z, patch_radius)
+        }
+        Syn3ASubsystemPreset::RibosomePolysomeCluster => {
+            let x = ((x_dim as f32 - 1.0) * 0.65)
+                .round()
+                .clamp(0.0, x_dim.saturating_sub(1) as f32) as usize;
+            (x, y_mid, z_mid, patch_radius)
+        }
+        Syn3ASubsystemPreset::ReplisomeTrack => {
+            let x = ((x_dim as f32 - 1.0) * chromosome.replicated_fraction.clamp(0.15, 0.85))
+                .round()
+                .clamp(0.0, x_dim.saturating_sub(1) as f32) as usize;
+            (x, y_mid, z_mid, patch_radius)
+        }
+        Syn3ASubsystemPreset::FtsZSeptumRing => {
+            let y = ((y_dim as f32 - 1.0) * (0.45 + 0.10 * membrane.septum_localization))
+                .round()
+                .clamp(0.0, y_dim.saturating_sub(1) as f32) as usize;
+            (x_mid, y, z_mid, patch_radius)
+        }
+    }
+}
+
+fn legacy_saved_state_site_report(
+    preset: Syn3ASubsystemPreset,
+    state: &WholeCellSavedState,
+    chemistry: LocalChemistryReport,
+    assembly: WholeCellComplexAssemblyState,
+    chromosome: &WholeCellChromosomeState,
+    membrane: &WholeCellMembraneDivisionState,
+) -> LocalChemistrySiteReport {
+    let replicated_fraction = chromosome.replicated_fraction.clamp(0.0, 1.0);
+    let segregation_progress = chromosome.segregation_progress.clamp(0.0, 1.0);
+    let accessibility = chromosome.mean_locus_accessibility.clamp(0.35, 1.35);
+    let chromosome_signal =
+        legacy_saved_state_saturating_signal(replicated_fraction + 0.35 * accessibility, 0.85);
+    let membrane_signal = legacy_saved_state_saturating_signal(
+        membrane.membrane_protein_insertion + membrane.septum_localization,
+        0.85,
+    );
+    let crowding_load = (1.0 - chemistry.crowding_penalty).max(0.0);
+    let (site_x, site_y, site_z, patch_radius) =
+        legacy_saved_state_site_coordinates(state, preset, chromosome, membrane);
+    let (
+        localization_score,
+        atp_support,
+        translation_support,
+        nucleotide_support,
+        membrane_support,
+        assembly_component_availability,
+        assembly_occupancy,
+        assembly_stability,
+        assembly_turnover,
+        substrate_draw,
+        energy_draw,
+        biosynthetic_draw,
+        byproduct_load,
+        demand_satisfaction,
+        mean_glucose,
+        mean_oxygen,
+        mean_atp_flux,
+        mean_carbon_dioxide,
+        mean_nitrate,
+        mean_ammonium,
+        mean_proton,
+        mean_phosphorus,
+    ) = match preset {
+        Syn3ASubsystemPreset::AtpSynthaseMembraneBand => {
+            let occupancy = legacy_saved_state_saturating_signal(
+                assembly.atp_band_complexes,
+                assembly.atp_band_target.max(4.0),
+            );
+            let localization = (0.35 + 0.40 * membrane_signal + 0.25 * occupancy).clamp(0.0, 1.0);
+            let atp = legacy_saved_state_finite_scale(
+                chemistry.atp_support * (0.92 + 0.24 * localization),
+                chemistry.atp_support,
+                0.45,
+                1.8,
+            );
+            let membrane_support = legacy_saved_state_finite_scale(
+                chemistry.membrane_support * (0.92 + 0.20 * membrane_signal),
+                chemistry.membrane_support,
+                0.45,
+                1.8,
+            );
+            let stability = (0.60 + 0.25 * membrane.envelope_integrity + 0.15 * localization)
+                .clamp(0.0, 1.5);
+            let satisfaction = (0.35 * atp + 0.30 * membrane_support + 0.20 * stability
+                + 0.15 * (1.0 - crowding_load))
+                .clamp(0.35, 1.0);
+            (
+                localization,
+                atp,
+                chemistry.translation_support * 0.96,
+                chemistry.nucleotide_support * 0.94,
+                membrane_support,
+                (0.58 + 0.35 * membrane_signal + 0.07 * occupancy).clamp(0.0, 1.0),
+                occupancy,
+                stability,
+                (0.12 + membrane.band_turnover_pressure + 0.08 * crowding_load).clamp(0.0, 1.5),
+                (0.20 + 0.30 * membrane_signal).clamp(0.0, 4.0),
+                (0.35 + 0.30 * occupancy).clamp(0.0, 4.0),
+                (0.18 + 0.20 * membrane_signal).clamp(0.0, 4.0),
+                (0.18 + 0.30 * crowding_load).clamp(0.0, 4.0),
+                satisfaction,
+                chemistry.mean_glucose * (0.90 + 0.10 * localization),
+                chemistry.mean_oxygen * (0.95 + 0.12 * localization),
+                chemistry.mean_atp_flux * (0.95 + 0.18 * localization),
+                chemistry.mean_carbon_dioxide * (0.90 + 0.12 * occupancy),
+                0.20 + 0.18 * localization,
+                0.12 + 0.10 * membrane_signal,
+                0.18 + 0.30 * crowding_load,
+                0.10 + 0.08 * localization,
+            )
+        }
+        Syn3ASubsystemPreset::RibosomePolysomeCluster => {
+            let occupancy = legacy_saved_state_saturating_signal(
+                assembly.ribosome_complexes,
+                assembly.ribosome_target.max(8.0),
+            );
+            let localization = (0.40 + 0.35 * occupancy + 0.25 * chemistry.translation_support)
+                .clamp(0.0, 1.0);
+            let translation = legacy_saved_state_finite_scale(
+                chemistry.translation_support * (0.95 + 0.22 * localization),
+                chemistry.translation_support,
+                0.45,
+                1.8,
+            );
+            let satisfaction = (0.34 * translation + 0.24 * chemistry.atp_support
+                + 0.22 * occupancy
+                + 0.20 * (1.0 - crowding_load))
+                .clamp(0.35, 1.0);
+            (
+                localization,
+                chemistry.atp_support * (0.92 + 0.08 * occupancy),
+                translation,
+                chemistry.nucleotide_support * (0.94 + 0.08 * occupancy),
+                chemistry.membrane_support * 0.92,
+                (0.55 + 0.40 * translation).clamp(0.0, 1.0),
+                occupancy,
+                (0.58 + 0.24 * satisfaction).clamp(0.0, 1.5),
+                (0.10 + 0.12 * crowding_load + 0.10 * occupancy).clamp(0.0, 1.5),
+                (0.22 + 0.28 * translation).clamp(0.0, 4.0),
+                (0.24 + 0.22 * chemistry.atp_support).clamp(0.0, 4.0),
+                (0.30 + 0.34 * occupancy).clamp(0.0, 4.0),
+                (0.12 + 0.18 * crowding_load).clamp(0.0, 4.0),
+                satisfaction,
+                chemistry.mean_glucose * (0.92 + 0.10 * occupancy),
+                chemistry.mean_oxygen * (0.90 + 0.08 * occupancy),
+                chemistry.mean_atp_flux * (0.92 + 0.14 * translation),
+                chemistry.mean_carbon_dioxide * (0.94 + 0.12 * occupancy),
+                0.26 + 0.18 * occupancy,
+                0.16 + 0.18 * occupancy,
+                0.16 + 0.24 * crowding_load,
+                0.14 + 0.10 * translation,
+            )
+        }
+        Syn3ASubsystemPreset::ReplisomeTrack => {
+            let occupancy = legacy_saved_state_saturating_signal(
+                assembly.replisome_complexes + assembly.dnaa_activity,
+                (assembly.replisome_target + assembly.dnaa_target).max(6.0),
+            );
+            let localization =
+                (0.30 + 0.35 * chromosome_signal + 0.20 * occupancy + 0.15 * segregation_progress)
+                    .clamp(0.0, 1.0);
+            let nucleotide = legacy_saved_state_finite_scale(
+                chemistry.nucleotide_support * (0.95 + 0.24 * localization),
+                chemistry.nucleotide_support,
+                0.45,
+                1.8,
+            );
+            let satisfaction = (0.34 * nucleotide + 0.24 * chemistry.atp_support
+                + 0.22 * accessibility.clamp(0.35, 1.0)
+                + 0.20 * occupancy)
+                .clamp(0.35, 1.0);
+            (
+                localization,
+                chemistry.atp_support * (0.90 + 0.10 * occupancy),
+                chemistry.translation_support * 0.88,
+                nucleotide,
+                chemistry.membrane_support * 0.86,
+                (0.52 + 0.24 * chromosome_signal + 0.24 * occupancy).clamp(0.0, 1.0),
+                occupancy,
+                (0.55 + 0.22 * accessibility.clamp(0.35, 1.0) + 0.18 * segregation_progress)
+                    .clamp(0.0, 1.5),
+                (0.10 + 0.10 * crowding_load + 0.08 * (1.0 - accessibility.clamp(0.0, 1.0)))
+                    .clamp(0.0, 1.5),
+                (0.24 + 0.22 * chromosome_signal).clamp(0.0, 4.0),
+                (0.22 + 0.22 * occupancy).clamp(0.0, 4.0),
+                (0.26 + 0.28 * nucleotide).clamp(0.0, 4.0),
+                (0.12 + 0.16 * crowding_load).clamp(0.0, 4.0),
+                satisfaction,
+                chemistry.mean_glucose * (0.90 + 0.08 * chromosome_signal),
+                chemistry.mean_oxygen * (0.88 + 0.06 * occupancy),
+                chemistry.mean_atp_flux * (0.92 + 0.12 * occupancy),
+                chemistry.mean_carbon_dioxide * (0.90 + 0.08 * crowding_load),
+                0.28 + 0.18 * chromosome_signal,
+                0.14 + 0.10 * occupancy,
+                0.14 + 0.18 * crowding_load,
+                0.18 + 0.16 * chromosome_signal,
+            )
+        }
+        Syn3ASubsystemPreset::FtsZSeptumRing => {
+            let occupancy = legacy_saved_state_saturating_signal(
+                assembly.ftsz_polymer,
+                assembly.ftsz_target.max(8.0),
+            );
+            let localization = (0.34
+                + 0.34 * membrane.divisome_occupancy
+                + 0.18 * membrane.septum_localization
+                + 0.14 * occupancy)
+                .clamp(0.0, 1.0);
+            let membrane_support = legacy_saved_state_finite_scale(
+                chemistry.membrane_support * (0.94 + 0.22 * localization),
+                chemistry.membrane_support,
+                0.45,
+                1.8,
+            );
+            let satisfaction = (0.30 * membrane_support
+                + 0.26 * chemistry.atp_support
+                + 0.24 * occupancy
+                + 0.20 * (1.0 - membrane.chromosome_occlusion.clamp(0.0, 1.0)))
+                .clamp(0.35, 1.0);
+            (
+                localization,
+                chemistry.atp_support * (0.92 + 0.10 * occupancy),
+                chemistry.translation_support * (0.92 + 0.08 * occupancy),
+                chemistry.nucleotide_support * 0.90,
+                membrane_support,
+                (0.54 + 0.22 * membrane.septum_localization + 0.24 * occupancy).clamp(0.0, 1.0),
+                occupancy,
+                (0.55 + 0.20 * membrane.divisome_occupancy + 0.20 * membrane_support)
+                    .clamp(0.0, 1.5),
+                (0.12 + membrane.septum_turnover_pressure + 0.06 * crowding_load).clamp(0.0, 1.5),
+                (0.20 + 0.24 * localization).clamp(0.0, 4.0),
+                (0.22 + 0.22 * occupancy).clamp(0.0, 4.0),
+                (0.24 + 0.26 * membrane_support).clamp(0.0, 4.0),
+                (0.12 + 0.16 * crowding_load).clamp(0.0, 4.0),
+                satisfaction,
+                chemistry.mean_glucose * (0.90 + 0.08 * localization),
+                chemistry.mean_oxygen * (0.92 + 0.10 * localization),
+                chemistry.mean_atp_flux * (0.92 + 0.12 * occupancy),
+                chemistry.mean_carbon_dioxide * (0.90 + 0.10 * occupancy),
+                0.18 + 0.14 * localization,
+                0.12 + 0.08 * localization,
+                0.14 + 0.18 * crowding_load,
+                0.14 + 0.10 * membrane.septum_localization,
+            )
+        }
+    };
+    LocalChemistrySiteReport {
+        preset,
+        site: preset.chemistry_site(),
+        patch_radius,
+        site_x,
+        site_y,
+        site_z,
+        localization_score,
+        atp_support,
+        translation_support,
+        nucleotide_support,
+        membrane_support,
+        crowding_penalty: chemistry.crowding_penalty,
+        mean_glucose,
+        mean_oxygen,
+        mean_atp_flux,
+        mean_carbon_dioxide,
+        mean_nitrate,
+        mean_ammonium,
+        mean_proton,
+        mean_phosphorus,
+        assembly_component_availability,
+        assembly_occupancy,
+        assembly_stability,
+        assembly_turnover,
+        substrate_draw,
+        energy_draw,
+        biosynthetic_draw,
+        byproduct_load,
+        demand_satisfaction,
+    }
+}
+
+fn synthesize_legacy_local_chemistry_site_reports_from_state(
+    state: &WholeCellSavedState,
+) -> Vec<LocalChemistrySiteReport> {
+    let chemistry = legacy_saved_state_chemistry_report(state);
+    let assembly = legacy_saved_state_complex_assembly(state);
+    let chromosome = legacy_saved_state_chromosome_state(state);
+    let membrane = legacy_saved_state_membrane_state(state);
+    Syn3ASubsystemPreset::all()
+        .iter()
+        .copied()
+        .map(|preset| {
+            legacy_saved_state_site_report(
+                preset,
+                state,
+                chemistry,
+                assembly,
+                &chromosome,
+                &membrane,
+            )
+        })
+        .collect()
+}
+
+fn synthesize_legacy_subsystem_states_from_site_reports(
+    chemistry: LocalChemistryReport,
+    site_reports: &[LocalChemistrySiteReport],
+) -> Vec<WholeCellSubsystemState> {
+    Syn3ASubsystemPreset::all()
+        .iter()
+        .copied()
+        .map(|preset| {
+            let mut state = WholeCellSubsystemState::new(preset);
+            if let Some(report) = site_reports.iter().find(|report| report.preset == preset) {
+                state.apply_site_report(*report);
+            } else {
+                state.apply_chemistry_report(chemistry);
+            }
+            state
+        })
+        .collect()
 }
 
 fn legacy_saved_state_domain_specs(
@@ -7463,8 +7829,18 @@ fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
     if !legacy_saved_state_has_explicit_membrane_state(state) {
         state.membrane_division_state = synthesize_legacy_membrane_state_from_core(state);
     }
-    if !legacy_saved_state_has_explicit_local_chemistry_state(state) {
+    if state.chemistry_report == LocalChemistryReport::default() {
         state.chemistry_report = synthesize_legacy_local_chemistry_report_from_core(state);
+    }
+    if state.chemistry_site_reports.is_empty() {
+        state.chemistry_site_reports =
+            synthesize_legacy_local_chemistry_site_reports_from_state(state);
+    }
+    if state.subsystem_states.is_empty() {
+        state.subsystem_states = synthesize_legacy_subsystem_states_from_site_reports(
+            state.chemistry_report,
+            &state.chemistry_site_reports,
+        );
     }
     // Keep legacy compatibility repair at the parser boundary: if an older saved
     // state never persisted multirate clocks, synthesize a coarse explicit
@@ -9207,6 +9583,31 @@ mod tests {
         assert!(reparsed.chemistry_report.nucleotide_support > 0.55);
         assert!(reparsed.chemistry_report.membrane_support > 0.55);
         assert!(reparsed.chemistry_report.mean_atp_flux > 0.0);
+        assert_eq!(
+            reparsed.chemistry_site_reports.len(),
+            Syn3ASubsystemPreset::all().len()
+        );
+        assert_eq!(reparsed.subsystem_states.len(), Syn3ASubsystemPreset::all().len());
+        let replisome_site = reparsed
+            .chemistry_site_reports
+            .iter()
+            .find(|report| report.preset == Syn3ASubsystemPreset::ReplisomeTrack)
+            .expect("replisome site");
+        assert!(replisome_site.site_x > 0);
+        assert!(replisome_site.nucleotide_support > 0.55);
+        let septum_site = reparsed
+            .chemistry_site_reports
+            .iter()
+            .find(|report| report.preset == Syn3ASubsystemPreset::FtsZSeptumRing)
+            .expect("septum site");
+        assert!(septum_site.localization_score > 0.2);
+        let ribosome_state = reparsed
+            .subsystem_states
+            .iter()
+            .find(|state| state.preset == Syn3ASubsystemPreset::RibosomePolysomeCluster)
+            .expect("ribosome subsystem state");
+        assert!(ribosome_state.site_x > 0);
+        assert!(ribosome_state.demand_satisfaction > 0.7);
         assert_eq!(reparsed.scheduler_state.stage_clocks.len(), 6);
         let cme = reparsed
             .scheduler_state
