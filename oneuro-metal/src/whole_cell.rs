@@ -7565,22 +7565,30 @@ impl WholeCellSimulator {
         }
         self.sync_from_lattice();
 
+        let saved_ftsz = saved.core.ftsz.max(0.0);
+        let saved_dnaa = saved.core.dnaa.max(0.0);
+        let saved_active_ribosomes = saved.core.active_ribosomes.max(0.0);
+        let saved_active_rnap = saved.core.active_rnap.max(0.0);
+        let saved_genome_bp = saved.core.genome_bp.max(1);
+        let saved_replicated_bp = saved.core.replicated_bp.min(saved_genome_bp);
+        let saved_chromosome_separation_nm = saved.core.chromosome_separation_nm.max(0.0);
+        let saved_radius_nm = saved.core.radius_nm.max(50.0);
+        let saved_surface_area_nm2 = saved.core.surface_area_nm2.max(1.0);
+        let saved_volume_nm3 = saved.core.volume_nm3.max(1.0);
+        let saved_division_progress = saved.core.division_progress.clamp(0.0, 1.0);
+        let saved_has_explicit_chromosome_state = self.chromosome_state.chromosome_length_bp > 1
+            || self.chromosome_state.replicated_bp > 0
+            || !self.chromosome_state.loci.is_empty()
+            || !self.chromosome_state.forks.is_empty();
+        let saved_has_explicit_membrane_state =
+            self.membrane_division_state.preferred_membrane_area_nm2 > 1.0
+                || self.membrane_division_state.membrane_area_nm2 > 1.0;
+
         self.time_ms = saved.core.time_ms.max(0.0);
         self.step_count = saved.core.step_count;
         self.adp_mm = saved.core.adp_mm.max(0.0);
         self.glucose_mm = saved.core.glucose_mm.max(0.0);
         self.oxygen_mm = saved.core.oxygen_mm.max(0.0);
-        self.ftsz = saved.core.ftsz.max(0.0);
-        self.dnaa = saved.core.dnaa.max(0.0);
-        self.active_ribosomes = saved.core.active_ribosomes.max(0.0);
-        self.active_rnap = saved.core.active_rnap.max(0.0);
-        self.genome_bp = saved.core.genome_bp.max(1);
-        self.replicated_bp = saved.core.replicated_bp.min(self.genome_bp);
-        self.chromosome_separation_nm = saved.core.chromosome_separation_nm.max(0.0);
-        self.radius_nm = saved.core.radius_nm.max(50.0);
-        self.surface_area_nm2 = saved.core.surface_area_nm2.max(1.0);
-        self.volume_nm3 = saved.core.volume_nm3.max(1.0);
-        self.division_progress = saved.core.division_progress.clamp(0.0, 1.0);
         self.metabolic_load = saved.core.metabolic_load.max(0.1);
         self.quantum_profile = saved.core.quantum_profile.normalized();
         if self.organism_data.is_some() {
@@ -7588,8 +7596,13 @@ impl WholeCellSimulator {
                 .organism_data
                 .as_ref()
                 .map(|organism| organism.chromosome_length_bp.max(1))
-                .unwrap_or(self.genome_bp);
-            self.replicated_bp = self.replicated_bp.min(self.genome_bp);
+                .unwrap_or(saved_genome_bp);
+            self.replicated_bp = saved_replicated_bp.min(self.genome_bp);
+            self.chromosome_separation_nm = saved_chromosome_separation_nm;
+            self.radius_nm = saved_radius_nm;
+            self.surface_area_nm2 = saved_surface_area_nm2;
+            self.volume_nm3 = saved_volume_nm3;
+            self.division_progress = saved_division_progress;
             if self.organism_expression.transcription_units.is_empty() {
                 self.refresh_organism_expression_state();
             }
@@ -7604,6 +7617,10 @@ impl WholeCellSimulator {
             {
                 self.normalize_chromosome_state(self.chromosome_state.clone())
             } else {
+                if !saved_has_explicit_chromosome_state {
+                    self.replicated_bp = saved_replicated_bp.min(self.genome_bp);
+                    self.chromosome_separation_nm = saved_chromosome_separation_nm;
+                }
                 self.seeded_chromosome_state()
             };
             self.synchronize_chromosome_summary();
@@ -7611,6 +7628,12 @@ impl WholeCellSimulator {
                 if self.membrane_division_state.preferred_membrane_area_nm2 > 1.0 {
                     self.normalize_membrane_division_state(self.membrane_division_state.clone())
                 } else {
+                    if !saved_has_explicit_membrane_state {
+                        self.radius_nm = saved_radius_nm;
+                        self.surface_area_nm2 = saved_surface_area_nm2;
+                        self.volume_nm3 = saved_volume_nm3;
+                        self.division_progress = saved_division_progress;
+                    }
                     self.seeded_membrane_division_state()
                 };
             self.synchronize_membrane_division_summary();
@@ -7627,6 +7650,17 @@ impl WholeCellSimulator {
             self.organism_species.clear();
             self.organism_reactions.clear();
             self.named_complexes.clear();
+            self.ftsz = saved_ftsz;
+            self.dnaa = saved_dnaa;
+            self.active_ribosomes = saved_active_ribosomes;
+            self.active_rnap = saved_active_rnap;
+            self.genome_bp = saved_genome_bp;
+            self.replicated_bp = saved_replicated_bp.min(self.genome_bp);
+            self.chromosome_separation_nm = saved_chromosome_separation_nm;
+            self.radius_nm = saved_radius_nm;
+            self.surface_area_nm2 = saved_surface_area_nm2;
+            self.volume_nm3 = saved_volume_nm3;
+            self.division_progress = saved_division_progress;
             self.chromosome_state = self.seeded_chromosome_state();
             self.synchronize_chromosome_summary();
             self.membrane_division_state = self.seeded_membrane_division_state();
@@ -11223,6 +11257,74 @@ mod tests {
         assert!((saved.core.active_rnap - 11.0).abs() < 1.0e-6);
         assert!((saved.core.ftsz - 23.0).abs() < 1.0e-6);
         assert!((saved.core.dnaa - 8.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_restore_saved_state_prefers_explicit_state_over_stale_core_summary() {
+        let mut sim =
+            WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
+        sim.genome_bp = 1000;
+        sim.replicated_bp = 0;
+        sim.chromosome_separation_nm = 0.0;
+        sim.radius_nm = 100.0;
+        sim.surface_area_nm2 = WholeCellSimulator::surface_area_from_radius(sim.radius_nm);
+        sim.volume_nm3 = WholeCellSimulator::volume_from_radius(sim.radius_nm);
+        sim.division_progress = 0.0;
+        sim.ftsz = 0.0;
+        sim.dnaa = 0.0;
+        sim.active_ribosomes = 0.0;
+        sim.active_rnap = 0.0;
+
+        sim.chromosome_state.chromosome_length_bp = 1000;
+        sim.chromosome_state.replicated_bp = 580;
+        sim.chromosome_state.replicated_fraction = 0.58;
+        sim.chromosome_state.segregation_progress = 0.45;
+
+        sim.membrane_division_state.membrane_area_nm2 = sim.surface_area_nm2 * 1.30;
+        sim.membrane_division_state.preferred_membrane_area_nm2 = sim.surface_area_nm2 * 1.30;
+        sim.membrane_division_state.septum_radius_fraction = 0.30;
+        sim.membrane_division_state.osmotic_balance = 1.0;
+
+        for complex in &mut sim.named_complexes {
+            match complex.family {
+                WholeCellAssemblyFamily::Ribosome => complex.abundance = 19.0,
+                WholeCellAssemblyFamily::RnaPolymerase => complex.abundance = 12.0,
+                WholeCellAssemblyFamily::Divisome => complex.abundance = 27.0,
+                WholeCellAssemblyFamily::Replisome => complex.abundance = 9.0,
+                _ => complex.abundance = 0.0,
+            }
+        }
+        let expected = sim.snapshot();
+
+        let mut saved = parse_saved_state_json(&sim.save_state_json().expect("serialize saved"))
+            .expect("parse saved state");
+        saved.core.replicated_bp = 12;
+        saved.core.chromosome_separation_nm = 0.0;
+        saved.core.radius_nm = 55.0;
+        saved.core.surface_area_nm2 = WholeCellSimulator::surface_area_from_radius(55.0);
+        saved.core.volume_nm3 = WholeCellSimulator::volume_from_radius(55.0);
+        saved.core.division_progress = 0.05;
+        saved.core.active_rnap = 3.0;
+        saved.core.active_ribosomes = 4.0;
+        saved.core.dnaa = 2.0;
+        saved.core.ftsz = 5.0;
+
+        let restored = WholeCellSimulator::from_saved_state_json(
+            &saved_state_to_json(&saved).expect("re-serialize saved state"),
+        )
+        .expect("restore saved state");
+        let snapshot = restored.snapshot();
+
+        assert_eq!(snapshot.replicated_bp, expected.replicated_bp);
+        assert!((snapshot.division_progress - expected.division_progress).abs() < 1.0e-6);
+        assert!((snapshot.radius_nm - expected.radius_nm).abs() < 1.0e-6);
+        assert!(
+            (snapshot.chromosome_separation_nm - expected.chromosome_separation_nm).abs() < 1.0e-6
+        );
+        assert!((snapshot.active_rnap - expected.active_rnap).abs() < 1.0e-6);
+        assert!((snapshot.active_ribosomes - expected.active_ribosomes).abs() < 1.0e-6);
+        assert!((snapshot.dnaa - expected.dnaa).abs() < 1.0e-6);
+        assert!((snapshot.ftsz - expected.ftsz).abs() < 1.0e-6);
     }
 
     #[test]

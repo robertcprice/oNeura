@@ -1856,3 +1856,20 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `explicit-asset boundary payloads now derive from explicit state, but legacy restore or serialization bridges still preserve synchronized scalar summaries and need to be pushed further behind compatibility-only boundaries`
+
+### 2026-03-12 - Phase 7 / Explicit Restore Boundary Narrowing
+
+- Summary:
+  - changed saved-state restore so explicit chromosome, membrane, and diagnostic state is rehydrated from explicit saved biology on the explicit-asset path, with synchronized scalar core fields used only as legacy or missing-state seeds
+  - added a regression proving that stale `saved.core` progress and diagnostic summaries no longer override explicit saved chromosome, membrane, and complex state during restore
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_restore_saved_state_prefers_explicit_state_over_stale_core_summary --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `explicit-asset restore now ignores stale synchronized core summaries, but the remaining non-explicit compatibility paths still preserve synchronized scalar summaries and need to be pushed behind legacy-only boundaries`
