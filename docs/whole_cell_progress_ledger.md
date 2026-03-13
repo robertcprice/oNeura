@@ -2362,3 +2362,25 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `legacy compatibility is narrower again, but the remaining residual probe or chemistry cases now mostly reduce to payloads that provide neither explicit site chemistry, a persisted probe payload, nor an explicit local schedule that can be promoted through the parser boundary, plus the final expression cases with no runtime chemistry, registry, or structured asset bundle`
+
+### 2026-03-13 - Phase 7 / Focused Legacy Probe-Schedule Recovery
+
+- Summary:
+  - tightened legacy scheduled-probe recovery so parser repair now preserves explicit chemistry-site probe subsets before any synthesized subsystem fallback can re-expand them into a blanket all-presets schedule
+  - changed the coarse summary-only recovery path to synthesize a single focused probe target from the strongest recoverable MD-probe site instead of defaulting every chemistry-only legacy payload back to all four Syn3A subsystem probes
+  - kept both behaviors at the parser boundary so restore keeps inheriting explicit probe intent when it exists and only falls back to a focused synthesized probe when the payload truly lacks richer localized probe state
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q parse_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q parse_legacy_saved_state_preserves_explicit_site_probe_subset --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q parse_legacy_saved_state_json_prefers_explicit_local_probe_schedule --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_legacy_saved_state_json_prefers_explicit_local_probe_schedule --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `legacy compatibility is narrower again, but the remaining residual probe or chemistry cases now mostly reduce to payloads that provide neither explicit site chemistry, richer persisted probe state, explicit local schedules, nor explicit chemistry-site probe subsets, plus the final expression cases with no runtime chemistry, registry, or structured asset bundle`

@@ -7182,6 +7182,8 @@ fn legacy_saved_state_probe_presets(state: &WholeCellSavedState) -> Vec<Syn3ASub
 
 fn synthesize_legacy_scheduled_subsystem_probes_from_state(
     state: &WholeCellSavedState,
+    explicit_presets: &[Syn3ASubsystemPreset],
+    summary_only: bool,
 ) -> Vec<ScheduledSubsystemProbe> {
     if let Some(local) = state.local_chemistry.as_ref() {
         if !local.scheduled_subsystem_probes.is_empty() {
@@ -7193,6 +7195,36 @@ fn synthesize_legacy_scheduled_subsystem_probes_from_state(
                 }
             }
             return probes;
+        }
+    }
+    if !explicit_presets.is_empty() {
+        return explicit_presets
+            .iter()
+            .copied()
+            .map(|preset| ScheduledSubsystemProbe {
+                preset,
+                interval_steps: preset.default_interval_steps(),
+            })
+            .collect();
+    }
+    // When older payloads only carried coarse chemistry summaries, prefer a
+    // single focused probe target instead of widening back out to every Syn3A
+    // preset. That keeps parser repair aligned with the strongest recoverable
+    // localized subsystem signal instead of reconstructing a blanket probe
+    // schedule the saved state never explicitly carried.
+    if summary_only {
+        if let Some(preset) = state
+            .last_md_probe
+            .and_then(|report| legacy_preset_for_probe_site(report.site))
+            .or_else(|| {
+                synthesize_legacy_md_probe_report_from_state(state)
+                    .and_then(|report| legacy_preset_for_probe_site(report.site))
+            })
+        {
+            return vec![ScheduledSubsystemProbe {
+                preset,
+                interval_steps: preset.default_interval_steps(),
+            }];
         }
     }
     legacy_saved_state_probe_presets(state)
@@ -8894,6 +8926,19 @@ fn synthesize_legacy_scheduler_state_from_core(
 }
 
 fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
+    let had_explicit_site_reports = !state.chemistry_site_reports.is_empty();
+    let had_explicit_subsystem_state = !state.subsystem_states.is_empty();
+    let mut explicit_probe_presets = Vec::new();
+    for preset in state.chemistry_site_reports.iter().map(|report| report.preset) {
+        if !explicit_probe_presets.contains(&preset) {
+            explicit_probe_presets.push(preset);
+        }
+    }
+    for preset in state.subsystem_states.iter().map(|subsystem| subsystem.preset) {
+        if !explicit_probe_presets.contains(&preset) {
+            explicit_probe_presets.push(preset);
+        }
+    }
     if !legacy_saved_state_has_explicit_chromosome_state(state) {
         state.chromosome_state = synthesize_legacy_chromosome_state_from_core(state);
     }
@@ -8921,8 +8966,16 @@ fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
     }
     promote_legacy_last_md_probe_into_subsystem_state(state);
     if state.scheduled_subsystem_probes.is_empty() {
-        state.scheduled_subsystem_probes =
-            synthesize_legacy_scheduled_subsystem_probes_from_state(state);
+        // Preserve explicit schedules when they existed, but when the parser is
+        // repairing a payload that only had coarse chemistry summaries, keep
+        // the recovered schedule narrowly focused on the strongest inferred
+        // subsystem target instead of re-expanding to all probe presets.
+        let summary_only_probe_recovery = !had_explicit_site_reports && !had_explicit_subsystem_state;
+        state.scheduled_subsystem_probes = synthesize_legacy_scheduled_subsystem_probes_from_state(
+            state,
+            &explicit_probe_presets,
+            summary_only_probe_recovery,
+        );
     }
     if state.last_md_probe.is_none() {
         state.last_md_probe = synthesize_legacy_md_probe_report_from_state(state);
@@ -10702,20 +10755,21 @@ mod tests {
             .expect("ribosome subsystem state");
         assert!(ribosome_state.site_x > 0);
         assert!(ribosome_state.demand_satisfaction > 0.7);
-        assert_eq!(
-            reparsed.scheduled_subsystem_probes.len(),
-            Syn3ASubsystemPreset::all().len()
-        );
-        let replisome_probe = reparsed
-            .scheduled_subsystem_probes
-            .iter()
-            .find(|probe| probe.preset == Syn3ASubsystemPreset::ReplisomeTrack)
-            .expect("replisome scheduled probe");
-        assert_eq!(
-            replisome_probe.interval_steps,
-            Syn3ASubsystemPreset::ReplisomeTrack.default_interval_steps()
-        );
         let md_probe = reparsed.last_md_probe.expect("synthesized md probe");
+        assert_eq!(reparsed.scheduled_subsystem_probes.len(), 1);
+        let focused_probe = reparsed
+            .scheduled_subsystem_probes
+            .first()
+            .copied()
+            .expect("focused scheduled probe");
+        assert_eq!(
+            legacy_preset_for_probe_site(md_probe.site),
+            Some(focused_probe.preset)
+        );
+        assert_eq!(
+            focused_probe.interval_steps,
+            focused_probe.preset.default_interval_steps()
+        );
         assert!(reparsed
             .chemistry_site_reports
             .iter()
@@ -10960,6 +11014,42 @@ mod tests {
                 .as_ref()
                 .expect("local chemistry")
                 .scheduled_subsystem_probes
+        );
+    }
+
+    #[test]
+    fn parse_legacy_saved_state_preserves_explicit_site_probe_subset() {
+        let spec = bundled_syn3a_program_spec().expect("bundled spec");
+        let mut saved = minimal_saved_state_from_spec(&spec);
+        saved.chemistry_site_reports = synthesize_legacy_local_chemistry_site_reports_from_state(&saved)
+            .into_iter()
+            .filter(|report| {
+                matches!(
+                    report.preset,
+                    Syn3ASubsystemPreset::ReplisomeTrack | Syn3ASubsystemPreset::FtsZSeptumRing
+                )
+            })
+            .collect();
+        saved.subsystem_states.clear();
+        saved.last_md_probe = None;
+        saved.scheduled_subsystem_probes.clear();
+
+        let reparsed =
+            parse_legacy_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))
+                .expect("reparsed legacy saved state");
+
+        assert_eq!(
+            reparsed.scheduled_subsystem_probes,
+            vec![
+                ScheduledSubsystemProbe {
+                    preset: Syn3ASubsystemPreset::ReplisomeTrack,
+                    interval_steps: Syn3ASubsystemPreset::ReplisomeTrack.default_interval_steps(),
+                },
+                ScheduledSubsystemProbe {
+                    preset: Syn3ASubsystemPreset::FtsZSeptumRing,
+                    interval_steps: Syn3ASubsystemPreset::FtsZSeptumRing.default_interval_steps(),
+                },
+            ]
         );
     }
 
