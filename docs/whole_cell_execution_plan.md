@@ -51,6 +51,7 @@ What is already built on the active path:
 - bundle-less saved-state restore now also preserves explicit saved chromosome and membrane state when present, instead of always reseeding non-explicit restores from coarse core summary scalars
 - bundle-less snapshot, save-state, and public diagnostic getters now also derive RNAP, ribosome, DnaA, and FtsZ summaries from persisted explicit `complex_assembly` state instead of stale surrogate pool scalars when no bundle assets are present
 - program-spec bootstrap can now carry and preserve explicit `complex_assembly` or per-complex `named_complexes`, so non-saved-state initialization no longer has to reseed assembly and diagnostic state when explicit inventory is already provided
+- program-spec bootstrap can now also carry explicit organism-expression state, so transcription-unit execution state and cached process-scale support no longer have to be regenerated from organism descriptors when a caller already has explicit expression state
 
 What is still not at the target:
 

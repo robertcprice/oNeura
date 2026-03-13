@@ -7936,7 +7936,16 @@ impl WholeCellSimulator {
             }
         }
 
-        simulator.refresh_organism_expression_state();
+        // Preserve any explicit expression payload carried by the program spec before
+        // regenerating it from the organism descriptor. This lets callers bootstrap
+        // with concrete transcription-unit state and cached process scales when they
+        // already have them, while still falling back to descriptor-driven rebuilds
+        // when only coarse organism metadata is available.
+        simulator.organism_expression = spec.organism_expression.unwrap_or_default();
+        if simulator.organism_expression.transcription_units.is_empty() {
+            simulator.refresh_organism_expression_state();
+        }
+
         // Preserve any explicit assembly payload carried by the program spec before
         // falling back to derived seeding. This happens after expression refresh so
         // descriptor-driven process scales still shape any derived fallback targets.
@@ -12661,6 +12670,89 @@ mod tests {
         assert!((snapshot.active_ribosomes - 17.0).abs() < 1.0e-6);
         assert!((snapshot.dnaa - 8.5).abs() < 1.0e-6);
         assert!((snapshot.ftsz - 24.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_from_program_spec_preserves_explicit_expression_state() {
+        let mut spec = bundled_syn3a_program_spec().expect("bundled Syn3A program spec");
+        let mut expression = WholeCellOrganismExpressionState::default();
+        expression.global_activity = 1.35;
+        expression.energy_support = 1.10;
+        expression.translation_support = 0.92;
+        expression.nucleotide_support = 1.18;
+        expression.membrane_support = 0.87;
+        expression.crowding_penalty = 0.94;
+        expression.metabolic_burden_scale = 1.08;
+        expression.process_scales = WholeCellProcessWeights {
+            energy: 1.12,
+            transcription: 0.88,
+            translation: 1.06,
+            replication: 0.79,
+            segregation: 0.83,
+            membrane: 0.91,
+            constriction: 0.86,
+        };
+        expression.amino_cost_scale = 1.11;
+        expression.nucleotide_cost_scale = 0.93;
+        expression.total_transcript_abundance = 42.0;
+        expression.total_protein_abundance = 84.0;
+        expression.transcription_units = vec![WholeCellTranscriptionUnitState {
+            name: "synthetic_unit".to_string(),
+            gene_count: 2,
+            copy_gain: 1.10,
+            basal_activity: 1.00,
+            effective_activity: 1.25,
+            support_level: 1.05,
+            stress_penalty: 0.95,
+            transcript_abundance: 7.0,
+            protein_abundance: 12.0,
+            transcript_synthesis_rate: 0.14,
+            protein_synthesis_rate: 0.12,
+            transcript_turnover_rate: 0.03,
+            protein_turnover_rate: 0.02,
+            promoter_open_fraction: 0.45,
+            active_rnap_occupancy: 0.30,
+            transcription_length_nt: 120.0,
+            transcription_progress_nt: 40.0,
+            nascent_transcript_abundance: 1.5,
+            mature_transcript_abundance: 5.5,
+            damaged_transcript_abundance: 0.2,
+            active_ribosome_occupancy: 0.35,
+            translation_length_aa: 45.0,
+            translation_progress_aa: 14.0,
+            nascent_protein_abundance: 2.0,
+            mature_protein_abundance: 10.0,
+            damaged_protein_abundance: 0.3,
+            process_drive: WholeCellProcessWeights {
+                energy: 0.9,
+                transcription: 1.0,
+                translation: 1.1,
+                replication: 0.7,
+                segregation: 0.7,
+                membrane: 0.8,
+                constriction: 0.75,
+            },
+        }];
+        spec.organism_expression = Some(expression.clone());
+
+        let simulator = WholeCellSimulator::from_program_spec(spec);
+        let restored = simulator
+            .organism_expression_state()
+            .expect("restored organism expression");
+
+        assert!((restored.global_activity - expression.global_activity).abs() < 1.0e-6);
+        assert!((restored.translation_support - expression.translation_support).abs() < 1.0e-6);
+        assert!(
+            (restored.process_scales.replication - expression.process_scales.replication).abs()
+                < 1.0e-6
+        );
+        assert!(
+            (restored.total_transcript_abundance - expression.total_transcript_abundance).abs()
+                < 1.0e-6
+        );
+        assert_eq!(restored.transcription_units.len(), 1);
+        assert_eq!(restored.transcription_units[0].name, "synthetic_unit");
+        assert!((restored.transcription_units[0].transcript_abundance - 7.0).abs() < 1.0e-6);
     }
 
     #[test]

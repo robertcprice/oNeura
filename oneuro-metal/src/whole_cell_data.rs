@@ -1438,6 +1438,8 @@ pub struct WholeCellProgramSpec {
     #[serde(default)]
     pub membrane_division_state: Option<WholeCellMembraneDivisionState>,
     #[serde(default)]
+    pub organism_expression: Option<WholeCellOrganismExpressionState>,
+    #[serde(default)]
     pub complex_assembly: Option<WholeCellComplexAssemblyState>,
     #[serde(default)]
     pub named_complexes: Vec<WholeCellNamedComplexState>,
@@ -5454,6 +5456,7 @@ fn build_program_spec_from_organism(
         organism_process_registry: Some(process_registry),
         chromosome_state: None,
         membrane_division_state: None,
+        organism_expression: None,
         complex_assembly: None,
         named_complexes: Vec::new(),
         config: WholeCellConfig::default(),

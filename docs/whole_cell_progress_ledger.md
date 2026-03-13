@@ -1928,3 +1928,22 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `program-spec bootstrap now preserves explicit assembly state, but the remaining compatibility-only serialization payloads still need further narrowing where richer explicit state is still absent or only represented by synchronized summaries`
+
+### 2026-03-12 - Phase 7 / Program-Spec Explicit Expression Bootstrap
+
+- Summary:
+  - extended `WholeCellProgramSpec` so bootstrap payloads can carry explicit `organism_expression` state rather than always regenerating transcription-unit execution state and process-support scales from organism descriptors
+  - updated `WholeCellSimulator::from_program_spec()` to preserve explicit expression payloads first and only fall back to descriptor-driven refresh when no transcription-unit state is supplied
+  - added comments in the bootstrap path documenting why explicit expression state is applied before the explicit assembly-preservation step
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q test_from_program_spec_preserves_explicit_expression_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `program-spec bootstrap now preserves explicit expression and assembly state, but remaining compatibility-only serialization paths still need richer explicit payloads for other layers before synchronized scalar summaries can disappear completely`
