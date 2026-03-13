@@ -2257,3 +2257,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `legacy compatibility is narrower again, but a few residual expression carriers and the last summary-only probe or chemistry outputs still need direct explicit persisted carriers before synchronized summary payloads disappear completely`
+
+### 2026-03-13 - Phase 7 / Legacy Expression-State Promotion
+
+- Summary:
+  - extended the legacy saved-state parser so older payloads that never serialized explicit organism expression now synthesize operon-level expression state from persisted runtime species and reactions first, or from process-registry fallbacks plus promoted chemistry support when runtime chemistry is absent
+  - kept that promotion at the parser boundary so compatibility restore enters the runtime with explicit transcription-unit activity, support, burden, and process-scale state instead of leaving expression empty and asking later bootstrap code to regenerate it
+  - updated both the data-layer and runtime legacy restore regressions so parser repair and runtime restore now prove promoted operon expression survives alongside the already promoted chromosome, membrane, complex, scheduler, local-chemistry, probe, and named-complex state
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q parse_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `legacy compatibility is narrower again, but the remaining residual expression cases now mostly reduce to payloads that provide neither runtime chemistry nor process registries, plus the last summary-only probe or chemistry outputs that still need direct explicit persisted carriers`

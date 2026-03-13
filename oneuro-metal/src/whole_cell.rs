@@ -15082,6 +15082,7 @@ mod tests {
         saved.core.metabolic_load = 1.32;
         saved.chemistry_report = LocalChemistryReport::default();
         saved.chemistry_site_reports.clear();
+        saved.organism_expression = WholeCellOrganismExpressionState::default();
         saved.last_md_probe = None;
         saved.scheduled_subsystem_probes.clear();
         saved.subsystem_states.clear();
@@ -15097,6 +15098,7 @@ mod tests {
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
         let expected_chemistry = expected_saved.chemistry_report;
         let expected_sites = expected_saved.chemistry_site_reports.clone();
+        let expected_expression = expected_saved.organism_expression.clone();
         let expected_md_probe = expected_saved.last_md_probe;
         let expected_scheduled_probes = expected_saved.scheduled_subsystem_probes.clone();
         let restored =
@@ -15141,6 +15143,12 @@ mod tests {
             expected_scheduled_probes
         );
         assert_eq!(restored.last_md_probe(), expected_md_probe);
+        assert_eq!(
+            restored
+                .organism_expression_state()
+                .expect("promoted legacy expression state"),
+            expected_expression
+        );
         let replisome_state = restored
             .subsystem_states()
             .into_iter()
