@@ -2214,3 +2214,25 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `legacy compatibility is narrower again, but persisted MD-probe or probe-schedule detail and a few remaining expression or generic assembly carriers still lack equally rich promotion on the remaining non-explicit migration and serialization paths`
+
+### 2026-03-13 - Phase 7 / Legacy Probe-State Promotion
+
+- Summary:
+  - extended the legacy saved-state parser so older payloads with explicit site chemistry and subsystem state but no persisted probe payload now regain explicit scheduled subsystem probes and a coarse `LocalMDProbeReport` before runtime restore
+  - synthesized scheduled probes directly from the promoted subsystem presets and rebuilt a coarse last-MD-probe summary from the strongest persisted subsystem or site-local chemistry signals, so compatibility restore carries explicit probe cadence and atomistic-summary state instead of re-deriving it later in the runtime
+  - extended both the data-layer and runtime legacy restore regressions so parser repair and runtime restore now prove scheduled probe state and the promoted last MD probe survive the compatibility boundary alongside explicit chromosome, membrane, complex, scheduler, named-complex, and local-chemistry state
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q test_bundleless_restore_synthesizes_expression_from_runtime_process_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q parse_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `legacy compatibility is narrower again, but a few generic assembly or expression carriers and the last summary-only probe or chemistry outputs still need direct explicit persisted carriers before synchronized summary payloads disappear completely`

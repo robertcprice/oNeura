@@ -7081,6 +7081,245 @@ fn synthesize_legacy_subsystem_states_from_site_reports(
         .collect()
 }
 
+// Recover the subsystem probe set that older saved states implicitly described
+// through chemistry site reports and subsystem state, so restore can keep an
+// explicit probe schedule instead of rebuilding it later inside the runtime.
+fn legacy_saved_state_probe_presets(state: &WholeCellSavedState) -> Vec<Syn3ASubsystemPreset> {
+    let mut presets = Vec::new();
+    for preset in Syn3ASubsystemPreset::all() {
+        let has_site_report = state
+            .chemistry_site_reports
+            .iter()
+            .any(|report| report.preset == *preset);
+        let has_state = state
+            .subsystem_states
+            .iter()
+            .any(|state| state.preset == *preset);
+        if has_site_report || has_state {
+            presets.push(*preset);
+        }
+    }
+    if presets.is_empty()
+        && (state.local_chemistry.is_some() || state.chemistry_report != LocalChemistryReport::default())
+    {
+        return Syn3ASubsystemPreset::all().to_vec();
+    }
+    presets
+}
+
+fn synthesize_legacy_scheduled_subsystem_probes_from_state(
+    state: &WholeCellSavedState,
+) -> Vec<ScheduledSubsystemProbe> {
+    legacy_saved_state_probe_presets(state)
+        .into_iter()
+        .map(|preset| ScheduledSubsystemProbe {
+            preset,
+            interval_steps: preset.default_interval_steps(),
+        })
+        .collect()
+}
+
+// Coarsely reconstruct the last MD probe from persisted local chemistry and
+// subsystem state so legacy compatibility payloads can round-trip an explicit
+// probe record without requiring a live chemistry bridge.
+fn synthesize_legacy_md_probe_report_from_state(
+    state: &WholeCellSavedState,
+) -> Option<LocalMDProbeReport> {
+    let selected_preset = state
+        .subsystem_states
+        .iter()
+        .filter_map(|subsystem| subsystem.last_probe_step.map(|step| (step, subsystem.preset)))
+        .max_by_key(|(step, _)| *step)
+        .map(|(_, preset)| preset)
+        .or_else(|| {
+            state
+                .chemistry_site_reports
+                .iter()
+                .max_by(|a, b| {
+                    a.localization_score
+                        .partial_cmp(&b.localization_score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|report| report.preset)
+        })
+        .or_else(|| state.subsystem_states.first().map(|state| state.preset))?;
+
+    let site_report = state
+        .chemistry_site_reports
+        .iter()
+        .find(|report| report.preset == selected_preset)
+        .copied();
+    let subsystem_state = state
+        .subsystem_states
+        .iter()
+        .find(|subsystem| subsystem.preset == selected_preset)
+        .cloned();
+    let site = site_report
+        .map(|report| report.site)
+        .or_else(|| subsystem_state.as_ref().map(|state| state.site))
+        .unwrap_or(selected_preset.chemistry_site());
+    let localization = site_report
+        .map(|report| report.localization_score)
+        .or_else(|| subsystem_state.as_ref().map(|state| state.localization_score))
+        .unwrap_or(0.5)
+        .clamp(0.0, 1.0);
+    let structural_order = subsystem_state
+        .as_ref()
+        .map(|state| state.structural_order)
+        .unwrap_or_else(|| {
+            let occupancy = site_report.map(|report| report.assembly_occupancy).unwrap_or(0.6);
+            let stability = site_report.map(|report| report.assembly_stability).unwrap_or(0.7);
+            let satisfaction = site_report
+                .map(|report| report.demand_satisfaction)
+                .unwrap_or(0.8);
+            (0.35 + 0.20 * occupancy + 0.20 * stability + 0.25 * satisfaction).clamp(0.2, 1.0)
+        });
+    let crowding_penalty = subsystem_state
+        .as_ref()
+        .map(|state| state.crowding_penalty)
+        .or_else(|| site_report.map(|report| report.crowding_penalty))
+        .unwrap_or(state.chemistry_report.crowding_penalty)
+        .clamp(0.65, 1.0);
+    let assembly_occupancy = site_report
+        .map(|report| report.assembly_occupancy)
+        .or_else(|| subsystem_state.as_ref().map(|state| state.assembly_occupancy))
+        .unwrap_or(0.6)
+        .clamp(0.0, 1.5);
+    let assembly_stability = site_report
+        .map(|report| report.assembly_stability)
+        .or_else(|| subsystem_state.as_ref().map(|state| state.assembly_stability))
+        .unwrap_or(structural_order)
+        .clamp(0.0, 1.5);
+    let demand_satisfaction = site_report
+        .map(|report| report.demand_satisfaction)
+        .or_else(|| subsystem_state.as_ref().map(|state| state.demand_satisfaction))
+        .unwrap_or(0.8)
+        .clamp(0.35, 1.0);
+    let axis_anisotropy = site_report
+        .map(|report| {
+            let x_fraction = report.site_x as f32 / state.config.x_dim.saturating_sub(1).max(1) as f32;
+            (2.0 * (x_fraction - 0.5)).abs().clamp(0.0, 1.0)
+        })
+        .unwrap_or(0.2);
+    let compactness = (0.45 * assembly_occupancy + 0.35 * assembly_stability + 0.20 * localization)
+        .clamp(0.2, 1.0);
+    let shell_order = (0.55 * localization + 0.45 * demand_satisfaction).clamp(0.2, 1.0);
+    let thermal_stability = (0.55 * structural_order + 0.45 * crowding_penalty).clamp(0.2, 1.0);
+    let electrostatic_order = site_report
+        .map(|report| {
+            (0.48
+                + 0.24 * report.mean_phosphorus
+                + 0.18 * report.mean_nitrate
+                - 0.10 * report.mean_proton)
+                .clamp(0.1, 1.0)
+        })
+        .unwrap_or((0.50 + 0.20 * localization).clamp(0.1, 1.0));
+    let vdw_cohesion = (0.45 * compactness + 0.35 * assembly_stability + 0.20 * structural_order)
+        .clamp(0.1, 1.0);
+    let polar_fraction = site_report
+        .map(|report| (0.20 + 0.40 * report.mean_oxygen).clamp(0.0, 1.0))
+        .unwrap_or(0.32);
+    let phosphate_fraction = site_report
+        .map(|report| report.mean_phosphorus.clamp(0.0, 1.0))
+        .unwrap_or(0.18);
+    let hydrogen_fraction = site_report
+        .map(|report| (0.16 + 0.20 * report.mean_proton).clamp(0.0, 1.0))
+        .unwrap_or(0.22);
+    let bond_density = (0.42 + 0.28 * compactness + 0.12 * assembly_stability).clamp(0.0, 1.0);
+    let angle_density = (0.38 + 0.26 * shell_order + 0.10 * structural_order).clamp(0.0, 1.0);
+    let dihedral_density =
+        (0.24 + 0.22 * vdw_cohesion + 0.16 * localization).clamp(0.0, 1.0);
+    let charge_density = (0.10 + 0.18 * electrostatic_order + 0.08 * polar_fraction).clamp(0.0, 1.0);
+    let mean_temperature = (310.0 - 7.0 * (structural_order - 0.5) + 9.0 * (1.0 - crowding_penalty))
+        .clamp(285.0, 330.0);
+    let mean_total_energy = (-10.0 - 6.0 * vdw_cohesion - 4.0 * electrostatic_order).clamp(-40.0, 5.0);
+    let mean_vdw_energy = (-4.5 - 5.0 * vdw_cohesion).clamp(-20.0, 5.0);
+    let mean_electrostatic_energy = (-2.0 - 4.0 * electrostatic_order).clamp(-20.0, 5.0);
+    let recommended_atp_scale = subsystem_state
+        .as_ref()
+        .map(|state| state.atp_scale)
+        .unwrap_or_else(|| legacy_saved_state_finite_scale(
+            0.80 + 0.28 * state.chemistry_report.atp_support + 0.10 * localization,
+            1.0,
+            0.70,
+            1.45,
+        ));
+    let recommended_translation_scale = subsystem_state
+        .as_ref()
+        .map(|state| state.translation_scale)
+        .unwrap_or_else(|| legacy_saved_state_finite_scale(
+            0.78 + 0.26 * state.chemistry_report.translation_support + 0.12 * demand_satisfaction,
+            1.0,
+            0.70,
+            1.45,
+        ));
+    let recommended_replication_scale = subsystem_state
+        .as_ref()
+        .map(|state| state.replication_scale)
+        .unwrap_or_else(|| legacy_saved_state_finite_scale(
+            0.78 + 0.24 * state.chemistry_report.nucleotide_support + 0.14 * localization,
+            1.0,
+            0.70,
+            1.45,
+        ));
+    let recommended_segregation_scale = subsystem_state
+        .as_ref()
+        .map(|state| state.segregation_scale)
+        .unwrap_or_else(|| legacy_saved_state_finite_scale(
+            0.80 + 0.20 * thermal_stability + 0.12 * localization,
+            1.0,
+            0.70,
+            1.45,
+        ));
+    let recommended_membrane_scale = subsystem_state
+        .as_ref()
+        .map(|state| state.membrane_scale)
+        .unwrap_or_else(|| legacy_saved_state_finite_scale(
+            0.78 + 0.26 * state.chemistry_report.membrane_support + 0.10 * vdw_cohesion,
+            1.0,
+            0.70,
+            1.45,
+        ));
+    let recommended_constriction_scale = subsystem_state
+        .as_ref()
+        .map(|state| state.constriction_scale)
+        .unwrap_or_else(|| legacy_saved_state_finite_scale(
+            0.80 + 0.20 * compactness + 0.12 * demand_satisfaction,
+            1.0,
+            0.70,
+            1.45,
+        ));
+
+    Some(LocalMDProbeReport {
+        site,
+        mean_temperature,
+        mean_total_energy,
+        mean_vdw_energy,
+        mean_electrostatic_energy,
+        structural_order,
+        crowding_penalty,
+        compactness,
+        shell_order,
+        axis_anisotropy,
+        thermal_stability,
+        electrostatic_order,
+        vdw_cohesion,
+        polar_fraction,
+        phosphate_fraction,
+        hydrogen_fraction,
+        bond_density,
+        angle_density,
+        dihedral_density,
+        charge_density,
+        recommended_atp_scale,
+        recommended_translation_scale,
+        recommended_replication_scale,
+        recommended_segregation_scale,
+        recommended_membrane_scale,
+        recommended_constriction_scale,
+    })
+}
+
 fn legacy_saved_state_domain_specs(
     state: &WholeCellSavedState,
 ) -> &[WholeCellChromosomeDomainSpec] {
@@ -7847,6 +8086,13 @@ fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
             state.chemistry_report,
             &state.chemistry_site_reports,
         );
+    }
+    if state.scheduled_subsystem_probes.is_empty() {
+        state.scheduled_subsystem_probes =
+            synthesize_legacy_scheduled_subsystem_probes_from_state(state);
+    }
+    if state.last_md_probe.is_none() {
+        state.last_md_probe = synthesize_legacy_md_probe_report_from_state(state);
     }
     // Keep legacy compatibility repair at the parser boundary: if an older saved
     // state never persisted multirate clocks, synthesize a coarse explicit
@@ -9618,6 +9864,26 @@ mod tests {
             .expect("ribosome subsystem state");
         assert!(ribosome_state.site_x > 0);
         assert!(ribosome_state.demand_satisfaction > 0.7);
+        assert_eq!(
+            reparsed.scheduled_subsystem_probes.len(),
+            Syn3ASubsystemPreset::all().len()
+        );
+        let replisome_probe = reparsed
+            .scheduled_subsystem_probes
+            .iter()
+            .find(|probe| probe.preset == Syn3ASubsystemPreset::ReplisomeTrack)
+            .expect("replisome scheduled probe");
+        assert_eq!(
+            replisome_probe.interval_steps,
+            Syn3ASubsystemPreset::ReplisomeTrack.default_interval_steps()
+        );
+        let md_probe = reparsed.last_md_probe.expect("synthesized md probe");
+        assert!(reparsed
+            .chemistry_site_reports
+            .iter()
+            .any(|report| report.site == md_probe.site));
+        assert!(md_probe.recommended_replication_scale > 0.9);
+        assert!(md_probe.structural_order > 0.5);
         assert_eq!(reparsed.scheduler_state.stage_clocks.len(), 6);
         let cme = reparsed
             .scheduler_state

@@ -14755,6 +14755,8 @@ mod tests {
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
         let expected_chemistry = expected_saved.chemistry_report;
         let expected_sites = expected_saved.chemistry_site_reports.clone();
+        let expected_md_probe = expected_saved.last_md_probe;
+        let expected_scheduled_probes = expected_saved.scheduled_subsystem_probes.clone();
         let restored =
             WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
         let snapshot = restored.snapshot();
@@ -14792,6 +14794,11 @@ mod tests {
         assert_eq!(chemistry, expected_chemistry);
         let sites = restored.local_chemistry_sites();
         assert_eq!(sites, expected_sites);
+        assert_eq!(
+            restored.scheduled_syn3a_subsystem_probes(),
+            expected_scheduled_probes
+        );
+        assert_eq!(restored.last_md_probe(), expected_md_probe);
         let replisome_state = restored
             .subsystem_states()
             .into_iter()
