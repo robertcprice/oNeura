@@ -4610,16 +4610,12 @@ impl WholeCellSimulator {
 
     fn sync_runtime_process_species(&mut self, dt: f32) {
         if self.organism_species.is_empty() {
-            if self.organism_assets.is_some() {
+            if self.ensure_process_registry().is_some() {
                 self.initialize_runtime_process_state();
             }
             return;
         }
         self.normalize_runtime_species_bulk_fields();
-        let Some(assets) = self.organism_assets.clone() else {
-            self.organism_species.clear();
-            return;
-        };
 
         let dt_scale = if dt > 0.0 {
             (dt / self.config.dt_ms.max(0.05)).clamp(0.25, 6.0)
@@ -4627,18 +4623,51 @@ impl WholeCellSimulator {
             0.0
         };
         let expression = self.organism_expression.clone();
-        let rna_totals = assets.rnas.iter().fold(HashMap::new(), |mut acc, rna| {
-            *acc.entry(rna.operon.clone()).or_insert(0.0) += rna.basal_abundance.max(0.0);
-            acc
-        });
-        let protein_totals = assets
-            .proteins
-            .iter()
-            .fold(HashMap::new(), |mut acc, protein| {
-                *acc.entry(protein.operon.clone()).or_insert(0.0) +=
-                    protein.basal_abundance.max(0.0);
-                acc
-            });
+        let (rna_totals, protein_totals) = if let Some(assets) = self.organism_assets.as_ref() {
+            (
+                assets.rnas.iter().fold(HashMap::new(), |mut acc, rna| {
+                    *acc.entry(rna.operon.clone()).or_insert(0.0) += rna.basal_abundance.max(0.0);
+                    acc
+                }),
+                assets
+                    .proteins
+                    .iter()
+                    .fold(HashMap::new(), |mut acc, protein| {
+                        *acc.entry(protein.operon.clone()).or_insert(0.0) +=
+                            protein.basal_abundance.max(0.0);
+                        acc
+                    }),
+            )
+        } else {
+            // Registry-backed or explicit runtime species can still define operon
+            // totals even when the caller stripped bundle assets. Use the richer
+            // runtime payload instead of dropping the entire chemistry layer.
+            let rna_totals = self.organism_species.iter().fold(
+                HashMap::new(),
+                |mut acc: HashMap<String, f32>, species| {
+                    if species.species_class == WholeCellSpeciesClass::Rna {
+                        if let Some(operon) = species.operon.as_ref() {
+                            *acc.entry(operon.clone()).or_insert(0.0) +=
+                                species.basal_abundance.max(0.0);
+                        }
+                    }
+                    acc
+                },
+            );
+            let protein_totals = self.organism_species.iter().fold(
+                HashMap::new(),
+                |mut acc: HashMap<String, f32>, species| {
+                    if species.species_class == WholeCellSpeciesClass::Protein {
+                        if let Some(operon) = species.operon.as_ref() {
+                            *acc.entry(operon.clone()).or_insert(0.0) +=
+                                species.basal_abundance.max(0.0);
+                        }
+                    }
+                    acc
+                },
+            );
+            (rna_totals, protein_totals)
+        };
         let unit_transcripts = expression
             .transcription_units
             .iter()
@@ -4754,7 +4783,7 @@ impl WholeCellSimulator {
         translation_flux: f32,
     ) {
         if self.organism_reactions.is_empty() {
-            if self.organism_assets.is_some() {
+            if self.ensure_process_registry().is_some() {
                 self.initialize_runtime_process_state();
             }
             return;
@@ -13791,6 +13820,11 @@ mod tests {
         let mut stepped = restored;
         stepped.step();
         assert!(stepped.organism_process_registry().is_some());
+        assert_eq!(stepped.organism_species.len(), saved.organism_species.len());
+        assert_eq!(
+            stepped.organism_reactions.len(),
+            saved.organism_reactions.len()
+        );
         assert_eq!(
             stepped.named_complexes_state().len(),
             saved.named_complexes.len()
@@ -13803,6 +13837,58 @@ mod tests {
                 .len(),
             boundary.organism_expression.transcription_units.len()
         );
+        let stepped_boundary = parse_saved_state_json(
+            &stepped
+                .save_state_json()
+                .expect("serialize stepped bundle-less state"),
+        )
+        .expect("parse stepped bundle-less state");
+        assert_eq!(
+            stepped_boundary.organism_species.len(),
+            saved.organism_species.len()
+        );
+        assert_eq!(
+            stepped_boundary.organism_reactions.len(),
+            saved.organism_reactions.len()
+        );
+    }
+
+    #[test]
+    fn test_bundleless_registry_bootstraps_runtime_process_state_without_assets() {
+        let mut saved = parse_saved_state_json(
+            &WholeCellSimulator::bundled_syn3a_reference()
+                .expect("bundled Syn3A")
+                .save_state_json()
+                .expect("serialize explicit saved state"),
+        )
+        .expect("parse explicit saved state");
+        saved.organism_data_ref = None;
+        saved.organism_data = None;
+        saved.organism_assets = None;
+        saved.organism_species.clear();
+        saved.organism_reactions.clear();
+
+        let mut restored = WholeCellSimulator::from_saved_state_json(
+            &saved_state_to_json(&saved).expect("serialize stripped saved state"),
+        )
+        .expect("restore stripped saved state");
+
+        assert!(restored.organism_process_registry().is_some());
+        assert!(restored.organism_species.is_empty());
+        assert!(restored.organism_reactions.is_empty());
+
+        restored.step();
+
+        assert!(!restored.organism_species.is_empty());
+        assert!(!restored.organism_reactions.is_empty());
+        let stepped_boundary = parse_saved_state_json(
+            &restored
+                .save_state_json()
+                .expect("serialize stepped bundle-less state"),
+        )
+        .expect("parse stepped bundle-less state");
+        assert!(!stepped_boundary.organism_species.is_empty());
+        assert!(!stepped_boundary.organism_reactions.is_empty());
     }
 
     #[test]

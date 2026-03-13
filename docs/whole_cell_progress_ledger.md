@@ -2046,3 +2046,23 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `the remaining compatibility-only serialization surface is now narrower: legacy-only restore or snapshot paths still keep synchronized scalar summaries where richer explicit persisted payloads have not been defined yet`
+
+### 2026-03-12 - Phase 7 / Bundle-Less Runtime Chemistry Persistence Without Assets
+
+- Summary:
+  - updated bundle-less runtime-species sync so explicit runtime species are no longer cleared just because `organism_assets` is absent
+  - updated runtime chemistry bootstrap so registry-only bundle-less paths can initialize runtime species and reactions on demand during `step()`, instead of stalling with empty chemistry state until a bundle asset package is present
+  - added an asset-free operon-total path for runtime RNA and protein synchronization, so bundle-less explicit runtime chemistry can still use persisted species metadata and compiled registries as the live source of truth
+  - extended the bundle-less restore regression so a post-restore `step()` now proves runtime species and reactions survive execution and remain visible through save-state boundaries
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_bundleless_restore_preserves_explicit_expression_runtime_and_named_complex_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_bundleless_registry_bootstraps_runtime_process_state_without_assets --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the remaining compatibility-only surface is narrower again: legacy-only restore, snapshot, or migration paths still keep synchronized scalar summaries where richer explicit persisted payloads still do not exist`
