@@ -2087,3 +2087,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `legacy compatibility is narrower again, but expression, local-chemistry, scheduler, and named-complex detail still lack equally rich promotion on the remaining non-explicit migration and serialization paths`
+
+### 2026-03-12 - Phase 7 / Legacy Scheduler Clock Promotion
+
+- Summary:
+  - extended the legacy saved-state parser so older payloads that only persisted coarse step and time counters now regain an explicit multirate scheduler state before runtime restore runs
+  - added a legacy scheduler synthesis path keyed off saved config intervals, step count, and elapsed time, so parser repair now carries stage interval, run-count, and due-step history at the boundary instead of leaving runtime restore to rebuild clocks from scratch
+  - extended both data-layer and runtime regressions so legacy restore now proves chromosome, membrane, complex, and scheduler state are all promoted into explicit persisted layers on the compatibility path
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q parse_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_legacy_saved_state_json_promotes_core_summary_to_explicit_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `legacy compatibility is narrower again, but expression, local-chemistry, and named-complex detail still lack equally rich promotion on the remaining non-explicit migration and serialization paths`

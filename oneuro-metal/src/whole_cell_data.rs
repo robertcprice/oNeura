@@ -6917,6 +6917,70 @@ fn synthesize_legacy_complex_assembly_from_core(
     }
 }
 
+fn legacy_saved_state_has_explicit_scheduler_state(state: &WholeCellSavedState) -> bool {
+    !state.scheduler_state.stage_clocks.is_empty()
+}
+
+fn legacy_stage_interval_from_config(config: &WholeCellConfig, stage: WholeCellSolverStage) -> u64 {
+    match stage {
+        WholeCellSolverStage::AtomisticRefinement => 1,
+        WholeCellSolverStage::Rdme => 1,
+        WholeCellSolverStage::Cme => config.cme_interval.max(1),
+        WholeCellSolverStage::Ode => config.ode_interval.max(1),
+        WholeCellSolverStage::ChromosomeBd => config.bd_interval.max(1),
+        WholeCellSolverStage::Geometry => config.geometry_interval.max(1),
+    }
+}
+
+fn synthesize_legacy_scheduler_state_from_core(
+    state: &WholeCellSavedState,
+) -> WholeCellSchedulerState {
+    let base_dt_ms = state.config.dt_ms.max(0.05);
+    let current_time_ms = state.core.time_ms.max(0.0);
+    let current_step = state.core.step_count;
+    let stages = [
+        WholeCellSolverStage::AtomisticRefinement,
+        WholeCellSolverStage::Rdme,
+        WholeCellSolverStage::Cme,
+        WholeCellSolverStage::Ode,
+        WholeCellSolverStage::ChromosomeBd,
+        WholeCellSolverStage::Geometry,
+    ];
+    WholeCellSchedulerState {
+        stage_clocks: stages
+            .into_iter()
+            .map(|stage| {
+                let interval = legacy_stage_interval_from_config(&state.config, stage).max(1);
+                let run_count = if current_step == 0 {
+                    0
+                } else {
+                    current_step.saturating_sub(1) / interval + 1
+                };
+                let last_run_step = if run_count == 0 {
+                    None
+                } else {
+                    Some((run_count - 1).saturating_mul(interval))
+                };
+                let last_run_time_ms = last_run_step
+                    .map(|step| (step as f32 * base_dt_ms).min(current_time_ms))
+                    .unwrap_or(0.0);
+                let next_due_step = last_run_step
+                    .map(|step| step.saturating_add(interval))
+                    .unwrap_or(0);
+                WholeCellStageClockState {
+                    stage,
+                    base_interval_steps: interval,
+                    dynamic_interval_steps: interval,
+                    next_due_step,
+                    run_count,
+                    last_run_step,
+                    last_run_time_ms,
+                }
+            })
+            .collect(),
+    }
+}
+
 fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
     if !legacy_saved_state_has_explicit_chromosome_state(state) {
         state.chromosome_state = synthesize_legacy_chromosome_state_from_core(state);
@@ -6926,6 +6990,14 @@ fn hydrate_legacy_saved_state_explicit_state(state: &mut WholeCellSavedState) {
     }
     if !legacy_saved_state_has_explicit_membrane_state(state) {
         state.membrane_division_state = synthesize_legacy_membrane_state_from_core(state);
+    }
+    // Keep legacy compatibility repair at the parser boundary: if an older saved
+    // state never persisted multirate clocks, synthesize a coarse explicit
+    // scheduler snapshot from the saved step/time counters before runtime
+    // restore. That lets restore consume an explicit scheduler payload instead
+    // of rebuilding one from scratch later.
+    if !legacy_saved_state_has_explicit_scheduler_state(state) {
+        state.scheduler_state = synthesize_legacy_scheduler_state_from_core(state);
     }
 }
 
@@ -8598,6 +8670,7 @@ mod tests {
         saved.chromosome_state = WholeCellChromosomeState::default();
         saved.membrane_division_state = WholeCellMembraneDivisionState::default();
         saved.complex_assembly = WholeCellComplexAssemblyState::default();
+        saved.scheduler_state = WholeCellSchedulerState::default();
         saved.core.genome_bp = 1000;
         saved.core.replicated_bp = 620;
         saved.core.chromosome_separation_nm = 80.0;
@@ -8605,6 +8678,8 @@ mod tests {
         saved.core.surface_area_nm2 = 180_000.0;
         saved.core.volume_nm3 = 900_000.0;
         saved.core.division_progress = 0.35;
+        saved.core.step_count = 19;
+        saved.core.time_ms = 9.5;
         saved.core.active_rnap = 11.0;
         saved.core.active_ribosomes = 18.0;
         saved.core.dnaa = 9.0;
@@ -8624,6 +8699,16 @@ mod tests {
         assert!((reparsed.complex_assembly.ribosome_complexes - 18.0).abs() < 1.0e-6);
         assert!((reparsed.complex_assembly.dnaa_activity - 9.0).abs() < 1.0e-6);
         assert!((reparsed.complex_assembly.ftsz_polymer - 23.0).abs() < 1.0e-6);
+        assert_eq!(reparsed.scheduler_state.stage_clocks.len(), 6);
+        let cme = reparsed
+            .scheduler_state
+            .stage_clocks
+            .iter()
+            .find(|clock| clock.stage == WholeCellSolverStage::Cme)
+            .expect("CME clock");
+        assert_eq!(cme.base_interval_steps, saved.config.cme_interval.max(1));
+        assert!(cme.run_count > 0);
+        assert!(cme.last_run_step.is_some());
     }
 
     #[test]

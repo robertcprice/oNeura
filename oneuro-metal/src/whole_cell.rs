@@ -13931,6 +13931,7 @@ mod tests {
         saved.chromosome_state = WholeCellChromosomeState::default();
         saved.membrane_division_state = WholeCellMembraneDivisionState::default();
         saved.complex_assembly = WholeCellComplexAssemblyState::default();
+        saved.scheduler_state = WholeCellSchedulerState::default();
         saved.named_complexes.clear();
         saved.core.genome_bp = 1000;
         saved.core.replicated_bp = 610;
@@ -13939,6 +13940,8 @@ mod tests {
         saved.core.surface_area_nm2 = 170_000.0;
         saved.core.volume_nm3 = 800_000.0;
         saved.core.division_progress = 0.28;
+        saved.core.step_count = 23;
+        saved.core.time_ms = 11.5;
         saved.core.active_rnap = 12.0;
         saved.core.active_ribosomes = 19.0;
         saved.core.dnaa = 9.5;
@@ -13969,5 +13972,14 @@ mod tests {
         assert!((snapshot.ftsz - 24.0).abs() < 1.0e-6);
         assert_eq!(snapshot.replicated_bp, 610);
         assert!((snapshot.division_progress - 0.28).abs() < 1.0e-6);
+        assert_eq!(
+            snapshot.scheduler_state.stage_clocks.len(),
+            WholeCellSimulator::SOLVER_STAGE_ORDER.len()
+        );
+        assert!(snapshot
+            .scheduler_state
+            .stage_clocks
+            .iter()
+            .any(|clock| clock.run_count > 0));
     }
 }
