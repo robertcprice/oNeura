@@ -7912,6 +7912,7 @@ impl WholeCellSimulator {
             .map(|state| simulator.normalize_membrane_division_state(state))
             .unwrap_or_else(|| simulator.seeded_membrane_division_state());
         simulator.synchronize_membrane_division_summary();
+
         simulator.refresh_spatial_fields();
         simulator.refresh_rdme_drive_fields();
 
@@ -7936,7 +7937,30 @@ impl WholeCellSimulator {
         }
 
         simulator.refresh_organism_expression_state();
-        simulator.initialize_complex_assembly_state();
+        // Preserve any explicit assembly payload carried by the program spec before
+        // falling back to derived seeding. This happens after expression refresh so
+        // descriptor-driven process scales still shape any derived fallback targets.
+        // Named complexes are the richest form because they preserve per-complex
+        // state; aggregated complex_assembly is the next fallback when only channel
+        // totals are available.
+        simulator.named_complexes = spec.named_complexes.clone();
+        simulator.complex_assembly = spec.complex_assembly.unwrap_or_default();
+        if !simulator.named_complexes.is_empty() {
+            let needs_named_complex_reset = simulator
+                .organism_assets
+                .as_ref()
+                .map(|assets| simulator.named_complexes.len() != assets.complexes.len())
+                .unwrap_or(false);
+            if needs_named_complex_reset {
+                simulator.initialize_named_complexes_state();
+            }
+            if let Some(assets) = simulator.organism_assets.as_ref() {
+                simulator.complex_assembly =
+                    simulator.aggregate_named_complex_assembly_state(assets);
+            }
+        } else if simulator.complex_assembly.total_complexes() <= 1.0e-6 {
+            simulator.initialize_complex_assembly_state();
+        }
         simulator.initialize_runtime_process_state();
         simulator.refresh_multirate_scheduler();
         simulator.initialize_surrogate_pool_diagnostics();
@@ -12612,6 +12636,58 @@ mod tests {
         assert!(simulator.organism_assets.is_none());
         assert!(simulator.organism_process_registry.is_none());
         assert!(simulator.organism_process_registry().is_none());
+    }
+
+    #[test]
+    fn test_from_program_spec_preserves_explicit_complex_assembly_without_assets() {
+        let mut spec = bundled_syn3a_program_spec().expect("bundled Syn3A program spec");
+        spec.organism_data_ref = None;
+        spec.organism_assets = None;
+        spec.organism_process_registry = None;
+        spec.named_complexes.clear();
+        spec.complex_assembly = Some(WholeCellComplexAssemblyState {
+            ribosome_complexes: 17.0,
+            rnap_complexes: 10.0,
+            dnaa_activity: 8.5,
+            ftsz_polymer: 24.0,
+            ..WholeCellComplexAssemblyState::default()
+        });
+
+        let simulator = WholeCellSimulator::from_program_spec(spec);
+        let snapshot = simulator.snapshot();
+
+        assert!(simulator.organism_assets.is_none());
+        assert!((snapshot.active_rnap - 10.0).abs() < 1.0e-6);
+        assert!((snapshot.active_ribosomes - 17.0).abs() < 1.0e-6);
+        assert!((snapshot.dnaa - 8.5).abs() < 1.0e-6);
+        assert!((snapshot.ftsz - 24.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_from_program_spec_preserves_explicit_named_complexes_with_assets() {
+        let mut spec = bundled_syn3a_program_spec().expect("bundled Syn3A program spec");
+        let mut simulator = WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A");
+        for complex in &mut simulator.named_complexes {
+            match complex.family {
+                WholeCellAssemblyFamily::Ribosome => complex.abundance = 13.0,
+                WholeCellAssemblyFamily::RnaPolymerase => complex.abundance = 9.0,
+                WholeCellAssemblyFamily::Divisome => complex.abundance = 21.0,
+                WholeCellAssemblyFamily::Replisome => complex.abundance = 6.0,
+                _ => complex.abundance = 0.0,
+            }
+        }
+        let expected = simulator.snapshot();
+        spec.complex_assembly = None;
+        spec.named_complexes = simulator.named_complexes;
+
+        let restored = WholeCellSimulator::from_program_spec(spec);
+        let snapshot = restored.snapshot();
+
+        assert!(restored.organism_assets.is_some());
+        assert!((snapshot.active_rnap - expected.active_rnap).abs() < 1.0e-6);
+        assert!((snapshot.active_ribosomes - expected.active_ribosomes).abs() < 1.0e-6);
+        assert!((snapshot.dnaa - expected.dnaa).abs() < 1.0e-6);
+        assert!((snapshot.ftsz - expected.ftsz).abs() < 1.0e-6);
     }
 
     #[test]

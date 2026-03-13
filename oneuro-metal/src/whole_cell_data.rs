@@ -1437,6 +1437,10 @@ pub struct WholeCellProgramSpec {
     pub chromosome_state: Option<WholeCellChromosomeState>,
     #[serde(default)]
     pub membrane_division_state: Option<WholeCellMembraneDivisionState>,
+    #[serde(default)]
+    pub complex_assembly: Option<WholeCellComplexAssemblyState>,
+    #[serde(default)]
+    pub named_complexes: Vec<WholeCellNamedComplexState>,
     pub config: WholeCellConfig,
     pub initial_lattice: WholeCellInitialLatticeSpec,
     pub initial_state: WholeCellInitialStateSpec,
@@ -3207,8 +3211,11 @@ fn implicit_chromosome_domain_seeds(
         operons
             .iter()
             .map(|operon| {
-                let (start_bp, end_bp) =
-                    normalized_chromosome_interval(operon.promoter_bp, operon.terminator_bp, genome_bp);
+                let (start_bp, end_bp) = normalized_chromosome_interval(
+                    operon.promoter_bp,
+                    operon.terminator_bp,
+                    genome_bp,
+                );
                 ChromosomeDomainSeed {
                     start_bp,
                     end_bp,
@@ -3259,7 +3266,10 @@ fn compile_implicit_chromosome_domains(
     for pair in seeds.windows(2) {
         let previous = pair[0];
         let current = pair[1];
-        let gap_start = previous.end_bp.saturating_add(1).min(genome_bp.saturating_sub(1));
+        let gap_start = previous
+            .end_bp
+            .saturating_add(1)
+            .min(genome_bp.saturating_sub(1));
         let gap_end = current.start_bp.saturating_sub(1);
         if gap_start > gap_end {
             continue;
@@ -3278,13 +3288,12 @@ fn compile_implicit_chromosome_domains(
         if domain_end < domain_start {
             continue;
         }
-        let center_fraction =
-            ((midpoint_bp(domain_start, domain_end) as f32 + 0.5) / genome_bp as f32)
-                .clamp(0.02, 0.98);
-        let spread_fraction = (((domain_end.saturating_sub(domain_start) + 1) as f32
+        let center_fraction = ((midpoint_bp(domain_start, domain_end) as f32 + 0.5)
             / genome_bp as f32)
-            * 0.75)
-            .clamp(0.08, 0.24);
+            .clamp(0.02, 0.98);
+        let spread_fraction =
+            (((domain_end.saturating_sub(domain_start) + 1) as f32 / genome_bp as f32) * 0.75)
+                .clamp(0.08, 0.24);
         domains.push(WholeCellChromosomeDomainSpec {
             id: format!("chromosome_domain_{}", domains.len()),
             start_bp: domain_start,
@@ -3295,7 +3304,9 @@ fn compile_implicit_chromosome_domains(
             transcription_units: Vec::new(),
             operons: Vec::new(),
         });
-        domain_start = domain_end.saturating_add(1).min(genome_bp.saturating_sub(1));
+        domain_start = domain_end
+            .saturating_add(1)
+            .min(genome_bp.saturating_sub(1));
     }
 
     let domain_end = genome_bp.saturating_sub(1);
@@ -5443,6 +5454,8 @@ fn build_program_spec_from_organism(
         organism_process_registry: Some(process_registry),
         chromosome_state: None,
         membrane_division_state: None,
+        complex_assembly: None,
+        named_complexes: Vec::new(),
         config: WholeCellConfig::default(),
         initial_lattice: WholeCellInitialLatticeSpec {
             atp: pool_concentration_for_field(&organism.pools, WholeCellBulkField::ATP, 1.2),
@@ -6946,7 +6959,9 @@ mod tests {
             vec!["tu_left".to_string()]
         );
         assert!(compiled.chromosome_domains[1].genes.is_empty());
-        assert!(compiled.chromosome_domains[1].transcription_units.is_empty());
+        assert!(compiled.chromosome_domains[1]
+            .transcription_units
+            .is_empty());
         assert!(compiled.chromosome_domains[1].operons.is_empty());
     }
 

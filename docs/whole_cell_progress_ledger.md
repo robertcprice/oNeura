@@ -1907,3 +1907,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `bundle-less diagnostic boundaries now prefer explicit complex state, but the remaining compatibility-only serialization payloads still need further narrowing where no richer persisted explicit state exists yet`
+
+### 2026-03-12 - Phase 7 / Program-Spec Explicit Assembly Bootstrap
+
+- Summary:
+  - extended `WholeCellProgramSpec` so bootstrap payloads can carry explicit `complex_assembly` totals or richer `named_complexes` state instead of forcing non-saved-state initialization to reseed assembly from defaults
+  - updated `WholeCellSimulator::from_program_spec()` to preserve explicit assembly payloads after expression refresh, so descriptor-driven scaling still shapes fallback targets while explicit inventory wins when provided
+  - added comments in the bootstrap path documenting the explicit-state precedence and why it has to run after expression refresh
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q test_from_program_spec_preserves_explicit_complex_assembly_without_assets --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_program_spec_preserves_explicit_named_complexes_with_assets --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_organism_descriptor_drives_division_and_replication_scales --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `program-spec bootstrap now preserves explicit assembly state, but the remaining compatibility-only serialization payloads still need further narrowing where richer explicit state is still absent or only represented by synchronized summaries`
