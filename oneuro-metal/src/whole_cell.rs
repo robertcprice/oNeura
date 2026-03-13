@@ -7936,6 +7936,47 @@ impl WholeCellSimulator {
             }
         }
 
+        // Preserve explicit local-chemistry runtime state before later bootstrap
+        // stages read those signals. Expression refresh, assembly fallback, runtime
+        // chemistry initialization, and scheduler adaptation all consume chemistry
+        // support signals, so explicit chemistry reports and probe-coupling state
+        // need to land before those downstream fallbacks run.
+        if !spec.scheduled_subsystem_probes.is_empty() {
+            simulator.clear_syn3a_subsystem_probes();
+            for probe in spec.scheduled_subsystem_probes {
+                simulator.schedule_syn3a_subsystem_probe(probe.preset, probe.interval_steps);
+            }
+        }
+        simulator.chemistry_report = spec.chemistry_report.unwrap_or_default();
+        simulator.chemistry_site_reports = spec.chemistry_site_reports.clone();
+        simulator.last_md_probe = spec.last_md_probe;
+        if !spec.subsystem_states.is_empty() {
+            simulator.subsystem_states = spec.subsystem_states.clone();
+        } else {
+            if simulator.subsystem_states.is_empty() {
+                simulator.subsystem_states = Syn3ASubsystemPreset::all()
+                    .iter()
+                    .copied()
+                    .map(WholeCellSubsystemState::new)
+                    .collect();
+            }
+            simulator.refresh_subsystem_chemistry_state();
+        }
+        simulator.md_translation_scale = Self::finite_scale(
+            spec.md_translation_scale
+                .unwrap_or(simulator.md_translation_scale),
+            1.0,
+            0.70,
+            1.45,
+        );
+        simulator.md_membrane_scale = Self::finite_scale(
+            spec.md_membrane_scale
+                .unwrap_or(simulator.md_membrane_scale),
+            1.0,
+            0.70,
+            1.45,
+        );
+
         // Preserve any explicit expression payload carried by the program spec before
         // regenerating it from the organism descriptor. This lets callers bootstrap
         // with concrete transcription-unit state and cached process scales when they
@@ -12829,6 +12870,155 @@ mod tests {
         assert_eq!(restored_cme_clock.run_count, 3);
         assert_eq!(restored_cme_clock.last_run_step, Some(12));
         assert!((restored_cme_clock.last_run_time_ms - 6.5).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_from_program_spec_preserves_explicit_local_chemistry_runtime_state() {
+        let mut spec = bundled_syn3a_program_spec().expect("bundled Syn3A program spec");
+        spec.local_chemistry = Some(WholeCellLocalChemistrySpec {
+            x_dim: 12,
+            y_dim: 12,
+            z_dim: 6,
+            voxel_size_au: 0.5,
+            use_gpu: false,
+            enable_default_syn3a_subsystems: false,
+            scheduled_subsystem_probes: Vec::new(),
+        });
+        spec.chemistry_report = Some(LocalChemistryReport {
+            atp_support: 0.82,
+            translation_support: 0.91,
+            nucleotide_support: 0.87,
+            membrane_support: 1.08,
+            crowding_penalty: 0.79,
+            mean_glucose: 0.33,
+            mean_oxygen: 0.27,
+            mean_atp_flux: 0.41,
+            mean_carbon_dioxide: 0.18,
+        });
+        spec.chemistry_site_reports = vec![LocalChemistrySiteReport {
+            preset: Syn3ASubsystemPreset::ReplisomeTrack,
+            site: WholeCellChemistrySite::ChromosomeTrack,
+            patch_radius: 2,
+            site_x: 4,
+            site_y: 5,
+            site_z: 1,
+            localization_score: 0.86,
+            atp_support: 0.78,
+            translation_support: 0.74,
+            nucleotide_support: 0.92,
+            membrane_support: 0.66,
+            crowding_penalty: 0.83,
+            mean_glucose: 0.25,
+            mean_oxygen: 0.21,
+            mean_atp_flux: 0.38,
+            mean_carbon_dioxide: 0.19,
+            mean_nitrate: 0.12,
+            mean_ammonium: 0.09,
+            mean_proton: 0.04,
+            mean_phosphorus: 0.07,
+            assembly_component_availability: 0.91,
+            assembly_occupancy: 0.64,
+            assembly_stability: 0.72,
+            assembly_turnover: 0.18,
+            substrate_draw: 0.26,
+            energy_draw: 0.31,
+            biosynthetic_draw: 0.22,
+            byproduct_load: 0.14,
+            demand_satisfaction: 0.77,
+        }];
+        spec.last_md_probe = Some(LocalMDProbeReport {
+            site: WholeCellChemistrySite::ChromosomeTrack,
+            mean_temperature: 301.0,
+            mean_total_energy: -18.0,
+            mean_vdw_energy: -8.0,
+            mean_electrostatic_energy: -5.0,
+            structural_order: 0.84,
+            crowding_penalty: 0.81,
+            compactness: 0.62,
+            shell_order: 0.58,
+            axis_anisotropy: 0.19,
+            thermal_stability: 0.87,
+            electrostatic_order: 0.74,
+            vdw_cohesion: 0.71,
+            polar_fraction: 0.44,
+            phosphate_fraction: 0.16,
+            hydrogen_fraction: 0.22,
+            bond_density: 0.52,
+            angle_density: 0.47,
+            dihedral_density: 0.29,
+            charge_density: 0.12,
+            recommended_atp_scale: 1.05,
+            recommended_translation_scale: 1.18,
+            recommended_replication_scale: 1.09,
+            recommended_segregation_scale: 1.04,
+            recommended_membrane_scale: 0.93,
+            recommended_constriction_scale: 0.97,
+        });
+        spec.scheduled_subsystem_probes = vec![ScheduledSubsystemProbe {
+            preset: Syn3ASubsystemPreset::ReplisomeTrack,
+            interval_steps: 9,
+        }];
+        spec.subsystem_states = vec![WholeCellSubsystemState {
+            preset: Syn3ASubsystemPreset::ReplisomeTrack,
+            site: WholeCellChemistrySite::ChromosomeTrack,
+            site_x: 4,
+            site_y: 5,
+            site_z: 1,
+            localization_score: 0.86,
+            structural_order: 0.79,
+            crowding_penalty: 0.81,
+            assembly_component_availability: 0.88,
+            assembly_occupancy: 0.63,
+            assembly_stability: 0.69,
+            assembly_turnover: 0.21,
+            substrate_draw: 0.24,
+            energy_draw: 0.29,
+            biosynthetic_draw: 0.20,
+            byproduct_load: 0.13,
+            demand_satisfaction: 0.75,
+            atp_scale: 1.06,
+            translation_scale: 1.17,
+            replication_scale: 1.11,
+            segregation_scale: 1.03,
+            membrane_scale: 0.95,
+            constriction_scale: 0.98,
+            last_probe_step: Some(14),
+        }];
+        spec.md_translation_scale = Some(1.18);
+        spec.md_membrane_scale = Some(0.93);
+
+        let simulator = WholeCellSimulator::from_program_spec(spec);
+        let restored_report = simulator
+            .local_chemistry_report()
+            .expect("restored local chemistry report");
+        let restored_site_reports = simulator.local_chemistry_sites();
+        let restored_subsystem_states = simulator.subsystem_states();
+        let restored_md_probe = simulator.last_md_probe().expect("restored md probe");
+        let restored_probes = simulator.scheduled_syn3a_subsystem_probes();
+
+        assert!((restored_report.atp_support - 0.82).abs() < 1.0e-6);
+        assert!((restored_report.crowding_penalty - 0.79).abs() < 1.0e-6);
+        assert_eq!(restored_site_reports.len(), 1);
+        assert_eq!(
+            restored_site_reports[0].preset,
+            Syn3ASubsystemPreset::ReplisomeTrack
+        );
+        assert!((restored_site_reports[0].localization_score - 0.86).abs() < 1.0e-6);
+        assert_eq!(restored_subsystem_states.len(), 1);
+        assert_eq!(
+            restored_subsystem_states[0].preset,
+            Syn3ASubsystemPreset::ReplisomeTrack
+        );
+        assert_eq!(restored_subsystem_states[0].last_probe_step, Some(14));
+        assert!((restored_subsystem_states[0].replication_scale - 1.11).abs() < 1.0e-6);
+        assert_eq!(restored_probes.len(), 1);
+        assert_eq!(restored_probes[0].interval_steps, 9);
+        assert_eq!(
+            restored_md_probe.site,
+            WholeCellChemistrySite::ChromosomeTrack
+        );
+        assert!((simulator.md_translation_scale() - 1.18).abs() < 1.0e-6);
+        assert!((simulator.md_membrane_scale() - 0.93).abs() < 1.0e-6);
     }
 
     #[test]

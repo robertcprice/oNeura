@@ -1967,3 +1967,23 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `program-spec bootstrap now preserves explicit expression, assembly, runtime chemistry, and scheduler state, but the remaining compatibility-only serialization paths still need richer explicit payloads for the last legacy-only biology layers before synchronized scalar summaries can disappear completely`
+
+### 2026-03-12 - Phase 7 / Program-Spec Explicit Local Chemistry Bootstrap
+
+- Summary:
+  - extended `WholeCellProgramSpec` so bootstrap payloads can also carry explicit local-chemistry reports, site reports, probe schedules, subsystem coupling state, MD probe payloads, and MD coupling scales instead of always resetting those layers during non-saved-state initialization
+  - updated `WholeCellSimulator::from_program_spec()` to preserve explicit local-chemistry runtime state immediately after local-chemistry bridge configuration, so later expression refresh, assembly fallback, runtime chemistry bootstrap, and scheduler adaptation can consume the supplied support signals
+  - added comments in the bootstrap path documenting why explicit local-chemistry state has to land before expression, assembly, runtime chemistry, and scheduler precedence
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell_data.rs`
+- Tests run:
+  - `cargo test -q test_from_program_spec_preserves_explicit_local_chemistry_runtime_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `program-spec bootstrap now preserves explicit local chemistry, expression, assembly, runtime chemistry, and scheduler state, but the remaining compatibility-only serialization paths still need richer explicit payloads for the last legacy-only biology layers before synchronized scalar summaries can disappear completely`

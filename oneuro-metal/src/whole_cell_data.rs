@@ -1449,6 +1449,20 @@ pub struct WholeCellProgramSpec {
     pub named_complexes: Vec<WholeCellNamedComplexState>,
     #[serde(default)]
     pub scheduler_state: Option<WholeCellSchedulerState>,
+    #[serde(default)]
+    pub chemistry_report: Option<LocalChemistryReport>,
+    #[serde(default)]
+    pub chemistry_site_reports: Vec<LocalChemistrySiteReport>,
+    #[serde(default)]
+    pub last_md_probe: Option<LocalMDProbeReport>,
+    #[serde(default)]
+    pub scheduled_subsystem_probes: Vec<ScheduledSubsystemProbe>,
+    #[serde(default)]
+    pub subsystem_states: Vec<WholeCellSubsystemState>,
+    #[serde(default)]
+    pub md_translation_scale: Option<f32>,
+    #[serde(default)]
+    pub md_membrane_scale: Option<f32>,
     pub config: WholeCellConfig,
     pub initial_lattice: WholeCellInitialLatticeSpec,
     pub initial_state: WholeCellInitialStateSpec,
@@ -5468,6 +5482,13 @@ fn build_program_spec_from_organism(
         complex_assembly: None,
         named_complexes: Vec::new(),
         scheduler_state: None,
+        chemistry_report: None,
+        chemistry_site_reports: Vec::new(),
+        last_md_probe: None,
+        scheduled_subsystem_probes: Vec::new(),
+        subsystem_states: Vec::new(),
+        md_translation_scale: None,
+        md_membrane_scale: None,
         config: WholeCellConfig::default(),
         initial_lattice: WholeCellInitialLatticeSpec {
             atp: pool_concentration_for_field(&organism.pools, WholeCellBulkField::ATP, 1.2),
