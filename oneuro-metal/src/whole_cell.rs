@@ -820,6 +820,10 @@ impl WholeCellSimulator {
             .any(|state| *state != WholeCellSubsystemState::new(state.preset))
     }
 
+    fn has_explicit_expression_state(&self) -> bool {
+        self.organism_expression != WholeCellOrganismExpressionState::default()
+    }
+
     fn average_unit_stress_penalty(&self) -> f32 {
         if self.organism_expression.transcription_units.is_empty() {
             1.0
@@ -1487,7 +1491,10 @@ impl WholeCellSimulator {
     }
 
     fn current_diagnostic_pool_summaries(&self) -> (f32, f32, f32, f32) {
-        if self.organism_assets.is_some() || self.complex_assembly.total_complexes() > 1.0e-6 {
+        if self.organism_assets.is_some()
+            || !self.named_complexes.is_empty()
+            || self.complex_assembly.total_complexes() > 1.0e-6
+        {
             let inventory = self.assembly_inventory();
             (
                 inventory.ftsz_polymer.clamp(12.0, 384.0),
@@ -2496,6 +2503,9 @@ impl WholeCellSimulator {
                 return self.aggregate_named_complex_assembly_state(assets);
             }
             return self.complex_assembly;
+        }
+        if !self.named_complexes.is_empty() {
+            return self.aggregate_named_complex_assembly_state_without_assets();
         }
         if self.complex_assembly.total_complexes() > 1.0e-6 {
             self.complex_assembly
@@ -5776,6 +5786,94 @@ impl WholeCellSimulator {
         aggregate
     }
 
+    fn aggregate_named_complex_assembly_state_without_assets(
+        &self,
+    ) -> WholeCellComplexAssemblyState {
+        let mut aggregate = WholeCellComplexAssemblyState::default();
+        for state in &self.named_complexes {
+            let shares = self.named_complex_inventory_shares_from_state(state);
+            if shares.total() <= 1.0e-6 {
+                continue;
+            }
+            // Bundle-less explicit state still carries family, subsystem, and
+            // asset-class metadata, so keep using that compiled semantic
+            // ownership instead of dropping back to stale scalar summaries.
+            let insertion_gate = if self.named_complex_state_requires_insertion(state) {
+                (0.65 + 0.35 * state.insertion_progress).clamp(0.40, 1.0)
+            } else {
+                1.0
+            };
+            let damage_penalty = (1.0
+                - 0.45
+                    * Self::saturating_signal(
+                        state.damaged_abundance,
+                        1.0 + 0.2 * state.target_abundance.max(1.0),
+                    ))
+            .clamp(0.35, 1.0);
+            let effective_abundance = (state.abundance * insertion_gate * damage_penalty)
+                + 0.22 * state.elongation_intermediate
+                + 0.08 * state.nucleation_intermediate;
+            let effective_target = (state.target_abundance * insertion_gate)
+                + 0.18 * state.elongation_intermediate
+                + 0.06 * state.nucleation_intermediate
+                + 0.04 * state.stalled_intermediate;
+            let effective_assembly_rate = state.assembly_rate
+                + 0.55 * state.maturation_rate
+                + 0.30 * state.elongation_rate
+                + 0.15 * state.nucleation_rate;
+
+            aggregate.atp_band_complexes += effective_abundance * shares.atp_band;
+            aggregate.ribosome_complexes += effective_abundance * shares.ribosome;
+            aggregate.rnap_complexes += effective_abundance * shares.rnap;
+            aggregate.replisome_complexes += effective_abundance * shares.replisome;
+            aggregate.membrane_complexes += effective_abundance * shares.membrane;
+            aggregate.ftsz_polymer += effective_abundance * shares.ftsz;
+            aggregate.dnaa_activity += effective_abundance * shares.dnaa;
+
+            aggregate.atp_band_target += effective_target * shares.atp_band;
+            aggregate.ribosome_target += effective_target * shares.ribosome;
+            aggregate.rnap_target += effective_target * shares.rnap;
+            aggregate.replisome_target += effective_target * shares.replisome;
+            aggregate.membrane_target += effective_target * shares.membrane;
+            aggregate.ftsz_target += effective_target * shares.ftsz;
+            aggregate.dnaa_target += effective_target * shares.dnaa;
+
+            aggregate.atp_band_assembly_rate += effective_assembly_rate * shares.atp_band;
+            aggregate.ribosome_assembly_rate += effective_assembly_rate * shares.ribosome;
+            aggregate.rnap_assembly_rate += effective_assembly_rate * shares.rnap;
+            aggregate.replisome_assembly_rate += effective_assembly_rate * shares.replisome;
+            aggregate.membrane_assembly_rate += effective_assembly_rate * shares.membrane;
+            aggregate.ftsz_assembly_rate += effective_assembly_rate * shares.ftsz;
+            aggregate.dnaa_assembly_rate += effective_assembly_rate * shares.dnaa;
+
+            aggregate.atp_band_degradation_rate += state.degradation_rate * shares.atp_band;
+            aggregate.ribosome_degradation_rate += state.degradation_rate * shares.ribosome;
+            aggregate.rnap_degradation_rate += state.degradation_rate * shares.rnap;
+            aggregate.replisome_degradation_rate += state.degradation_rate * shares.replisome;
+            aggregate.membrane_degradation_rate += state.degradation_rate * shares.membrane;
+            aggregate.ftsz_degradation_rate += state.degradation_rate * shares.ftsz;
+            aggregate.dnaa_degradation_rate += state.degradation_rate * shares.dnaa;
+        }
+        aggregate
+    }
+
+    fn named_complex_state_requires_insertion(&self, state: &WholeCellNamedComplexState) -> bool {
+        state
+            .subsystem_targets
+            .contains(&Syn3ASubsystemPreset::AtpSynthaseMembraneBand)
+            || matches!(
+                state.family,
+                WholeCellAssemblyFamily::AtpSynthase
+                    | WholeCellAssemblyFamily::Transporter
+                    | WholeCellAssemblyFamily::MembraneEnzyme
+                    | WholeCellAssemblyFamily::Divisome
+            )
+            || matches!(
+                state.asset_class,
+                WholeCellAssetClass::Energy | WholeCellAssetClass::Membrane
+            )
+    }
+
     fn heuristic_complex_inventory_shares(
         &self,
         complex: &WholeCellComplexSpec,
@@ -5818,12 +5916,11 @@ impl WholeCellSimulator {
         }
     }
 
-    fn named_complex_inventory_shares(
-        &self,
-        complex: &WholeCellComplexSpec,
+    fn subsystem_target_inventory_shares(
+        subsystem_targets: &[Syn3ASubsystemPreset],
     ) -> WholeCellAssemblyChannelShares {
         let mut shares = WholeCellAssemblyChannelShares::default();
-        for target in &complex.subsystem_targets {
+        for target in subsystem_targets {
             match target {
                 Syn3ASubsystemPreset::AtpSynthaseMembraneBand => {
                     shares.atp_band += 1.0;
@@ -5840,11 +5937,11 @@ impl WholeCellSimulator {
                 }
             }
         }
-        if shares.total() > 1.0e-6 {
-            return shares.normalized();
-        }
+        shares
+    }
 
-        shares = match complex.family {
+    fn family_inventory_shares(family: WholeCellAssemblyFamily) -> WholeCellAssemblyChannelShares {
+        match family {
             WholeCellAssemblyFamily::Ribosome => WholeCellAssemblyChannelShares {
                 ribosome: 1.0,
                 ..WholeCellAssemblyChannelShares::default()
@@ -5875,48 +5972,57 @@ impl WholeCellSimulator {
             WholeCellAssemblyFamily::ChaperoneClient | WholeCellAssemblyFamily::Generic => {
                 WholeCellAssemblyChannelShares::default()
             }
-        };
-        if shares.total() > 1.0e-6 {
-            return shares.normalized();
         }
+    }
 
-        shares = match complex.asset_class {
-            crate::whole_cell_data::WholeCellAssetClass::Energy => WholeCellAssemblyChannelShares {
+    fn asset_class_inventory_shares(
+        asset_class: WholeCellAssetClass,
+    ) -> WholeCellAssemblyChannelShares {
+        match asset_class {
+            WholeCellAssetClass::Energy => WholeCellAssemblyChannelShares {
                 atp_band: 1.0,
                 ..WholeCellAssemblyChannelShares::default()
             },
-            crate::whole_cell_data::WholeCellAssetClass::Translation => {
-                WholeCellAssemblyChannelShares {
-                    ribosome: 1.0,
-                    ..WholeCellAssemblyChannelShares::default()
-                }
-            }
-            crate::whole_cell_data::WholeCellAssetClass::Replication
-            | crate::whole_cell_data::WholeCellAssetClass::Segregation => {
+            WholeCellAssetClass::Translation => WholeCellAssemblyChannelShares {
+                ribosome: 1.0,
+                ..WholeCellAssemblyChannelShares::default()
+            },
+            WholeCellAssetClass::Replication | WholeCellAssetClass::Segregation => {
                 WholeCellAssemblyChannelShares {
                     replisome: 0.78,
                     dnaa: 0.22,
                     ..WholeCellAssemblyChannelShares::default()
                 }
             }
-            crate::whole_cell_data::WholeCellAssetClass::Membrane => {
-                WholeCellAssemblyChannelShares {
-                    membrane: 1.0,
-                    ..WholeCellAssemblyChannelShares::default()
-                }
-            }
-            crate::whole_cell_data::WholeCellAssetClass::Constriction => {
-                WholeCellAssemblyChannelShares {
-                    ftsz: 1.0,
-                    ..WholeCellAssemblyChannelShares::default()
-                }
-            }
-            crate::whole_cell_data::WholeCellAssetClass::QualityControl
-            | crate::whole_cell_data::WholeCellAssetClass::Homeostasis
-            | crate::whole_cell_data::WholeCellAssetClass::Generic => {
-                WholeCellAssemblyChannelShares::default()
-            }
-        };
+            WholeCellAssetClass::Membrane => WholeCellAssemblyChannelShares {
+                membrane: 1.0,
+                ..WholeCellAssemblyChannelShares::default()
+            },
+            WholeCellAssetClass::Constriction => WholeCellAssemblyChannelShares {
+                ftsz: 1.0,
+                ..WholeCellAssemblyChannelShares::default()
+            },
+            WholeCellAssetClass::QualityControl
+            | WholeCellAssetClass::Homeostasis
+            | WholeCellAssetClass::Generic => WholeCellAssemblyChannelShares::default(),
+        }
+    }
+
+    fn named_complex_inventory_shares(
+        &self,
+        complex: &WholeCellComplexSpec,
+    ) -> WholeCellAssemblyChannelShares {
+        let mut shares = Self::subsystem_target_inventory_shares(&complex.subsystem_targets);
+        if shares.total() > 1.0e-6 {
+            return shares.normalized();
+        }
+
+        shares = Self::family_inventory_shares(complex.family);
+        if shares.total() > 1.0e-6 {
+            return shares.normalized();
+        }
+
+        shares = Self::asset_class_inventory_shares(complex.asset_class);
         if shares.total() > 1.0e-6 {
             return shares.normalized();
         }
@@ -5924,12 +6030,44 @@ impl WholeCellSimulator {
         self.heuristic_complex_inventory_shares(complex)
     }
 
+    fn named_complex_inventory_shares_from_state(
+        &self,
+        state: &WholeCellNamedComplexState,
+    ) -> WholeCellAssemblyChannelShares {
+        let mut shares = Self::subsystem_target_inventory_shares(&state.subsystem_targets);
+        if shares.total() > 1.0e-6 {
+            return shares.normalized();
+        }
+
+        shares = Self::family_inventory_shares(state.family);
+        if shares.total() > 1.0e-6 {
+            return shares.normalized();
+        }
+
+        shares = Self::asset_class_inventory_shares(state.asset_class);
+        if shares.total() > 1.0e-6 {
+            return shares.normalized();
+        }
+
+        WholeCellAssemblyChannelShares::default()
+    }
+
     fn update_named_complexes_state(&mut self, dt: f32) -> bool {
         let Some(assets) = self.organism_assets.clone() else {
+            if !self.named_complexes.is_empty() {
+                self.complex_assembly =
+                    self.aggregate_named_complex_assembly_state_without_assets();
+                return true;
+            }
             self.named_complexes.clear();
             return false;
         };
         if assets.complexes.is_empty() {
+            if !self.named_complexes.is_empty() {
+                self.complex_assembly =
+                    self.aggregate_named_complex_assembly_state_without_assets();
+                return true;
+            }
             self.named_complexes.clear();
             return false;
         }
@@ -6142,7 +6280,7 @@ impl WholeCellSimulator {
     fn derived_complex_assembly_target(&self) -> WholeCellComplexAssemblyState {
         let prior = self.legacy_fallback_assembly_inventory();
         let expression = &self.organism_expression;
-        if self.organism_data.is_none() || expression.transcription_units.is_empty() {
+        if !self.has_explicit_expression_state() {
             let replicated_fraction = self.current_replicated_fraction();
             let energy_signal = Self::saturating_signal(
                 0.70 * self.atp_mm.max(0.0) + 0.30 * self.chemistry_report.atp_support.max(0.0),
@@ -6538,7 +6676,9 @@ impl WholeCellSimulator {
 
     fn refresh_organism_expression_state(&mut self) {
         let Some(organism) = self.organism_data.clone() else {
-            self.organism_expression = WholeCellOrganismExpressionState::default();
+            if !self.has_explicit_expression_state() {
+                self.organism_expression = WholeCellOrganismExpressionState::default();
+            }
             return;
         };
         let previous_units = self.organism_expression.transcription_units.clone();
@@ -6977,7 +7117,7 @@ impl WholeCellSimulator {
         transcription_flux: f32,
         translation_flux: f32,
     ) {
-        if self.organism_data.is_none() || self.organism_expression.transcription_units.is_empty() {
+        if !self.has_explicit_expression_state() {
             return;
         }
         let dt_scale = (dt / self.config.dt_ms.max(0.05)).clamp(0.5, 4.0);
@@ -7140,7 +7280,7 @@ impl WholeCellSimulator {
 
     fn organism_process_scales(&self) -> WholeCellOrganismProcessScales {
         let expression = &self.organism_expression;
-        if self.organism_data.is_none() || expression.transcription_units.is_empty() {
+        if !self.has_explicit_expression_state() {
             return WholeCellOrganismProcessScales::default();
         }
         WholeCellOrganismProcessScales {
@@ -7188,10 +7328,10 @@ impl WholeCellSimulator {
     }
 
     pub fn organism_expression_state(&self) -> Option<WholeCellOrganismExpressionState> {
-        if self.organism_data.is_none() {
-            None
-        } else {
+        if self.has_explicit_expression_state() || self.organism_data.is_some() {
             Some(self.organism_expression.clone())
+        } else {
+            None
         }
     }
 
@@ -7668,11 +7808,12 @@ impl WholeCellSimulator {
                 self.initialize_complex_assembly_state();
             }
         } else {
-            self.organism_expression = WholeCellOrganismExpressionState::default();
-            self.organism_process_registry = None;
-            self.organism_species.clear();
-            self.organism_reactions.clear();
-            self.named_complexes.clear();
+            // Bundle-less restore still has to honor explicit persisted biology
+            // when the caller stripped bundled organism descriptors. Only fall
+            // back to scalar summaries when the richer layer is genuinely absent.
+            if !self.has_explicit_expression_state() {
+                self.organism_expression = WholeCellOrganismExpressionState::default();
+            }
             self.ftsz = saved_ftsz;
             self.dnaa = saved_dnaa;
             self.active_ribosomes = saved_active_ribosomes;
@@ -7696,7 +7837,10 @@ impl WholeCellSimulator {
                 self.seeded_membrane_division_state()
             };
             self.synchronize_membrane_division_summary();
-            if self.complex_assembly.total_complexes() <= 1.0e-6 {
+            if !self.named_complexes.is_empty() {
+                self.complex_assembly =
+                    self.aggregate_named_complex_assembly_state_without_assets();
+            } else if self.complex_assembly.total_complexes() <= 1.0e-6 {
                 self.initialize_complex_assembly_state();
             }
         }
@@ -11423,6 +11567,136 @@ mod tests {
     }
 
     #[test]
+    fn test_bundleless_boundary_diagnostics_prefer_explicit_named_complex_state() {
+        let mut sim = WholeCellSimulator::new(WholeCellConfig::default());
+        sim.active_rnap = 1.0;
+        sim.active_ribosomes = 2.0;
+        sim.dnaa = 3.0;
+        sim.ftsz = 4.0;
+        sim.complex_assembly = WholeCellComplexAssemblyState::default();
+        sim.named_complexes = vec![
+            WholeCellNamedComplexState {
+                id: "ribosome".to_string(),
+                operon: "ribosome".to_string(),
+                asset_class: WholeCellAssetClass::Translation,
+                family: WholeCellAssemblyFamily::Ribosome,
+                subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance: 17.0,
+                target_abundance: 20.0,
+                assembly_rate: 1.2,
+                degradation_rate: 0.2,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress: 0.0,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            },
+            WholeCellNamedComplexState {
+                id: "rnap".to_string(),
+                operon: "rnap".to_string(),
+                asset_class: WholeCellAssetClass::Homeostasis,
+                family: WholeCellAssemblyFamily::RnaPolymerase,
+                subsystem_targets: Vec::new(),
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance: 10.0,
+                target_abundance: 12.0,
+                assembly_rate: 0.9,
+                degradation_rate: 0.15,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress: 0.0,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            },
+            WholeCellNamedComplexState {
+                id: "divisome".to_string(),
+                operon: "divisome".to_string(),
+                asset_class: WholeCellAssetClass::Constriction,
+                family: WholeCellAssemblyFamily::Divisome,
+                subsystem_targets: vec![Syn3ASubsystemPreset::FtsZSeptumRing],
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance: 24.0,
+                target_abundance: 30.0,
+                assembly_rate: 1.0,
+                degradation_rate: 0.1,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress: 0.0,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            },
+            WholeCellNamedComplexState {
+                id: "replisome".to_string(),
+                operon: "replisome".to_string(),
+                asset_class: WholeCellAssetClass::Replication,
+                family: WholeCellAssemblyFamily::Replisome,
+                subsystem_targets: vec![Syn3ASubsystemPreset::ReplisomeTrack],
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance: 20.0,
+                target_abundance: 22.0,
+                assembly_rate: 0.8,
+                degradation_rate: 0.1,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress: 0.0,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            },
+        ];
+
+        let expected = sim.aggregate_named_complex_assembly_state_without_assets();
+        let snapshot = sim.snapshot();
+        assert!((snapshot.active_rnap - expected.rnap_complexes).abs() < 1.0e-6);
+        assert!((snapshot.active_ribosomes - expected.ribosome_complexes).abs() < 1.0e-6);
+        assert!((snapshot.dnaa - expected.dnaa_activity.clamp(8.0, 256.0)).abs() < 1.0e-6);
+        assert!((snapshot.ftsz - expected.ftsz_polymer).abs() < 1.0e-6);
+
+        let saved = parse_saved_state_json(&sim.save_state_json().expect("serialize saved state"))
+            .expect("parse saved state");
+        assert!((saved.core.active_rnap - expected.rnap_complexes).abs() < 1.0e-6);
+        assert!((saved.core.active_ribosomes - expected.ribosome_complexes).abs() < 1.0e-6);
+        assert!((saved.core.dnaa - expected.dnaa_activity.clamp(8.0, 256.0)).abs() < 1.0e-6);
+        assert!((saved.core.ftsz - expected.ftsz_polymer).abs() < 1.0e-6);
+    }
+
+    #[test]
     fn test_restore_saved_state_prefers_explicit_state_over_stale_core_summary() {
         let mut sim =
             WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A simulator");
@@ -13314,6 +13588,7 @@ mod tests {
         saved.organism_data = None;
         saved.organism_assets = None;
         saved.organism_process_registry = None;
+        saved.named_complexes.clear();
         saved.core.replicated_bp = 9;
         saved.core.chromosome_separation_nm = 0.0;
         saved.core.radius_nm = 55.0;
@@ -13343,6 +13618,191 @@ mod tests {
         assert!((snapshot.active_ribosomes - 17.0).abs() < 1.0e-6);
         assert!((snapshot.dnaa - 8.5).abs() < 1.0e-6);
         assert!((snapshot.ftsz - 24.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_bundleless_restore_preserves_explicit_expression_runtime_and_named_complex_state() {
+        let simulator = WholeCellSimulator::bundled_syn3a_reference().expect("bundled Syn3A");
+        let mut saved = parse_saved_state_json(
+            &simulator
+                .save_state_json()
+                .expect("serialize explicit saved state"),
+        )
+        .expect("parse explicit saved state");
+        saved.organism_data_ref = None;
+        saved.organism_data = None;
+        saved.organism_assets = None;
+        saved.organism_expression.global_activity = 0.83;
+        saved.organism_expression.energy_support = 1.17;
+        saved.organism_expression.translation_support = 1.09;
+        saved.organism_expression.nucleotide_support = 1.11;
+        saved.organism_expression.transcription_units[0].promoter_open_fraction = 0.71;
+        saved.organism_expression.transcription_units[0].copy_gain = 1.23;
+        saved.organism_expression.transcription_units[0].support_level = 1.08;
+        saved.organism_species[0].count = 42.0;
+        saved.organism_reactions[0].current_flux = 1.25;
+        saved.named_complexes = vec![
+            WholeCellNamedComplexState {
+                id: "ribosome".to_string(),
+                operon: "ribosome".to_string(),
+                asset_class: WholeCellAssetClass::Translation,
+                family: WholeCellAssemblyFamily::Ribosome,
+                subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance: 19.0,
+                target_abundance: 21.0,
+                assembly_rate: 1.2,
+                degradation_rate: 0.2,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress: 0.0,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            },
+            WholeCellNamedComplexState {
+                id: "rnap".to_string(),
+                operon: "rnap".to_string(),
+                asset_class: WholeCellAssetClass::Homeostasis,
+                family: WholeCellAssemblyFamily::RnaPolymerase,
+                subsystem_targets: Vec::new(),
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance: 11.0,
+                target_abundance: 12.0,
+                assembly_rate: 0.9,
+                degradation_rate: 0.15,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress: 0.0,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            },
+            WholeCellNamedComplexState {
+                id: "divisome".to_string(),
+                operon: "divisome".to_string(),
+                asset_class: WholeCellAssetClass::Constriction,
+                family: WholeCellAssemblyFamily::Divisome,
+                subsystem_targets: vec![Syn3ASubsystemPreset::FtsZSeptumRing],
+                subunit_pool: 0.0,
+                nucleation_intermediate: 0.0,
+                elongation_intermediate: 0.0,
+                abundance: 26.0,
+                target_abundance: 29.0,
+                assembly_rate: 1.0,
+                degradation_rate: 0.1,
+                nucleation_rate: 0.0,
+                elongation_rate: 0.0,
+                maturation_rate: 0.0,
+                component_satisfaction: 1.0,
+                structural_support: 1.0,
+                assembly_progress: 0.0,
+                stalled_intermediate: 0.0,
+                damaged_abundance: 0.0,
+                limiting_component_signal: 0.0,
+                shared_component_pressure: 0.0,
+                insertion_progress: 1.0,
+                failure_count: 0.0,
+            },
+        ];
+        saved.complex_assembly = WholeCellComplexAssemblyState::default();
+        saved.core.active_rnap = 2.0;
+        saved.core.active_ribosomes = 3.0;
+        saved.core.dnaa = 4.0;
+        saved.core.ftsz = 5.0;
+
+        let restored = WholeCellSimulator::from_saved_state_json(
+            &saved_state_to_json(&saved).expect("serialize stripped saved state"),
+        )
+        .expect("restore stripped saved state");
+        let expected_inventory = restored.aggregate_named_complex_assembly_state_without_assets();
+
+        assert!(restored.organism_data.is_none());
+        assert!(restored.organism_assets.is_none());
+        assert!(restored.organism_process_registry().is_some());
+        assert_eq!(
+            restored.organism_species.len(),
+            saved.organism_species.len()
+        );
+        assert_eq!(
+            restored.organism_reactions.len(),
+            saved.organism_reactions.len()
+        );
+        assert_eq!(restored.organism_species[0].count, 42.0);
+        assert_eq!(restored.organism_reactions[0].current_flux, 1.25);
+        assert_eq!(
+            restored.named_complexes_state().len(),
+            saved.named_complexes.len()
+        );
+
+        let expression = restored
+            .organism_expression_state()
+            .expect("bundle-less explicit expression state");
+        assert_eq!(expression.global_activity, 0.83);
+        assert_eq!(expression.energy_support, 1.17);
+        assert_eq!(expression.translation_support, 1.09);
+        assert_eq!(expression.nucleotide_support, 1.11);
+        assert_eq!(
+            expression.transcription_units[0].promoter_open_fraction,
+            0.71
+        );
+        assert_eq!(expression.transcription_units[0].copy_gain, 1.23);
+        assert_eq!(expression.transcription_units[0].support_level, 1.08);
+
+        let snapshot = restored.snapshot();
+        assert!((snapshot.active_rnap - expected_inventory.rnap_complexes).abs() < 1.0e-6);
+        assert!((snapshot.active_ribosomes - expected_inventory.ribosome_complexes).abs() < 1.0e-6);
+        assert!((snapshot.ftsz - expected_inventory.ftsz_polymer).abs() < 1.0e-6);
+        assert!(snapshot.active_rnap > saved.core.active_rnap);
+        assert!(snapshot.active_ribosomes > saved.core.active_ribosomes);
+        assert!(snapshot.ftsz > saved.core.ftsz);
+
+        let boundary = parse_saved_state_json(
+            &restored
+                .save_state_json()
+                .expect("serialize restored bundle-less state"),
+        )
+        .expect("parse restored bundle-less state");
+        assert_eq!(boundary.organism_species[0].count, 42.0);
+        assert_eq!(boundary.organism_reactions[0].current_flux, 1.25);
+        assert_eq!(boundary.named_complexes.len(), saved.named_complexes.len());
+        assert_eq!(boundary.organism_expression.global_activity, 0.83);
+        assert_eq!(
+            boundary.organism_expression.transcription_units[0].promoter_open_fraction,
+            0.71
+        );
+
+        let mut stepped = restored;
+        stepped.step();
+        assert!(stepped.organism_process_registry().is_some());
+        assert_eq!(
+            stepped.named_complexes_state().len(),
+            saved.named_complexes.len()
+        );
+        assert_eq!(
+            stepped
+                .organism_expression_state()
+                .expect("expression state after step")
+                .transcription_units
+                .len(),
+            boundary.organism_expression.transcription_units.len()
+        );
     }
 
     #[test]

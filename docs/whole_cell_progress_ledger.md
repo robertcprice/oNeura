@@ -2025,3 +2025,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `explicit persisted chemistry state is now visible at public boundaries without a live bridge, but the remaining compatibility-only serialization paths still need richer explicit payloads for the last legacy-only biology layers before synchronized scalar summaries can disappear completely`
+
+### 2026-03-12 - Phase 7 / Bundle-Less Explicit Biology Restore And Boundary Preservation
+
+- Summary:
+  - added an explicit-expression-state helper and updated the bundle-less execution path so `refresh_organism_expression_state()`, process-scale access, and assembly-target derivation preserve persisted expression state instead of wiping it when bundled organism descriptors are absent
+  - added asset-free named-complex aggregation from explicit family, subsystem, and asset-class metadata, and routed bundle-less assembly inventory, diagnostics, save-state export, and per-step complex refresh through that explicit inventory path instead of clearing named complexes or falling back to stale scalar summaries
+  - updated bundle-less saved-state restore so explicit organism-expression state, process registries, runtime species, runtime reactions, and named-complex state are preserved when present, while legacy scalar core summaries remain only as fallback seeds for layers that are actually missing
+  - updated public bundle-less expression boundaries so `organism_expression_state()` exposes persisted explicit expression state even without bundled organism metadata
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+- Tests run:
+  - `cargo test -q test_bundleless_boundary_diagnostics_prefer_explicit_named_complex_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_bundleless_restore_preserves_explicit_expression_runtime_and_named_complex_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q test_from_saved_state_json_without_organism_prefers_explicit_saved_state --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `the remaining compatibility-only serialization surface is now narrower: legacy-only restore or snapshot paths still keep synchronized scalar summaries where richer explicit persisted payloads have not been defined yet`

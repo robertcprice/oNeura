@@ -50,6 +50,7 @@ What is already built on the active path:
 - explicit saved-state restore now uses synchronized scalar core fields as legacy or missing-state seeds, while the explicit-asset restore path rehydrates chromosome, membrane, and diagnostic state from explicit saved biology instead of stale core summaries
 - bundle-less saved-state restore now also preserves explicit saved chromosome and membrane state when present, instead of always reseeding non-explicit restores from coarse core summary scalars
 - bundle-less snapshot, save-state, and public diagnostic getters now also derive RNAP, ribosome, DnaA, and FtsZ summaries from persisted explicit `complex_assembly` state instead of stale surrogate pool scalars when no bundle assets are present
+- bundle-less restore, snapshot, save-state, and public expression or diagnostic boundaries now also preserve explicit organism-expression state, process registries, runtime species, runtime reactions, and named-complex inventory when those layers are already persisted, and the bundle-less execution path no longer clears explicit expression or named-complex state just because bundled organism descriptors are absent
 - program-spec bootstrap can now carry and preserve explicit `complex_assembly` or per-complex `named_complexes`, so non-saved-state initialization no longer has to reseed assembly and diagnostic state when explicit inventory is already provided
 - program-spec bootstrap can now also carry explicit organism-expression state, so transcription-unit execution state and cached process-scale support no longer have to be regenerated from organism descriptors when a caller already has explicit expression state
 - program-spec bootstrap can now also carry explicit runtime species, runtime reactions, and scheduler clocks, so non-saved-state initialization no longer has to regenerate runtime chemistry state or multirate clock state when those layers are already available
@@ -59,7 +60,7 @@ What is already built on the active path:
 
 What is still not at the target:
 
-- the remaining compatibility-only summary payloads and legacy serialization bridges still preserve synchronized scalar state for non-explicit paths that do not yet carry richer explicit persisted state for every biology layer, instead of deriving everything from explicit state at the boundary
+- the remaining compatibility-only summary payloads and legacy serialization bridges are now concentrated in the last non-explicit restore or snapshot paths that still lack richer persisted payloads for every biology layer, so some synchronized scalar state still survives there as a fallback boundary format
 - reaction/species coverage is still narrow relative to a full microbial cell
 - membrane chemistry, chromosome mechanics, and local chemistry are still too coarse for parity
 - atomistic refinement exists as infrastructure, but not yet as an authoritative live feedback service
@@ -164,7 +165,7 @@ These rules are operational, not aspirational.
 
 This is the direct task ladder from the current runtime to the full vision. The detailed work packages below remain authoritative; this section is the execution-facing todo.
 
-1. Remove the remaining compatibility-only summary payload rollups and legacy serialization bridges, so synchronized scalar summaries become boundary serialization or diagnostics only and not live execution state even on compatibility paths without bundle assets or saved-state payloads. Program-spec bootstrap now preserves explicit spatial fields, local chemistry, expression, assembly, runtime chemistry, and scheduler state, and boundary getters now expose explicit persisted chemistry state without a live bridge; the remaining work is the narrower legacy compatibility surface.
+1. Remove the remaining compatibility-only summary payload rollups and legacy serialization bridges, so synchronized scalar summaries become boundary serialization or diagnostics only and not live execution state even on compatibility paths without bundle assets or saved-state payloads. Program-spec bootstrap now preserves explicit spatial fields, local chemistry, expression, assembly, runtime chemistry, and scheduler state, and bundle-less restore plus boundary getters now preserve explicit persisted chemistry, expression, registry, runtime chemistry, and named-complex state without bundled organism descriptors; the remaining work is the narrower legacy compatibility surface where richer explicit payloads are still absent.
 2. Replace any remaining uses of scalar-rule inventory priors in non-asset compatibility code with persisted explicit state or explicit local inventories wherever possible.
 3. Expand compiled species/reaction coverage for metabolites, ions, cofactors, lipids, damage states, repair states, and membrane-local species beyond the current narrow bundle set.
 4. Move more reaction execution from generic process scales into explicit registry-driven reaction families with direct ownership of pools, transcripts, proteins, complexes, and local fields.
