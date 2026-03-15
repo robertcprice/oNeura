@@ -2426,3 +2426,24 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `none`
 - Remaining blockers:
   - `legacy compatibility is narrower again, and the remaining compatibility-only summary surface is now concentrated in the last summary-only probe or chemistry outputs on the coarsest legacy payloads`
+
+### 2026-03-14 - Phase 7 / Whole-Cell Runtime Spatial Modularization
+
+- Summary:
+  - extracted the whole-cell local-chemistry and probe subsystem into `oneuro-metal/src/whole_cell/local_chemistry.rs`, keeping chemistry-bridge, subsystem-probe, and MD-coupling logic out of the main runtime file
+  - extracted the whole-cell spatial-field and localized-pool subsystem into `oneuro-metal/src/whole_cell/spatial.rs`, moving membrane, septum, nucleoid, membrane-band, and pole field generation plus localized pool helpers behind a coherent RDME/locality boundary
+  - updated the execution plan so the active todo explicitly tracks the remaining structural splits still needed to stop `oneuro-metal/src/whole_cell.rs` from acting like a monolith
+- Files changed:
+  - `docs/whole_cell_execution_plan.md`
+  - `docs/whole_cell_progress_ledger.md`
+  - `oneuro-metal/src/whole_cell.rs`
+  - `oneuro-metal/src/whole_cell/local_chemistry.rs`
+  - `oneuro-metal/src/whole_cell/spatial.rs`
+- Tests run:
+  - `cargo fmt --all --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
+  - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
+- Artifacts produced:
+  - `none`
+- Remaining blockers:
+  - `whole_cell.rs is still too large, with chromosome/polymer dynamics, membrane/division state updates, assembly/runtime-chemistry execution, and bootstrap/serialization boundaries still concentrated in the main runtime file`

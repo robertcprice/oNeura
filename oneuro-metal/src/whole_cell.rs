@@ -51,6 +51,9 @@ use crate::whole_cell_submodels::{
 #[cfg(target_os = "macos")]
 use crate::gpu::GpuContext;
 
+mod local_chemistry;
+mod spatial;
+
 /// Execution backend chosen for the simulator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WholeCellBackend {
@@ -2646,7 +2649,11 @@ impl WholeCellSimulator {
         let mut suffix = 2usize;
         loop {
             let candidate = format!("{base}_{suffix}");
-            if !self.named_complexes.iter().any(|state| state.id == candidate) {
+            if !self
+                .named_complexes
+                .iter()
+                .any(|state| state.id == candidate)
+            {
                 return candidate;
             }
             suffix += 1;
@@ -2797,16 +2804,17 @@ impl WholeCellSimulator {
             {
                 continue;
             }
-            self.named_complexes.push(self.bundleless_named_complex_state(
-                base_id,
-                asset_class,
-                family,
-                subsystem_targets,
-                abundance,
-                target_abundance,
-                assembly_rate,
-                degradation_rate,
-            ));
+            self.named_complexes
+                .push(self.bundleless_named_complex_state(
+                    base_id,
+                    asset_class,
+                    family,
+                    subsystem_targets,
+                    abundance,
+                    target_abundance,
+                    assembly_rate,
+                    degradation_rate,
+                ));
             appended = true;
         }
         if appended {
@@ -3567,7 +3575,10 @@ impl WholeCellSimulator {
         let mut total_protein_abundance = 0.0;
 
         for (operon, summary) in entries {
-            let gene_count = summary.rna_species_count.max(summary.protein_species_count).max(1);
+            let gene_count = summary
+                .rna_species_count
+                .max(summary.protein_species_count)
+                .max(1);
             let inventory_scale = Self::unit_inventory_scale(
                 summary.transcript_abundance,
                 summary.protein_abundance,
@@ -3593,12 +3604,11 @@ impl WholeCellSimulator {
                 1.60,
             );
             let basal_activity = Self::finite_scale(
-                0.34
-                    + 0.24
-                        * Self::saturating_signal(
-                            summary.transcription_flux + 0.45 * summary.translation_flux,
-                            1.0 + 0.25 * gene_count as f32,
-                        )
+                0.34 + 0.24
+                    * Self::saturating_signal(
+                        summary.transcription_flux + 0.45 * summary.translation_flux,
+                        1.0 + 0.25 * gene_count as f32,
+                    )
                     + 0.24 * inventory_scale
                     + 0.12 * localized_supply,
                 1.0,
@@ -3613,8 +3623,7 @@ impl WholeCellSimulator {
                 2.50,
             );
             let promoter_open_fraction = Self::finite_scale(
-                0.18
-                    + 0.24 * support_level
+                0.18 + 0.24 * support_level
                     + 0.18 * inventory_scale
                     + 0.16
                         * Self::saturating_signal(
@@ -3636,21 +3645,18 @@ impl WholeCellSimulator {
                 .min(0.20 * protein_abundance)
                 .max(0.0);
             let nascent_transcript_abundance =
-                (0.10 * transcript_abundance * promoter_open_fraction).min(
-                    (transcript_abundance - damaged_transcript_abundance).max(0.0),
-                );
+                (0.10 * transcript_abundance * promoter_open_fraction)
+                    .min((transcript_abundance - damaged_transcript_abundance).max(0.0));
             let nascent_protein_abundance =
-                (0.08 * protein_abundance * support_level.clamp(0.55, 1.55)).min(
-                    (protein_abundance - damaged_protein_abundance).max(0.0),
-                );
+                (0.08 * protein_abundance * support_level.clamp(0.55, 1.55))
+                    .min((protein_abundance - damaged_protein_abundance).max(0.0));
             let mature_transcript_abundance = (transcript_abundance
                 - nascent_transcript_abundance
                 - damaged_transcript_abundance)
                 .max(0.0);
-            let mature_protein_abundance = (protein_abundance
-                - nascent_protein_abundance
-                - damaged_protein_abundance)
-                .max(0.0);
+            let mature_protein_abundance =
+                (protein_abundance - nascent_protein_abundance - damaged_protein_abundance)
+                    .max(0.0);
             let active_rnap_occupancy =
                 (summary.transcription_flux * (0.55 + 0.25 * support_level)).max(0.0);
             let active_ribosome_occupancy =
@@ -8182,341 +8188,6 @@ impl WholeCellSimulator {
         4.0 / 3.0 * PI * radius_nm.powi(3)
     }
 
-    fn refresh_spatial_fields(&mut self) {
-        let total_voxels = self.lattice.total_voxels();
-        if total_voxels == 0 {
-            return;
-        }
-        let x_dim = self.lattice.x_dim.max(1);
-        let y_dim = self.lattice.y_dim.max(1);
-        let z_dim = self.lattice.z_dim.max(1);
-        let center_x = (x_dim as f32 - 1.0) * 0.5;
-        let center_y = (y_dim as f32 - 1.0) * 0.5;
-        let center_z = (z_dim as f32 - 1.0) * 0.5;
-        let axial_scale = center_x.max(1.0);
-        let radial_y_scale = center_y.max(1.0);
-        let radial_z_scale = center_z.max(1.0);
-        let membrane_depth = (0.18
-            + self
-                .organism_data
-                .as_ref()
-                .map(|organism| organism.geometry.membrane_fraction.clamp(0.08, 0.32))
-                .unwrap_or(0.16))
-        .clamp(0.10, 0.35);
-        let septum_width =
-            (0.10 + 0.18 * self.membrane_division_state.septum_radius_fraction).clamp(0.06, 0.32);
-        let septum_gain =
-            (0.35 + 0.65 * self.membrane_division_state.septum_localization).clamp(0.20, 1.25);
-        let division_progress = self.current_division_progress();
-        let cardiolipin_share = self.membrane_cardiolipin_share();
-        let pole_width =
-            (0.10 + 0.18 * cardiolipin_share + 0.08 * division_progress).clamp(0.08, 0.26);
-        let chromosome_radius_fraction = self
-            .organism_data
-            .as_ref()
-            .map(|organism| {
-                organism
-                    .geometry
-                    .chromosome_radius_fraction
-                    .clamp(0.18, 0.70)
-            })
-            .unwrap_or(0.40);
-        let axial_spread = (0.12
-            + 0.22 * (1.0 - self.chromosome_state.compaction_fraction.clamp(0.0, 1.0))
-            + 0.08 * self.chromosome_state.replicated_fraction.clamp(0.0, 1.0))
-        .clamp(0.08, 0.45);
-        let radial_spread = (0.10
-            + 0.30 * chromosome_radius_fraction
-            + 0.12 * (1.0 - self.chromosome_state.compaction_fraction.clamp(0.0, 1.0)))
-        .clamp(0.10, 0.42);
-        let separation_fraction = (self.current_chromosome_separation_nm()
-            / (self.current_radius_nm() * 2.2).max(self.lattice.voxel_size_nm))
-        .clamp(0.0, 0.45);
-        let left_center = 0.5 - 0.5 * separation_fraction;
-        let right_center = 0.5 + 0.5 * separation_fraction;
-        let occupancy_gain = (0.45
-            + 0.55 * self.chromosome_state.compaction_fraction.clamp(0.0, 1.0)
-            + 0.20 * self.chromosome_state.replicated_fraction.clamp(0.0, 1.0))
-        .clamp(0.20, 1.35);
-
-        let mut membrane = vec![0.0; total_voxels];
-        let mut septum = vec![0.0; total_voxels];
-        let mut nucleoid = vec![0.0; total_voxels];
-        let mut membrane_band = vec![0.0; total_voxels];
-        let mut poles = vec![0.0; total_voxels];
-
-        for gid in 0..total_voxels {
-            let z = gid / (y_dim * x_dim);
-            let rem = gid - z * y_dim * x_dim;
-            let y = rem / x_dim;
-            let x = rem - y * x_dim;
-
-            let x_norm = (x as f32 - center_x) / axial_scale;
-            let y_norm = (y as f32 - center_y) / radial_y_scale;
-            let z_norm = (z as f32 - center_z) / radial_z_scale;
-
-            let boundary_distance = x_norm
-                .abs()
-                .max(y_norm.abs())
-                .max(z_norm.abs())
-                .clamp(0.0, 1.0);
-            let membrane_adjacency =
-                ((boundary_distance - (1.0 - membrane_depth)) / membrane_depth).clamp(0.0, 1.0);
-            let septum_axis = (-0.5 * (x_norm / septum_width).powi(2)).exp();
-            let radial_centering = (1.0 - 0.45 * (y_norm.abs().max(z_norm.abs()))).clamp(0.15, 1.0);
-            let septum_zone =
-                (septum_gain * septum_axis * membrane_adjacency * radial_centering).clamp(0.0, 1.0);
-            let pole_axis =
-                (-0.5 * ((1.0 - x_norm.abs()).max(0.0) / pole_width.max(1.0e-3)).powi(2)).exp();
-            let pole_zone = (membrane_adjacency
-                * pole_axis
-                * (0.65 + 0.35 * radial_centering)
-                * (0.65 + 0.35 * cardiolipin_share))
-                .clamp(0.0, 1.0);
-            let membrane_band_zone = (membrane_adjacency
-                * (1.0 - pole_axis).clamp(0.0, 1.0)
-                * (1.0 - 0.70 * septum_axis).clamp(0.0, 1.0)
-                * radial_centering)
-                .clamp(0.0, 1.0);
-
-            let y_frac = (y as f32 + 0.5) / y_dim as f32 - 0.5;
-            let z_frac = (z as f32 + 0.5) / z_dim as f32 - 0.5;
-            let radial_distance = (y_frac.powi(2) + z_frac.powi(2)).sqrt();
-            let radial_term = (radial_distance / radial_spread.max(1.0e-3)).powi(2);
-            let x_frac = (x as f32 + 0.5) / x_dim as f32;
-            let left_term = ((x_frac - left_center) / axial_spread.max(1.0e-3)).powi(2);
-            let right_term = ((x_frac - right_center) / axial_spread.max(1.0e-3)).powi(2);
-            let nucleoid_occupancy = (occupancy_gain
-                * ((-0.5 * (left_term + radial_term)).exp()
-                    + (-0.5 * (right_term + radial_term)).exp()))
-            .clamp(0.0, 1.0);
-
-            membrane[gid] = membrane_adjacency;
-            septum[gid] = septum_zone;
-            nucleoid[gid] = nucleoid_occupancy;
-            membrane_band[gid] = membrane_band_zone;
-            poles[gid] = pole_zone;
-        }
-
-        let _ = self
-            .spatial_fields
-            .set_field(IntracellularSpatialField::MembraneAdjacency, &membrane);
-        let _ = self
-            .spatial_fields
-            .set_field(IntracellularSpatialField::SeptumZone, &septum);
-        let _ = self
-            .spatial_fields
-            .set_field(IntracellularSpatialField::NucleoidOccupancy, &nucleoid);
-        let _ = self
-            .spatial_fields
-            .set_field(IntracellularSpatialField::MembraneBandZone, &membrane_band);
-        let _ = self
-            .spatial_fields
-            .set_field(IntracellularSpatialField::PoleZone, &poles);
-    }
-
-    fn apply_spatial_field_state(&mut self, spatial: &WholeCellSpatialFieldState) {
-        let _ = self.spatial_fields.set_field(
-            IntracellularSpatialField::MembraneAdjacency,
-            &spatial.membrane_adjacency,
-        );
-        let _ = self
-            .spatial_fields
-            .set_field(IntracellularSpatialField::SeptumZone, &spatial.septum_zone);
-        let _ = self.spatial_fields.set_field(
-            IntracellularSpatialField::NucleoidOccupancy,
-            &spatial.nucleoid_occupancy,
-        );
-        let _ = self.spatial_fields.set_field(
-            IntracellularSpatialField::MembraneBandZone,
-            &spatial.membrane_band_zone,
-        );
-        let _ = self
-            .spatial_fields
-            .set_field(IntracellularSpatialField::PoleZone, &spatial.pole_zone);
-    }
-
-    fn spatial_species_mean(
-        &self,
-        species: IntracellularSpecies,
-        field: IntracellularSpatialField,
-    ) -> f32 {
-        self.spatial_fields
-            .weighted_mean_species(&self.lattice, species, field)
-    }
-
-    fn weighted_species_mean(&self, species: IntracellularSpecies, weights: &[f32]) -> f32 {
-        let total_voxels = self.lattice.total_voxels();
-        if weights.len() != total_voxels {
-            return self.lattice.mean_species(species);
-        }
-        let start = species.index() * total_voxels;
-        let species_values = &self.lattice.current[start..start + total_voxels];
-        let mut weighted_sum = 0.0;
-        let mut weight_total = 0.0;
-        for (&value, &weight) in species_values.iter().zip(weights.iter()) {
-            let clamped = weight.max(0.0);
-            weighted_sum += value * clamped;
-            weight_total += clamped;
-        }
-        if weight_total <= 1.0e-6 {
-            self.lattice.mean_species(species)
-        } else {
-            weighted_sum / weight_total
-        }
-    }
-
-    fn chromosome_domain_weights(&self, domain_index: u32) -> Vec<f32> {
-        let total_voxels = self.lattice.total_voxels();
-        let x_dim = self.lattice.x_dim.max(1);
-        let selected_domain = self.compiled_chromosome_domains().and_then(|domains| {
-            if domains.is_empty() {
-                None
-            } else {
-                let clamped_index = (domain_index as usize).min(domains.len().saturating_sub(1));
-                domains.get(clamped_index)
-            }
-        });
-        let nucleoid = self
-            .spatial_fields
-            .field_slice(IntracellularSpatialField::NucleoidOccupancy);
-        let mut weights = vec![0.0; total_voxels];
-        if let Some(domain) = selected_domain {
-            let axial_center = domain.axial_center_fraction.clamp(0.02, 0.98);
-            let base_spread = domain.axial_spread_fraction.clamp(0.05, 0.30);
-            let axial_spread = (base_spread
-                * (1.0
-                    + 0.30 * (1.0 - self.chromosome_state.compaction_fraction.clamp(0.0, 1.0))
-                    + 0.18 * (1.0 - self.chromosome_state.segregation_progress.clamp(0.0, 1.0))))
-            .clamp(0.06, 0.28);
-            for gid in 0..total_voxels {
-                let x = gid % x_dim;
-                let x_frac = (x as f32 + 0.5) / x_dim as f32;
-                let axial_term =
-                    (-0.5 * ((x_frac - axial_center) / axial_spread.max(1.0e-3)).powi(2)).exp();
-                weights[gid] = nucleoid[gid].max(0.0) * axial_term;
-            }
-        } else {
-            for gid in 0..total_voxels {
-                weights[gid] = nucleoid[gid].max(0.0);
-            }
-        }
-        weights
-    }
-
-    fn chromosome_domain_species_mean(
-        &self,
-        species: IntracellularSpecies,
-        domain_index: u32,
-    ) -> f32 {
-        let weights = self.chromosome_domain_weights(domain_index);
-        self.weighted_species_mean(species, &weights)
-    }
-
-    fn localized_nucleotide_pool_mm(&self) -> f32 {
-        self.spatial_species_mean(
-            IntracellularSpecies::Nucleotides,
-            IntracellularSpatialField::NucleoidOccupancy,
-        )
-    }
-
-    fn localized_nucleoid_atp_pool_mm(&self) -> f32 {
-        self.spatial_species_mean(
-            IntracellularSpecies::ATP,
-            IntracellularSpatialField::NucleoidOccupancy,
-        )
-    }
-
-    fn chromosome_domain_localized_supply(&self, domain_index: u32) -> f32 {
-        Self::finite_scale(
-            0.42 * self.localized_supply_scale()
-                + 0.34
-                    * Self::saturating_signal(
-                        self.chromosome_domain_species_mean(
-                            IntracellularSpecies::ATP,
-                            domain_index,
-                        ),
-                        0.90,
-                    )
-                + 0.24
-                    * Self::saturating_signal(
-                        self.chromosome_domain_species_mean(
-                            IntracellularSpecies::Nucleotides,
-                            domain_index,
-                        ),
-                        0.55,
-                    ),
-            1.0,
-            0.55,
-            1.25,
-        )
-    }
-
-    fn chromosome_domain_energy_support(&self, domain_index: u32) -> f32 {
-        Self::finite_scale(
-            0.54 * Self::saturating_signal(
-                self.chromosome_domain_species_mean(IntracellularSpecies::ATP, domain_index),
-                0.90,
-            ) + 0.26 * self.organism_expression.energy_support
-                + 0.20 * self.chemistry_report.atp_support,
-            1.0,
-            0.50,
-            1.75,
-        )
-    }
-
-    fn chromosome_domain_nucleotide_support(&self, domain_index: u32) -> f32 {
-        Self::finite_scale(
-            0.56 * Self::saturating_signal(
-                self.chromosome_domain_species_mean(
-                    IntracellularSpecies::Nucleotides,
-                    domain_index,
-                ),
-                0.55,
-            ) + 0.24 * self.organism_expression.nucleotide_support
-                + 0.20 * self.chemistry_report.nucleotide_support,
-            1.0,
-            0.50,
-            1.75,
-        )
-    }
-
-    fn localized_membrane_precursor_pool_mm(&self) -> f32 {
-        0.55 * self.spatial_species_mean(
-            IntracellularSpecies::MembranePrecursors,
-            IntracellularSpatialField::MembraneAdjacency,
-        ) + 0.45
-            * self.spatial_species_mean(
-                IntracellularSpecies::MembranePrecursors,
-                IntracellularSpatialField::SeptumZone,
-            )
-    }
-
-    fn localized_membrane_atp_pool_mm(&self) -> f32 {
-        0.65 * self.spatial_species_mean(
-            IntracellularSpecies::ATP,
-            IntracellularSpatialField::MembraneAdjacency,
-        ) + 0.35
-            * self.spatial_species_mean(
-                IntracellularSpecies::ATP,
-                IntracellularSpatialField::SeptumZone,
-            )
-    }
-
-    fn localized_membrane_band_precursor_pool_mm(&self) -> f32 {
-        self.spatial_species_mean(
-            IntracellularSpecies::MembranePrecursors,
-            IntracellularSpatialField::MembraneBandZone,
-        )
-    }
-
-    fn localized_polar_precursor_pool_mm(&self) -> f32 {
-        self.spatial_species_mean(
-            IntracellularSpecies::MembranePrecursors,
-            IntracellularSpatialField::PoleZone,
-        )
-    }
-
     fn restore_saved_state(&mut self, saved: WholeCellSavedState) -> Result<(), String> {
         let saved_scheduler_state = saved.scheduler_state.clone();
         self.program_name = saved.program_name.clone();
@@ -9313,163 +8984,6 @@ impl WholeCellSimulator {
     }
 
     /// Enable the local chemistry lattice submodel.
-    pub fn enable_local_chemistry(
-        &mut self,
-        x_dim: usize,
-        y_dim: usize,
-        z_dim: usize,
-        voxel_size_au: f32,
-        use_gpu: bool,
-    ) {
-        self.chemistry_bridge = Some(WholeCellChemistryBridge::new(
-            x_dim,
-            y_dim,
-            z_dim,
-            voxel_size_au,
-            use_gpu,
-        ));
-    }
-
-    /// Disable the local chemistry submodel.
-    pub fn disable_local_chemistry(&mut self) {
-        self.chemistry_bridge = None;
-        self.chemistry_report = LocalChemistryReport::default();
-        self.chemistry_site_reports.clear();
-        self.last_md_probe = None;
-        self.scheduled_subsystem_probes.clear();
-        self.md_translation_scale = 1.0;
-        self.md_membrane_scale = 1.0;
-    }
-
-    /// Latest local chemistry report, if enabled.
-    pub fn local_chemistry_report(&self) -> Option<LocalChemistryReport> {
-        if self.has_explicit_local_chemistry_state() {
-            Some(self.chemistry_report)
-        } else {
-            None
-        }
-    }
-
-    /// Latest per-subsystem local chemistry reports, if enabled.
-    pub fn local_chemistry_sites(&self) -> Vec<LocalChemistrySiteReport> {
-        if self.has_explicit_local_chemistry_state() {
-            self.chemistry_site_reports.clone()
-        } else {
-            Vec::new()
-        }
-    }
-
-    /// Latest localized MD probe report.
-    pub fn last_md_probe(&self) -> Option<LocalMDProbeReport> {
-        self.last_md_probe
-    }
-
-    /// Current persistent coupling state for each Syn3A subsystem preset.
-    pub fn subsystem_states(&self) -> Vec<WholeCellSubsystemState> {
-        self.subsystem_states.clone()
-    }
-
-    /// Run a localized MD probe through the optional chemistry bridge.
-    pub fn run_local_md_probe(
-        &mut self,
-        request: LocalMDProbeRequest,
-    ) -> Option<LocalMDProbeReport> {
-        let report = {
-            let bridge = self.chemistry_bridge.as_mut()?;
-            bridge.run_md_probe(request)
-        };
-        if let Some(preset) = Self::preset_for_site(report.site) {
-            self.apply_probe_to_subsystem(preset, report);
-        }
-        self.last_md_probe = Some(report);
-        self.md_translation_scale = report.recommended_translation_scale;
-        self.md_membrane_scale = report.recommended_membrane_scale;
-        Some(report)
-    }
-
-    /// Run a named Syn3A subsystem probe using the default request.
-    pub fn run_syn3a_subsystem_probe(
-        &mut self,
-        preset: Syn3ASubsystemPreset,
-    ) -> Option<LocalMDProbeReport> {
-        self.run_local_md_probe(preset.default_probe_request())
-    }
-
-    /// Generate lower-scale calibration sweep samples from the active chemistry bridge.
-    pub fn derivation_calibration_samples(
-        &mut self,
-        dt_ms: f32,
-        equilibration_steps: usize,
-    ) -> Vec<WholeCellDerivationCalibrationSample> {
-        match self.chemistry_bridge.as_mut() {
-            Some(bridge) => bridge.derivation_calibration_samples(dt_ms, equilibration_steps),
-            None => Vec::new(),
-        }
-    }
-
-    /// Fit descriptor-to-signature derivation gains against bridge sweep outputs.
-    pub fn fit_derivation_calibration(
-        &mut self,
-        dt_ms: f32,
-        equilibration_steps: usize,
-    ) -> Result<Option<WholeCellDerivationCalibrationFit>, String> {
-        match self.chemistry_bridge.as_mut() {
-            Some(bridge) => bridge
-                .fit_derivation_calibration(dt_ms, equilibration_steps)
-                .map(Some),
-            None => Ok(None),
-        }
-    }
-
-    /// Schedule a Syn3A subsystem probe to run periodically.
-    pub fn schedule_syn3a_subsystem_probe(
-        &mut self,
-        preset: Syn3ASubsystemPreset,
-        interval_steps: u64,
-    ) {
-        let interval_steps = interval_steps.max(1);
-        if let Some(existing) = self
-            .scheduled_subsystem_probes
-            .iter_mut()
-            .find(|probe| probe.preset == preset)
-        {
-            existing.interval_steps = interval_steps;
-            return;
-        }
-        self.scheduled_subsystem_probes
-            .push(ScheduledSubsystemProbe {
-                preset,
-                interval_steps,
-            });
-    }
-
-    /// Clear all scheduled Syn3A subsystem probes.
-    pub fn clear_syn3a_subsystem_probes(&mut self) {
-        self.scheduled_subsystem_probes.clear();
-        for state in &mut self.subsystem_states {
-            *state = WholeCellSubsystemState::new(state.preset);
-            state.apply_chemistry_report(self.chemistry_report);
-        }
-        self.md_translation_scale = 1.0;
-        self.md_membrane_scale = 1.0;
-    }
-
-    /// Return a copy of the scheduled subsystem probes.
-    pub fn scheduled_syn3a_subsystem_probes(&self) -> Vec<ScheduledSubsystemProbe> {
-        self.scheduled_subsystem_probes.clone()
-    }
-
-    /// Enable the default set of Syn3A subsystem probes.
-    pub fn enable_default_syn3a_subsystems(&mut self) {
-        if self.chemistry_bridge.is_none() {
-            self.enable_local_chemistry(12, 12, 6, 0.5, true);
-        }
-        self.clear_syn3a_subsystem_probes();
-        for preset in Syn3ASubsystemPreset::all() {
-            self.schedule_syn3a_subsystem_probe(*preset, preset.default_interval_steps());
-        }
-    }
-
     /// Mean ATP concentration across the cell.
     pub fn atp_mm(&self) -> f32 {
         self.atp_mm
@@ -9542,213 +9056,6 @@ impl WholeCellSimulator {
             subsystem_states: self.subsystem_states(),
             scheduler_state: self.scheduler_state.clone(),
         }
-    }
-
-    fn update_local_chemistry(&mut self, dt: f32) {
-        let snapshot = self.snapshot();
-        let scheduled_probes = self.scheduled_subsystem_probes.clone();
-        let Some((chemistry_report, chemistry_site_reports, last_md_report, due_reports)) = ({
-            let Some(ref mut bridge) = self.chemistry_bridge else {
-                return;
-            };
-            let chemistry_report = bridge.step_with_snapshot((dt * 2.0).max(0.1), Some(&snapshot));
-            let chemistry_site_reports = bridge.site_reports();
-            let last_md_report = bridge.last_md_report();
-            let mut due_reports = Vec::new();
-            for scheduled in &scheduled_probes {
-                if self.step_count % scheduled.interval_steps == 0 {
-                    let report = bridge.run_md_probe(scheduled.preset.default_probe_request());
-                    due_reports.push((scheduled.preset, report));
-                }
-            }
-            Some((
-                chemistry_report,
-                chemistry_site_reports,
-                last_md_report,
-                due_reports,
-            ))
-        }) else {
-            return;
-        };
-
-        self.chemistry_report = chemistry_report;
-        self.chemistry_site_reports = chemistry_site_reports;
-        self.refresh_subsystem_chemistry_state();
-        if scheduled_probes.is_empty() {
-            self.last_md_probe = last_md_report;
-            return;
-        }
-
-        if due_reports.is_empty() {
-            if let Some(report) = last_md_report {
-                self.last_md_probe = Some(report);
-            }
-        } else {
-            for (preset, report) in &due_reports {
-                self.apply_probe_to_subsystem(*preset, *report);
-            }
-            let count = due_reports.len() as f32;
-            self.md_translation_scale = due_reports
-                .iter()
-                .map(|(_, report)| report.recommended_translation_scale)
-                .sum::<f32>()
-                / count;
-            self.md_membrane_scale = due_reports
-                .iter()
-                .map(|(_, report)| report.recommended_membrane_scale)
-                .sum::<f32>()
-                / count;
-            self.last_md_probe = due_reports.last().map(|(_, report)| *report);
-        }
-    }
-
-    fn md_translation_scale(&self) -> f32 {
-        self.md_translation_scale
-    }
-
-    fn md_membrane_scale(&self) -> f32 {
-        self.md_membrane_scale
-    }
-
-    fn preset_for_site(
-        site: crate::whole_cell_submodels::WholeCellChemistrySite,
-    ) -> Option<Syn3ASubsystemPreset> {
-        match site {
-            crate::whole_cell_submodels::WholeCellChemistrySite::AtpSynthaseBand => {
-                Some(Syn3ASubsystemPreset::AtpSynthaseMembraneBand)
-            }
-            crate::whole_cell_submodels::WholeCellChemistrySite::RibosomeCluster => {
-                Some(Syn3ASubsystemPreset::RibosomePolysomeCluster)
-            }
-            crate::whole_cell_submodels::WholeCellChemistrySite::ChromosomeTrack => {
-                Some(Syn3ASubsystemPreset::ReplisomeTrack)
-            }
-            crate::whole_cell_submodels::WholeCellChemistrySite::SeptumRing => {
-                Some(Syn3ASubsystemPreset::FtsZSeptumRing)
-            }
-            crate::whole_cell_submodels::WholeCellChemistrySite::Cytosol => None,
-        }
-    }
-
-    fn subsystem_state(&self, preset: Syn3ASubsystemPreset) -> WholeCellSubsystemState {
-        self.subsystem_states
-            .iter()
-            .copied()
-            .find(|state| state.preset == preset)
-            .unwrap_or_else(|| WholeCellSubsystemState::new(preset))
-    }
-
-    fn subsystem_state_mut(
-        &mut self,
-        preset: Syn3ASubsystemPreset,
-    ) -> Option<&mut WholeCellSubsystemState> {
-        self.subsystem_states
-            .iter_mut()
-            .find(|state| state.preset == preset)
-    }
-
-    fn refresh_subsystem_chemistry_state(&mut self) {
-        for state in &mut self.subsystem_states {
-            if let Some(report) = self
-                .chemistry_site_reports
-                .iter()
-                .find(|report| report.preset == state.preset)
-                .copied()
-            {
-                state.apply_site_report(report);
-            } else {
-                state.apply_chemistry_report(self.chemistry_report);
-            }
-        }
-    }
-
-    fn apply_probe_to_subsystem(
-        &mut self,
-        preset: Syn3ASubsystemPreset,
-        report: LocalMDProbeReport,
-    ) {
-        let step_count = self.step_count;
-        if let Some(state) = self.subsystem_state_mut(preset) {
-            state.apply_probe_report(report, step_count);
-        }
-    }
-
-    fn atp_band_scale(&self) -> f32 {
-        self.subsystem_state(Syn3ASubsystemPreset::AtpSynthaseMembraneBand)
-            .atp_scale
-    }
-
-    fn ribosome_translation_scale(&self) -> f32 {
-        self.subsystem_state(Syn3ASubsystemPreset::RibosomePolysomeCluster)
-            .translation_scale
-    }
-
-    fn replisome_replication_scale(&self) -> f32 {
-        self.subsystem_state(Syn3ASubsystemPreset::ReplisomeTrack)
-            .replication_scale
-    }
-
-    fn replisome_segregation_scale(&self) -> f32 {
-        self.subsystem_state(Syn3ASubsystemPreset::ReplisomeTrack)
-            .segregation_scale
-    }
-
-    fn ftsz_translation_scale(&self) -> f32 {
-        self.subsystem_state(Syn3ASubsystemPreset::FtsZSeptumRing)
-            .translation_scale
-    }
-
-    fn ftsz_constriction_scale(&self) -> f32 {
-        self.subsystem_state(Syn3ASubsystemPreset::FtsZSeptumRing)
-            .constriction_scale
-    }
-
-    fn membrane_assembly_scale(&self) -> f32 {
-        let atp_band = self.subsystem_state(Syn3ASubsystemPreset::AtpSynthaseMembraneBand);
-        let septum = self.subsystem_state(Syn3ASubsystemPreset::FtsZSeptumRing);
-        (0.55 * atp_band.membrane_scale + 0.45 * septum.membrane_scale).clamp(0.70, 1.45)
-    }
-
-    fn localized_supply_scale(&self) -> f32 {
-        if self.chemistry_site_reports.is_empty() {
-            return 1.0;
-        }
-        let mean_satisfaction = self
-            .chemistry_site_reports
-            .iter()
-            .map(|report| report.demand_satisfaction)
-            .sum::<f32>()
-            / self.chemistry_site_reports.len() as f32;
-        Self::finite_scale(mean_satisfaction, 1.0, 0.55, 1.0)
-    }
-
-    fn localized_resource_pressure(&self) -> f32 {
-        if self.chemistry_site_reports.is_empty() {
-            return 0.0;
-        }
-        self.chemistry_site_reports
-            .iter()
-            .map(|report| {
-                0.45 * report.substrate_draw
-                    + 0.55 * report.energy_draw
-                    + 0.50 * report.biosynthetic_draw
-                    + 0.60 * report.byproduct_load
-                    + (1.0 - report.demand_satisfaction).max(0.0) * 1.2
-            })
-            .sum::<f32>()
-            / self.chemistry_site_reports.len() as f32
-    }
-
-    fn effective_metabolic_load(&self) -> f32 {
-        let supply_scale = self.localized_supply_scale();
-        let pressure = self.localized_resource_pressure();
-        let local_multiplier =
-            (1.0 + pressure * 0.16 + (1.0 - supply_scale).max(0.0) * 0.35).clamp(1.0, 2.2);
-        let organism_multiplier = self
-            .organism_expression
-            .metabolic_burden_scale
-            .clamp(0.85, 1.65);
-        self.metabolic_load.max(0.1) * local_multiplier * organism_multiplier
     }
 
     fn rdme_stage(&mut self, dt: f32) {
@@ -14962,25 +14269,21 @@ mod tests {
                 .expect("serialize synthesized bundle-less state"),
         )
         .expect("parse synthesized bundle-less state");
-        assert!(
-            boundary
-                .organism_expression
-                .transcription_units
-                .iter()
-                .any(|unit| unit.name == target_operon)
-        );
+        assert!(boundary
+            .organism_expression
+            .transcription_units
+            .iter()
+            .any(|unit| unit.name == target_operon));
 
         let mut stepped = restored;
         stepped.step();
         let stepped_expression = stepped
             .organism_expression_state()
             .expect("expression state after step");
-        assert!(
-            stepped_expression
-                .transcription_units
-                .iter()
-                .any(|unit| unit.name == target_operon)
-        );
+        assert!(stepped_expression
+            .transcription_units
+            .iter()
+            .any(|unit| unit.name == target_operon));
     }
 
     #[test]
@@ -15101,8 +14404,8 @@ mod tests {
         let expected_expression = expected_saved.organism_expression.clone();
         let expected_md_probe = expected_saved.last_md_probe;
         let expected_scheduled_probes = expected_saved.scheduled_subsystem_probes.clone();
-        let restored =
-            WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(&saved_json)
+            .expect("restore legacy saved state");
         let snapshot = restored.snapshot();
         let chromosome = restored.chromosome_state();
         let membrane = restored.membrane_division_state();
@@ -15205,8 +14508,8 @@ mod tests {
         let saved_json = saved_state_to_json(&saved).expect("serialize legacy saved state");
         let expected_saved =
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
-        let restored =
-            WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(&saved_json)
+            .expect("restore legacy saved state");
 
         assert!(restored.organism_assets.is_some());
         assert_eq!(
@@ -15253,26 +14556,29 @@ mod tests {
         let saved_json = saved_state_to_json(&saved).expect("serialize legacy saved state");
         let expected_saved =
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
-        let restored =
-            WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(&saved_json)
+            .expect("restore legacy saved state");
         let expression = restored
             .organism_expression_state()
             .expect("assembly-promoted legacy expression state");
 
         assert!(restored.organism_assets.is_none());
         assert_eq!(expression, expected_saved.organism_expression);
+        assert!(expression.transcription_units.iter().any(|unit| unit.name
+            == "legacy_rnap_complex"
+            && unit.process_drive.transcription > 0.0));
         assert!(expression
             .transcription_units
             .iter()
-            .any(|unit| unit.name == "legacy_rnap_complex" && unit.process_drive.transcription > 0.0));
-        assert!(expression
-            .transcription_units
-            .iter()
-            .any(|unit| unit.name == "legacy_ribosome_complex" && unit.process_drive.translation > 0.0));
-        assert!(expression
-            .transcription_units
-            .iter()
-            .any(|unit| unit.name == "legacy_dnaa_complex" && unit.process_drive.replication > 0.0));
+            .any(|unit| unit.name == "legacy_ribosome_complex"
+                && unit.process_drive.translation > 0.0));
+        assert!(
+            expression
+                .transcription_units
+                .iter()
+                .any(|unit| unit.name == "legacy_dnaa_complex"
+                    && unit.process_drive.replication > 0.0)
+        );
     }
 
     #[test]
@@ -15301,30 +14607,34 @@ mod tests {
         let saved_json = saved_state_to_json(&saved).expect("serialize legacy saved state");
         let expected_saved =
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
-        let restored =
-            WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(&saved_json)
+            .expect("restore legacy saved state");
         let expression = restored
             .organism_expression_state()
             .expect("core-promoted legacy expression state");
 
         assert!(restored.organism_assets.is_none());
         assert_eq!(expression, expected_saved.organism_expression);
+        assert!(expression.transcription_units.iter().any(|unit| unit.name
+            == "legacy_rnap_complex"
+            && unit.process_drive.transcription > 0.0));
         assert!(expression
             .transcription_units
             .iter()
-            .any(|unit| unit.name == "legacy_rnap_complex" && unit.process_drive.transcription > 0.0));
+            .any(|unit| unit.name == "legacy_ribosome_complex"
+                && unit.process_drive.translation > 0.0));
+        assert!(
+            expression
+                .transcription_units
+                .iter()
+                .any(|unit| unit.name == "legacy_dnaa_complex"
+                    && unit.process_drive.replication > 0.0)
+        );
         assert!(expression
             .transcription_units
             .iter()
-            .any(|unit| unit.name == "legacy_ribosome_complex" && unit.process_drive.translation > 0.0));
-        assert!(expression
-            .transcription_units
-            .iter()
-            .any(|unit| unit.name == "legacy_dnaa_complex" && unit.process_drive.replication > 0.0));
-        assert!(expression
-            .transcription_units
-            .iter()
-            .any(|unit| unit.name == "legacy_divisome_complex" && unit.process_drive.constriction > 0.0));
+            .any(|unit| unit.name == "legacy_divisome_complex"
+                && unit.process_drive.constriction > 0.0));
     }
 
     #[test]
@@ -15408,8 +14718,8 @@ mod tests {
         let saved_json = saved_state_to_json(&saved).expect("serialize legacy saved state");
         let expected_saved =
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
-        let restored =
-            WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(&saved_json)
+            .expect("restore legacy saved state");
 
         assert_eq!(
             restored
@@ -15417,7 +14727,10 @@ mod tests {
                 .expect("site-derived chemistry report"),
             expected_saved.chemistry_report
         );
-        assert_eq!(restored.local_chemistry_sites(), saved.chemistry_site_reports);
+        assert_eq!(
+            restored.local_chemistry_sites(),
+            saved.chemistry_site_reports
+        );
     }
 
     #[test]
@@ -15463,8 +14776,8 @@ mod tests {
         let saved_json = saved_state_to_json(&saved).expect("serialize legacy saved state");
         let expected_saved =
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
-        let restored =
-            WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(&saved_json)
+            .expect("restore legacy saved state");
 
         let replisome = restored
             .subsystem_states()
@@ -15516,8 +14829,8 @@ mod tests {
         let saved_json = saved_state_to_json(&saved).expect("serialize legacy saved state");
         let expected_saved =
             parse_legacy_saved_state_json(&saved_json).expect("parse promoted legacy saved state");
-        let restored =
-            WholeCellSimulator::from_legacy_saved_state_json(&saved_json).expect("restore legacy saved state");
+        let restored = WholeCellSimulator::from_legacy_saved_state_json(&saved_json)
+            .expect("restore legacy saved state");
 
         assert_eq!(
             restored.scheduled_syn3a_subsystem_probes(),
