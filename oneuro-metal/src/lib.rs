@@ -58,9 +58,24 @@ pub mod substrate_ir;
 pub mod terrarium;
 pub mod terrarium_field;
 pub mod terrarium_world;
+pub mod terrarium_evolve;
+pub mod terrarium_web_protocol;
+pub mod terrarium_web_state;
+pub mod terrarium_web_handlers;
+pub mod terrarium_web_evolution;
 pub mod whole_cell;
 pub mod whole_cell_data;
 pub mod whole_cell_submodels;
+
+// ===== Terrarium Evolution re-exports =====
+pub use terrarium_evolve::{
+    evolve, evolve_stress_test, evolve_pareto, evolve_pareto_stressed,
+    telemetry_from_result, telemetry_from_pareto_result, evaluate_stress_metrics_for_best,
+    EvolutionConfig, EvolutionResult, FitnessConfig, FitnessObjective,
+    GenerationResult, GenerationTelemetry, GenomeConstraints, MultiObjectiveFitness,
+    ParetoEvolutionResult, ParetoResult,
+    SearchStrategy, StressTelemetryMetrics, WorldGenome, WorldResult,
+};
 
 // ===== High-level orchestration =====
 pub mod atomistic_topology;
@@ -81,6 +96,16 @@ pub mod molecular_dynamics;
 pub mod neural_molecular_simulator;
 pub mod soil_broad;
 pub mod soil_uptake;
+
+// ===== Organism metabolism (salvaged - truly independent) =====
+pub mod organism_metabolism;
+pub mod field_coupling;
+pub mod drosophila_population;
+pub mod soil_fauna;
+pub mod seed_cellular;
+pub mod fly_metabolism;
+pub mod substrate_coupling;
+pub mod plant_competition;
 
 // ===== CUDA simulation modules =====
 #[cfg(feature = "cuda")]

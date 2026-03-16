@@ -180,6 +180,25 @@ pub struct WholeCellSnapshot {
 
 type WholeCellAssemblyInventory = WholeCellComplexAssemblyState;
 
+// ---- Phase 8: Quantum Auto-Discovery types ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuantumDiscoveredReaction {
+    pub reaction_id: String,
+    pub profile_channel: QuantumProfileChannel,
+    pub correction_factor: f32,
+    pub probe_refined: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QuantumProfileChannel {
+    Oxphos,
+    Translation,
+    NucleotidePolymerization,
+    MembraneSynthesis,
+    ChromosomeSegregation,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct WholeCellAssemblyChannelShares {
     atp_band: f32,
@@ -214,6 +233,47 @@ impl WholeCellAssemblyChannelShares {
             dnaa: self.dnaa / total,
         }
     }
+}
+
+// ---- Observable Auto-Calibration Engine ----
+
+/// An observable quantity measured from whole-cell simulation state that can be
+/// compared against an experimental target for automated calibration.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ObservableKind {
+    AtpMm,
+    AminoAcidsMm,
+    NucleotidesMm,
+    MembranePrecursorsMm,
+    GlucoseMm,
+    OxygenMm,
+    ActiveRibosomes,
+    ActiveRnap,
+    RadiusNm,
+    SurfaceAreaNm2,
+    VolumeNm3,
+    DivisionProgress,
+    GrowthRatePerMs,
+}
+
+/// A single calibration target: "this observable should reach this value ± tolerance."
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ObservableTarget {
+    pub kind: ObservableKind,
+    pub target_value: f32,
+    pub tolerance: f32,
+    pub weight: f32,
+}
+
+/// Result of observable-driven auto-calibration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObservableCalibrationResult {
+    pub targets: Vec<ObservableTarget>,
+    pub initial_loss: f32,
+    pub final_loss: f32,
+    pub iterations: usize,
+    pub per_target_error: Vec<f32>,
+    pub calibration: WholeCellDerivationCalibration,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -684,6 +744,7 @@ pub struct WholeCellSimulator {
     division_progress: f32,
     metabolic_load: f32,
     quantum_profile: WholeCellQuantumProfile,
+    discovered_quantum_reactions: Vec<QuantumDiscoveredReaction>,
     chemistry_bridge: Option<WholeCellChemistryBridge>,
     chemistry_report: LocalChemistryReport,
     chemistry_site_reports: Vec<LocalChemistrySiteReport>,

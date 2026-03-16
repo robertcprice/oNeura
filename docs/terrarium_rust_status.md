@@ -72,4 +72,45 @@ The clean path is:
 4. Keep `terrarium_gpu` as the current GPU-backed viewer path when a richer render surface is needed.
 5. Deepen the GPU render path further with more simulation-aware shader passes once the current visual contract is stable.
 
-That is how the project gets to “no Python at all” honestly, without pretending the current Python shell is gone when it is not.
+That is how the project gets to "no Python at all" honestly, without pretending the current Python shell is gone when it is not.
+
+## Biology Modules (2026-03-16)
+
+All literature-grounded, all tested, all wired into the terrarium step loop:
+
+| Module | Lines | Tests | Status |
+|--------|-------|-------|--------|
+| `soil_fauna.rs` | 921 | 8 | Wired: earthworm bioturbation + nematode Lotka-Volterra guilds |
+| `plant_competition.rs` | 615 | 10 | Wired: Beer-Lambert asymmetric shading + root nutrient splitting |
+| `drosophila_population.rs` | 1133 | 7 | Wired: Sharpe-Schoolfield egg-to-adult lifecycle |
+| `fly_metabolism.rs` | 516 | 9 | Wired: 7-pool MM crop-to-ATP biochemistry |
+| `field_coupling.rs` | 254 | 5 | Utility: 2D/3D Gaussian field deposit + mean-map |
+| `seed_cellular.rs` | 550 | 1 | Standalone: seed germination cellular metabolism |
+| `organism_metabolism.rs` | 49 | - | Trait: universal metabolic observation surface |
+
+## Evolution Engine (2026-03-16)
+
+| Feature | Status |
+|---------|--------|
+| Standard GA (tournament + crossover + mutation) | Working |
+| NSGA-II Pareto multi-objective (7 objectives) | Working |
+| Stress-test mode (drought + heat spikes) | Working |
+| Fly brain coevolution (PSC scale, neural steps) | Working |
+| WorldGenome seeding (plants/water/fruits/flies) | Working |
+| Telemetry export to JSON | Working |
+| Convergence: fitness 41 to 85 over 5 generations | Verified |
+| 11 unit tests | All pass |
+
+## Test Counts (2026-03-16)
+
+58 tests pass in comprehensive regression (0 failures):
+- terrarium_evolve: 11
+- plant_competition: 10
+- fly_metabolism: 9
+- soil_fauna: 8
+- drosophila_population: 7
+- field_coupling: 5
+- terrarium_world: 2
+- terrarium: 1
+- seed_cellular: 1
+- organism_metabolism: 4

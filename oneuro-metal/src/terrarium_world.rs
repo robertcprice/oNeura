@@ -400,7 +400,7 @@ impl TerrariumPlant {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct TerrariumWorldSnapshot {
     pub plants: usize,
     pub fruits: usize,

@@ -19,7 +19,9 @@ oNeuro is moving quickly. This index points to the docs that are most useful rig
 
 - Pong latency and real-time path: [`pong_realtime_path.md`](pong_realtime_path.md)
 - Whole-cell / minimal-cell strategy: [`whole_cell_strategy.md`](whole_cell_strategy.md)
-- Terrarium Rust status: [`terrarium_rust_status.md`](terrarium_rust_status.md)
+- Terrarium Rust status (biology modules + test counts): [`terrarium_rust_status.md`](terrarium_rust_status.md)
+- Terrarium evolution engine design: [`terrarium_evolution.md`](terrarium_evolution.md)
+- Whole-cell execution plan: [`whole_cell_execution_plan.md`](whole_cell_execution_plan.md)
 
 ## Sidecar Projects
 

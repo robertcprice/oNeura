@@ -216,6 +216,39 @@ Complete digital fruit fly in a physics-grounded molecular world:
 
 BSP-generated dungeon environments with 8-directional movement, enemies, health pickups, and FEP-driven threat avoidance.
 
+### Terrarium Ecosystem — Molecular Ecology (Rust/Metal)
+
+A complete soil-plant-insect ecosystem where every chemical reaction uses literature-grounded kinetics. Behaviors emerge from chemistry, not rules.
+
+| Layer | What It Simulates | Physics |
+|-------|-------------------|---------|
+| **Soil Chemistry** | PDE diffusion of 14 species across 3D voxel grid | Moldrup 2001 tortuosity, CFL-stable |
+| **Microbial Populations** | 4 guilds: heterotrophs, nitrifiers, denitrifiers, N-fixers | Monod growth, Arrhenius T-correction |
+| **Plant Physiology** | Farquhar-FvCB photosynthesis, Beer-Lambert canopy, C:N:P | Bernacchi 2001, optimal allocation |
+| **Plant Competition** | Asymmetric vertical shading, root nutrient splitting | Beer-Lambert inter-species |
+| **Soil Fauna** | Earthworm bioturbation + nematode bacterial grazing | Lotka-Volterra, N mineralization |
+| **Drosophila Lifecycle** | Egg to adult, temperature-dependent development | Sharpe-Schoolfield thermal performance |
+| **Fly Metabolism** | 7-pool MM biochemistry: crop to trehalose to ATP | Molecular hunger, O2-dependent yield |
+| **Atmosphere** | 3D odorant diffusion, wind, Rayleigh-Benard convection | Implicit ADI, Chapman-Enskog |
+
+### Evolution Engine — NSGA-II Ecosystem Optimization (Rust)
+
+Evolves optimal terrarium configurations using 18-parameter genomes (soil pH, temperature, water, plants, microbes, enzyme kinetics, fly brain parameters). Fitness climbs from ~36 to ~78 over 5 generations.
+
+```bash
+cd oneuro-metal
+cargo build --profile fast --no-default-features --bin terrarium_evolve
+./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
+```
+
+Modes: Standard, NSGA-II Pareto (7 objectives), Stress-Test (drought+heat), Coevolution (fly brain).
+
+### Whole-Cell Simulation — Syn3A Minimal Cell (Rust)
+
+Native Rust simulator for JCVI-Syn3A (493 genes). Staged integration: RDME lattice diffusion, CME stochastic expression, ODE metabolic fluxes, Brownian dynamics for chromosome physics, geometry/divisome for cell division, and CASCI quantum chemistry for reaction barriers.
+
+Anchored to: Thornburg et al., *Cell* (2026), DOI `10.1016/j.cell.2026.02.009`.
+
 ## Applications
 
 ### Neuroscience Research
@@ -324,6 +357,16 @@ python3 demos/demo_dishbrain_pong.py --scale medium --device cuda --runs 5 --jso
 # Vast.ai GPU deployment
 bash scripts/vast_deploy.sh search          # find cheap A100s
 bash scripts/vast_deploy.sh all <id> medium # run everything
+
+# Rust/Metal terrarium ecosystem + evolution engine
+cd oneuro-metal
+cargo build --profile fast --no-default-features --bin terrarium_evolve --bin terrarium_native
+./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
+
+# Run 58-test regression suite
+cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
+  terrarium_evolve drosophila_population plant_competition soil_fauna fly_metabolism \
+  field_coupling seed_cellular terrarium_world
 ```
 
 ## How dONNs Differ from ANNs
