@@ -18,6 +18,7 @@ default = ["python"]
 python = ["pyo3/extension-module"]
 cuda = ["cudarc"]
 nuclear_physics = []
+web = ["dep:tokio", "dep:axum", "dep:tower-http", "dep:futures-util"]
 
 [dependencies]
 pyo3 = { version = "0.28", optional = true, features = ["extension-module"] }
@@ -28,10 +29,10 @@ rand = "0.8"
 rand_distr = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-axum = { version = "0.8", features = ["ws"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
-tower-http = { version = "0.6", features = ["cors"] }
-futures-util = "0.3"
+axum = { version = "0.8", features = ["ws"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"], optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+futures-util = { version = "0.3", optional = true }
 minifb = "0.27"
 font8x8 = "0.3"
 image = "0.25"
@@ -40,6 +41,11 @@ gif = "0.13"
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = "0.29"
 objc = "0.2"
+
+[[bin]]
+name = "terrarium_web"
+path = "src/bin/terrarium_web.rs"
+required-features = ["web"]
 
 [build-dependencies]
 pyo3-build-config = "0.28"

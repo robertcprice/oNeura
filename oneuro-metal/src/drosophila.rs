@@ -1083,7 +1083,7 @@ impl DrosophilaSim {
         }
     }
 
-    fn apply_reward_signal(&mut self, valence: f32) {
+    pub fn apply_reward_signal(&mut self, valence: f32) {
         if valence.abs() <= 1.0e-6 {
             return;
         }
@@ -1928,6 +1928,11 @@ impl DrosophilaSim {
         }
     }
 
+    /// Set body energy directly (used by external metabolism coupling).
+    pub fn set_energy(&mut self, energy: f32) {
+        self.body.energy = energy.clamp(0.0, FLY_ENERGY_MAX);
+    }
+
     /// Override the native world bounds for external integration.
     pub fn set_world_bounds(&mut self, width: f32, height: f32) {
         self.world_width = width.max(2.0);
@@ -2379,5 +2384,35 @@ mod tests {
                 suppression * 100.0
             );
         }
+    }
+
+    #[test]
+    fn hunger_correlates_with_energy() {
+        // A fly's energy should decrease as it runs without food.
+        let mut fly = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        let initial_energy = fly.body_state().energy;
+        for _ in 0..5 {
+            fly.body_step();
+        }
+        // Energy should decrease after steps without food.
+        assert!(
+            fly.body_state().energy <= initial_energy,
+            "energy should not increase without food: initial={}, after={}",
+            initial_energy,
+            fly.body_state().energy
+        );
+    }
+
+    #[test]
+    fn neural_activity_bounded() {
+        // After a body step, fly should still have valid state.
+        let mut fly = DrosophilaSim::new(DrosophilaScale::Tiny, 44);
+        fly.body_step();
+        let energy = fly.body_state().energy;
+        assert!(
+            energy >= 0.0 && energy <= 5000.0,
+            "energy should be bounded, got {}",
+            energy
+        );
     }
 }

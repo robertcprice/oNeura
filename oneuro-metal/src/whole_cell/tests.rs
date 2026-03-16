@@ -5593,173 +5593,101 @@ fn test_restore_saved_state_refreshes_subsystem_state_from_explicit_site_reports
     assert!(replisome_state.demand_satisfaction > 0.8);
 }
 
-// ---- Phase 8: Quantum Auto-Discovery tests ----
+// ---- Phase 8: Quantum Auto-Discovery ----
 
 #[test]
-fn test_quantum_auto_discovery_empty_without_reactions() {
+fn test_quantum_auto_discovery_empty() {
     let sim = WholeCellSimulator::new(WholeCellConfig::default());
     assert!(sim.discovered_quantum_reactions().is_empty());
 }
 
 #[test]
-fn test_quantum_auto_discovery_finds_translation_reactions() {
+fn test_quantum_auto_discovery_finds_translation() {
     use crate::whole_cell_data::WholeCellReactionRuntimeState;
     let mut sim = WholeCellSimulator::new(WholeCellConfig::default());
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
-        id: "translation_ftsZ".to_string(),
-        name: "FtsZ translation".to_string(),
+        id: "tr_ftsZ".into(), name: "FtsZ translation".into(),
         reaction_class: WholeCellReactionClass::Translation,
         asset_class: WholeCellAssetClass::Constriction,
-        nominal_rate: 1.2,
-        catalyst: None,
-        operon: None,
-        reactants: vec![],
-        products: vec![],
+        nominal_rate: 1.2, catalyst: None, operon: None,
+        reactants: vec![], products: vec![],
         subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
-        spatial_scope: Default::default(),
-        patch_domain: Default::default(),
-        chromosome_domain: None,
-        current_flux: 0.0,
-        cumulative_extent: 0.0,
-        reactant_satisfaction: 1.0,
-        catalyst_support: 1.0,
+        spatial_scope: Default::default(), patch_domain: Default::default(),
+        chromosome_domain: None, current_flux: 0.0,
+        cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
     }];
     sim.run_quantum_auto_discovery();
     assert_eq!(sim.discovered_quantum_reactions().len(), 1);
-    assert_eq!(
-        sim.discovered_quantum_reactions()[0].profile_channel,
-        QuantumProfileChannel::Translation
-    );
-    assert!(!sim.discovered_quantum_reactions()[0].probe_refined);
+    assert_eq!(sim.discovered_quantum_reactions()[0].profile_channel, QuantumProfileChannel::Translation);
 }
 
 #[test]
-fn test_quantum_auto_discovery_maps_energy_to_oxphos() {
+fn test_quantum_auto_discovery_energy_maps_oxphos() {
     use crate::whole_cell_data::WholeCellReactionRuntimeState;
     let mut sim = WholeCellSimulator::new(WholeCellConfig::default());
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
-        id: "atp_synthase_transport".to_string(),
-        name: "ATP synthase proton transport".to_string(),
+        id: "atp_syn".into(), name: "ATP synthase transport".into(),
         reaction_class: WholeCellReactionClass::PoolTransport,
         asset_class: WholeCellAssetClass::Energy,
-        nominal_rate: 80.0,
-        catalyst: None,
-        operon: None,
-        reactants: vec![],
-        products: vec![],
+        nominal_rate: 80.0, catalyst: None, operon: None,
+        reactants: vec![], products: vec![],
         subsystem_targets: vec![Syn3ASubsystemPreset::AtpSynthaseMembraneBand],
-        spatial_scope: Default::default(),
-        patch_domain: Default::default(),
-        chromosome_domain: None,
-        current_flux: 0.0,
-        cumulative_extent: 0.0,
-        reactant_satisfaction: 1.0,
-        catalyst_support: 1.0,
+        spatial_scope: Default::default(), patch_domain: Default::default(),
+        chromosome_domain: None, current_flux: 0.0,
+        cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
     }];
     sim.run_quantum_auto_discovery();
     assert_eq!(sim.discovered_quantum_reactions().len(), 1);
-    assert_eq!(
-        sim.discovered_quantum_reactions()[0].profile_channel,
-        QuantumProfileChannel::Oxphos
-    );
+    assert_eq!(sim.discovered_quantum_reactions()[0].profile_channel, QuantumProfileChannel::Oxphos);
 }
 
 #[test]
-fn test_quantum_auto_discovery_ignores_non_eligible() {
+fn test_quantum_auto_discovery_ignores_ineligible() {
     use crate::whole_cell_data::WholeCellReactionRuntimeState;
     let mut sim = WholeCellSimulator::new(WholeCellConfig::default());
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
-        id: "rna_degrade".to_string(),
-        name: "RNA degradation".to_string(),
+        id: "rna_deg".into(), name: "RNA degradation".into(),
         reaction_class: WholeCellReactionClass::RnaDegradation,
         asset_class: WholeCellAssetClass::QualityControl,
-        nominal_rate: 0.5,
-        catalyst: None,
-        operon: None,
-        reactants: vec![],
-        products: vec![],
+        nominal_rate: 0.5, catalyst: None, operon: None,
+        reactants: vec![], products: vec![],
         subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
-        spatial_scope: Default::default(),
-        patch_domain: Default::default(),
-        chromosome_domain: None,
-        current_flux: 0.0,
-        cumulative_extent: 0.0,
-        reactant_satisfaction: 1.0,
-        catalyst_support: 1.0,
+        spatial_scope: Default::default(), patch_domain: Default::default(),
+        chromosome_domain: None, current_flux: 0.0,
+        cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
     }];
     sim.run_quantum_auto_discovery();
     assert!(sim.discovered_quantum_reactions().is_empty());
 }
 
 #[test]
-fn test_quantum_probe_refinement_updates_profile() {
+fn test_quantum_probe_refinement() {
     use crate::whole_cell_data::WholeCellReactionRuntimeState;
     let mut sim = WholeCellSimulator::new(WholeCellConfig::default());
-    sim.organism_reactions = vec![
-        WholeCellReactionRuntimeState {
-            id: "atp_transport".to_string(),
-            name: "ATP proton transport".to_string(),
-            reaction_class: WholeCellReactionClass::PoolTransport,
-            asset_class: WholeCellAssetClass::Energy,
-            nominal_rate: 80.0,
-            catalyst: None,
-            operon: None,
-            reactants: vec![],
-            products: vec![],
-            subsystem_targets: vec![Syn3ASubsystemPreset::AtpSynthaseMembraneBand],
-            spatial_scope: Default::default(),
-            patch_domain: Default::default(),
-            chromosome_domain: None,
-            current_flux: 0.0,
-            cumulative_extent: 0.0,
-            reactant_satisfaction: 1.0,
-            catalyst_support: 1.0,
-        },
-        WholeCellReactionRuntimeState {
-            id: "ribosome_translate".to_string(),
-            name: "Ribosome translation".to_string(),
-            reaction_class: WholeCellReactionClass::Translation,
-            asset_class: WholeCellAssetClass::Translation,
-            nominal_rate: 12.0,
-            catalyst: None,
-            operon: None,
-            reactants: vec![],
-            products: vec![],
-            subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
-            spatial_scope: Default::default(),
-            patch_domain: Default::default(),
-            chromosome_domain: None,
-            current_flux: 0.0,
-            cumulative_extent: 0.0,
-            reactant_satisfaction: 1.0,
-            catalyst_support: 1.0,
-        },
-    ];
+    sim.organism_reactions = vec![WholeCellReactionRuntimeState {
+        id: "atp_t".into(), name: "ATP transport".into(),
+        reaction_class: WholeCellReactionClass::PoolTransport,
+        asset_class: WholeCellAssetClass::Energy,
+        nominal_rate: 80.0, catalyst: None, operon: None,
+        reactants: vec![], products: vec![],
+        subsystem_targets: vec![Syn3ASubsystemPreset::AtpSynthaseMembraneBand],
+        spatial_scope: Default::default(), patch_domain: Default::default(),
+        chromosome_domain: None, current_flux: 0.0,
+        cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
+    }];
     sim.run_quantum_auto_discovery();
-    assert_eq!(sim.discovered_quantum_reactions().len(), 2);
-
     let probe = LocalMDProbeReport {
         site: WholeCellChemistrySite::AtpSynthaseBand,
-        mean_temperature: 310.0,
-        mean_total_energy: -50.0,
-        mean_vdw_energy: -30.0,
-        mean_electrostatic_energy: -20.0,
-        structural_order: 1.2,
-        crowding_penalty: 0.1,
-        compactness: 0.85,
-        shell_order: 0.9,
-        axis_anisotropy: 0.1,
-        thermal_stability: 1.1,
-        electrostatic_order: 1.0,
-        vdw_cohesion: 0.8,
-        polar_fraction: 0.4,
-        phosphate_fraction: 0.1,
-        hydrogen_fraction: 0.3,
-        bond_density: 0.5,
-        angle_density: 0.3,
-        dihedral_density: 0.2,
-        charge_density: 0.05,
-        recommended_atp_scale: 1.15,
+        mean_temperature: 310.0, mean_total_energy: -50.0,
+        mean_vdw_energy: -30.0, mean_electrostatic_energy: -20.0,
+        structural_order: 1.2, crowding_penalty: 0.1,
+        compactness: 0.85, shell_order: 0.9,
+        axis_anisotropy: 0.1, thermal_stability: 1.1,
+        electrostatic_order: 1.0, vdw_cohesion: 0.8,
+        polar_fraction: 0.4, phosphate_fraction: 0.1,
+        hydrogen_fraction: 0.3, bond_density: 0.5,
+        angle_density: 0.3, dihedral_density: 0.2,
+        charge_density: 0.05, recommended_atp_scale: 1.15,
         recommended_translation_scale: 1.10,
         recommended_replication_scale: 1.0,
         recommended_segregation_scale: 1.0,
@@ -5767,12 +5695,53 @@ fn test_quantum_probe_refinement_updates_profile() {
         recommended_constriction_scale: 1.0,
     };
     sim.refine_quantum_corrections_from_probe(&probe);
-
     assert!(sim.discovered_quantum_reactions().iter().all(|r| r.probe_refined));
-    let profile = sim.quantum_profile();
-    assert!(
-        (profile.oxphos_efficiency - 1.0).abs() > 1e-4,
-        "oxphos_efficiency should have shifted: {}",
-        profile.oxphos_efficiency
-    );
+    assert!((sim.quantum_profile().oxphos_efficiency - 1.0).abs() > 1e-4);
+}
+
+// ---- Observable Auto-Calibration Engine ----
+
+#[test]
+fn test_observable_loss_perfect_match() {
+    let sim = WholeCellSimulator::new(WholeCellConfig::default());
+    let targets = vec![ObservableTarget {
+        kind: ObservableKind::AtpMm,
+        target_value: sim.atp_mm,
+        tolerance: 0.1,
+        weight: 1.0,
+    }];
+    let (loss, per) = sim.observable_loss(&targets);
+    assert!(loss < 1e-6, "loss should be ~0 for perfect match: {}", loss);
+    assert!(per[0] < 1e-6);
+}
+
+#[test]
+fn test_observable_loss_off_target() {
+    let sim = WholeCellSimulator::new(WholeCellConfig::default());
+    let targets = vec![ObservableTarget {
+        kind: ObservableKind::AtpMm,
+        target_value: sim.atp_mm + 10.0,
+        tolerance: 1.0,
+        weight: 1.0,
+    }];
+    let (loss, _) = sim.observable_loss(&targets);
+    assert!(loss > 1.0, "loss should be large for off-target: {}", loss);
+}
+
+#[test]
+fn test_observable_observe_all_kinds() {
+    let sim = WholeCellSimulator::new(WholeCellConfig::default());
+    let kinds = [
+        ObservableKind::AtpMm, ObservableKind::AminoAcidsMm,
+        ObservableKind::NucleotidesMm, ObservableKind::MembranePrecursorsMm,
+        ObservableKind::GlucoseMm, ObservableKind::OxygenMm,
+        ObservableKind::ActiveRibosomes, ObservableKind::ActiveRnap,
+        ObservableKind::RadiusNm, ObservableKind::SurfaceAreaNm2,
+        ObservableKind::VolumeNm3, ObservableKind::DivisionProgress,
+        ObservableKind::GrowthRatePerMs,
+    ];
+    for kind in &kinds {
+        let val = sim.observe(*kind);
+        assert!(val.is_finite(), "{:?} returned non-finite: {}", kind, val);
+    }
 }

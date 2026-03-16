@@ -524,6 +524,33 @@ mod tests {
     }
 
     #[test]
+    fn neural_cost_depletes_atp() {
+        // The neural cost adds 20% of basal ATP demand at full firing.
+        // Verify the field exists and the step function processes it
+        // by checking that setting neural_activity to 1.0 produces a
+        // measurably lower instantaneous ATP pool after a single step.
+        let mut m_base = FlyMetabolism::default();
+        let mut m_neural = FlyMetabolism::default();
+        m_base.set_neural_activity(0.0);
+        m_neural.set_neural_activity(1.0);
+        m_base.set_activity(FlyActivity::Resting);
+        m_neural.set_activity(FlyActivity::Resting);
+        // Single step so regeneration doesn't wash out the difference.
+        m_base.step(1.0);
+        m_neural.step(1.0);
+        // Neural cost should have consumed extra ATP from the muscle pool.
+        assert!(
+            m_neural.muscle_atp_mm <= m_base.muscle_atp_mm,
+            "Neural cost should reduce ATP: base={:.6}, neural={:.6}",
+            m_base.muscle_atp_mm,
+            m_neural.muscle_atp_mm,
+        );
+        // Verify the field is properly stored.
+        assert_eq!(m_neural.neural_activity_fraction, 1.0);
+        assert_eq!(m_base.neural_activity_fraction, 0.0);
+    }
+
+    #[test]
     fn set_reserves_from_uj_roundtrips() {
         let mut m = FlyMetabolism::default();
         for target_uj in [0.0, 500.0, 1500.0, 2500.0, 3700.0] {

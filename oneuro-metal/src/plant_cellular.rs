@@ -61,6 +61,7 @@ pub struct PlantClusterSnapshot {
 
 #[derive(Debug, Clone)]
 struct PlantClusterSim {
+    #[allow(dead_code)]
     tissue: PlantTissue,
     cell_count: f32,
     vitality: f32,

@@ -1189,7 +1189,7 @@ struct DerivationCalibrationConfig {
     objective: DerivationCalibrationObjectiveSpec,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Debug, serde::Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub struct WholeCellDerivationCalibration {
     pub context_occupancy_gain: f32,
     pub context_stability_gain: f32,
@@ -1216,7 +1216,7 @@ pub struct WholeCellDerivationCalibration {
 }
 
 impl WholeCellDerivationCalibration {
-    const PARAMETER_COUNT: usize = 22;
+    pub const PARAMETER_COUNT: usize = 22;
 
     fn clamped(self, search: DerivationCalibrationSearchSpec) -> Self {
         let clamp = |value: f32| value.clamp(search.gain_min, search.gain_max);
@@ -1246,7 +1246,7 @@ impl WholeCellDerivationCalibration {
         }
     }
 
-    fn get(self, index: usize) -> f32 {
+    pub fn get(self, index: usize) -> f32 {
         match index {
             0 => self.context_occupancy_gain,
             1 => self.context_stability_gain,
@@ -1274,7 +1274,7 @@ impl WholeCellDerivationCalibration {
         }
     }
 
-    fn with(self, index: usize, value: f32) -> Self {
+    pub fn with(self, index: usize, value: f32) -> Self {
         let mut next = self;
         match index {
             0 => next.context_occupancy_gain = value,
@@ -3903,6 +3903,7 @@ pub struct WholeCellChemistryBridge {
     last_md_report: Option<LocalMDProbeReport>,
     exchange_targets: SnapshotExchangeTargets,
     initialized_from_snapshot: bool,
+    calibration_override: Option<WholeCellDerivationCalibration>,
 }
 
 impl WholeCellChemistryBridge {
@@ -3931,7 +3932,13 @@ impl WholeCellChemistryBridge {
                 ],
             },
             initialized_from_snapshot: false,
+            calibration_override: None,
         }
+    }
+
+    /// Set a derivation calibration override for observable-driven tuning.
+    pub fn set_derivation_calibration(&mut self, cal: WholeCellDerivationCalibration) {
+        self.calibration_override = Some(cal);
     }
 
     pub fn synchronize_from_snapshot(&mut self, snapshot: &WholeCellSnapshot) {

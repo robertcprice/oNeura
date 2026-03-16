@@ -1128,7 +1128,7 @@ impl MolecularBrain {
         self.synapse_shadow_stale = false;
     }
 
-    #[cfg(target_os = "macos")]
+    #[allow(dead_code)]    #[cfg(target_os = "macos")]
     fn mark_glia_shadow_dirty(&mut self) {
         self.glia_shadow_dirty = true;
         self.glia_shadow_stale = false;

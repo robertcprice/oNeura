@@ -157,6 +157,7 @@ pub struct GPUMolecularDynamics {
     /// Number of atoms.
     n_atoms: usize,
     /// Device: "metal", "cuda", or "cpu".
+    #[allow(dead_code)]
     device: String,
 
     // Particle data (CPU fallback, Metal/CUDA for GPU)

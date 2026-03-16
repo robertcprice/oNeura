@@ -39,7 +39,6 @@
 
 use crate::drosophila::{DrosophilaScale, DrosophilaSim};
 use crate::molecular_dynamics::GPUMolecularDynamics;
-use crate::types::*;
 
 /// Odorant types and their receptors.
 #[derive(Clone, Copy, Debug)]
@@ -133,6 +132,7 @@ pub struct NeuralMolecularSimulator {
     /// MD simulation for particles.
     md: GPUMolecularDynamics,
     /// Drosophila brain.
+    #[allow(dead_code)]
     brain: DrosophilaSim,
     /// Flies/agents.
     agents: Vec<Agent>,
@@ -186,7 +186,7 @@ impl NeuralMolecularSimulator {
 
         // Initialize particles in random positions
         let mut positions = vec![0.0f32; n_particles * 3];
-        let mut velocities = vec![0.0f32; n_particles * 3];
+        let velocities = vec![0.0f32; n_particles * 3];
 
         for i in 0..n_particles {
             let i3 = i * 3;
@@ -231,6 +231,7 @@ impl NeuralMolecularSimulator {
     }
 
     /// Compute odorant field at a position.
+    #[allow(dead_code)]
     fn compute_odorant_field(&self, x: f32, y: f32) -> [f32; 6] {
         let mut field = [0.0f32; 6]; // 6 receptor types
 
@@ -284,6 +285,7 @@ impl NeuralMolecularSimulator {
             heading: f32,
             speed: f32,
             turn_rate: f32,
+            #[allow(dead_code)]
             field: [f32; 6],
         }
 

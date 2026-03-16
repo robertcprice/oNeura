@@ -1,5 +1,3 @@
-use crate::neuron_arrays::NeuronArrays;
-
 #[cfg(target_os = "macos")]
 use super::state::MetalNeuronState;
 #[cfg(target_os = "macos")]

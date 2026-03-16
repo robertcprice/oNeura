@@ -363,6 +363,7 @@ impl DishBrainPongSim {
 
     fn play_rally(&mut self, game: &mut SimplePong) -> PongOutcome {
         game.reset();
+        #[allow(unused_assignments)]
         let mut last_activation = Vec::new();
 
         loop {

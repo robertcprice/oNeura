@@ -2,6 +2,27 @@
 
 use crate::constants::clamp;
 
+/// Default extinction coefficient for Beer-Lambert canopy light attenuation.
+/// Typical value for broadleaf canopies (unitless).
+pub const EXTINCTION_COEFF_DEFAULT: f32 = 0.5;
+
+/// Fraction of PAR transmitted through a canopy layer via Beer-Lambert law.
+///
+/// `I_transmitted / I_incident = exp(-k * LAI)`
+///
+/// - `k`: extinction coefficient (typically 0.4-0.7 for broadleaf)
+/// - `lai`: leaf area index of the shading layer
+pub fn beer_lambert_transmitted_fraction(extinction_coeff: f32, lai: f32) -> f32 {
+    (-extinction_coeff * lai).exp()
+}
+
+/// Amount of PAR intercepted by a canopy layer via Beer-Lambert law.
+///
+/// `I_intercepted = I_incident * (1 - exp(-k * LAI))`
+pub fn beer_lambert_par_intercepted(incident_par: f32, lai: f32, extinction_coeff: f32) -> f32 {
+    incident_par * (1.0 - beer_lambert_transmitted_fraction(extinction_coeff, lai))
+}
+
 #[derive(Debug, Clone)]
 pub struct PlantStepReport {
     pub exudates: f32,
@@ -16,7 +37,9 @@ pub struct PlantStepReport {
 #[derive(Debug, Clone)]
 pub struct PlantOrganismSim {
     max_height_mm: f32,
+    #[allow(dead_code)]
     canopy_radius_mm: f32,
+    #[allow(dead_code)]
     root_radius_mm: f32,
     leaf_efficiency: f32,
     root_uptake_efficiency: f32,
@@ -44,6 +67,10 @@ pub struct PlantOrganismSim {
     odorant_geraniol: f32,
     odorant_ethyl_acetate: f32,
     odorant_emission_rate: f32,
+    /// Light availability factor from inter-plant competition [0, 1].
+    light_competition_factor: f32,
+    /// Root nutrient share from inter-plant competition [0, 1].
+    root_competition_factor: f32,
 }
 
 impl PlantOrganismSim {
@@ -101,6 +128,8 @@ impl PlantOrganismSim {
             odorant_geraniol: 0.78,
             odorant_ethyl_acetate: 0.0,
             odorant_emission_rate: 0.02,
+            light_competition_factor: 1.0,
+            root_competition_factor: 1.0,
         }
     }
 
@@ -170,6 +199,28 @@ impl PlantOrganismSim {
 
     pub fn odorant_emission_rate(&self) -> f32 {
         self.odorant_emission_rate
+    }
+
+    /// Leaf area index — dimensionless ratio of leaf area to ground area.
+    /// Approximated from leaf biomass: ~4 m^2/kg specific leaf area.
+    pub fn lai(&self) -> f32 {
+        (self.leaf_biomass * 4.0).max(0.0)
+    }
+
+    pub fn light_competition_factor(&self) -> f32 {
+        self.light_competition_factor
+    }
+
+    pub fn set_light_competition_factor(&mut self, f: f32) {
+        self.light_competition_factor = f.clamp(0.0, 1.0);
+    }
+
+    pub fn root_competition_factor(&self) -> f32 {
+        self.root_competition_factor
+    }
+
+    pub fn set_root_competition_factor(&mut self, f: f32) {
+        self.root_competition_factor = f.clamp(0.0, 1.0);
     }
 
     pub fn resource_demands(

@@ -59,9 +59,13 @@ pub mod terrarium;
 pub mod terrarium_field;
 pub mod terrarium_world;
 pub mod terrarium_evolve;
+#[cfg(feature = "web")]
 pub mod terrarium_web_protocol;
+#[cfg(feature = "web")]
 pub mod terrarium_web_state;
+#[cfg(feature = "web")]
 pub mod terrarium_web_handlers;
+#[cfg(feature = "web")]
 pub mod terrarium_web_evolution;
 pub mod whole_cell;
 pub mod whole_cell_data;
@@ -169,6 +173,8 @@ pub use terrarium_world::{
 };
 pub use types::*;
 pub use whole_cell::{
+    ObservableCalibrationResult, ObservableKind, ObservableTarget,
+    QuantumDiscoveredReaction, QuantumProfileChannel,
     WholeCellBackend, WholeCellConfig, WholeCellQuantumProfile, WholeCellSimulator,
     WholeCellSnapshot,
 };

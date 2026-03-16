@@ -110,6 +110,11 @@ Current native capabilities in `oneuro-metal`:
 - Optional local chemistry microdomain bridge built on the existing batched terrarium substrate.
 - Optional localized MD probes that feed ATP, translation, replication, segregation, membrane, and constriction recommendations back into the whole-cell runtime.
 - Persistent Syn3A subsystem states for ATP-synthase bands, ribosome clusters, replisome tracks, and FtsZ septum rings.
+- 9 quantum hotspot kinds with lifted ED headroom (CIPSI=8000, orbitals=48, atom budgets 8-12).
+- Live-state quantum carving: `refresh_quantum_corrections_from_live_state()` modulates discovered quantum reaction corrections from complex assembly counts, subsystem activity, and energy charge every 100 steps.
+- Probe-driven refinement: `refine_quantum_corrections_from_probe()` maps 6 MD probe thermodynamic observables to 5 quantum efficiency channels with exponential blending (α=0.12).
+- Broadened quantum auto-discovery: 12/17 reaction classes now eligible for quantum corrections (was 5/17).
+- Extended surrogate fast path: uses direct inventory from named_complexes and complex_assembly in addition to organism_assets.
 - Site-resolved local chemistry reports so each subsystem consumes its own weighted microdomain support rather than only a global chemistry mean.
 - Localized substrate demand/depletion so active subsystem sites draw down their own terrarium patches before support is evaluated.
 - Persistent microdomain chemistry memory so local depletion and waste fields survive across scheduler updates instead of being rebuilt from the coarse state each step.
@@ -138,13 +143,41 @@ These surfaces do not currently exist in the repo and should be treated as new w
 - Data interchange layer between stochastic, deterministic, and spatial solvers.
 - Minimal-cell-specific validation suite.
 
-## Immediate Next Steps
+## Integration Wiring Table (Phases 1-8)
 
-1. Add a dedicated `oneuro.whole_cell` package.
-2. Define a program spec for a `JCVI-syn3A`-style target.
-3. Keep external MC4D tooling behind explicit adapter boundaries.
-4. Build a minimal manifest for solver cadence, lattice spacing, and external dependencies.
-5. Only after those boundaries exist, decide which parts should become native implementations.
+| Phase | Subsystem | File | Lines | Tests |
+|-------|-----------|------|-------|-------|
+| 1 | Chromosome physics | whole_cell/chromosome.rs | ~420 | ✅ |
+| 2 | Divisome/FtsZ | whole_cell/stages.rs | wired | ✅ |
+| 3 | Membrane geometry | whole_cell/membrane.rs | ~180 | ✅ |
+| 4 | Multirate scheduler | whole_cell.rs | wired | ✅ |
+| 5 | Local chemistry bridge | whole_cell/local_chemistry.rs | ~370 | ✅ |
+| 6 | Quantum rate bridge | whole_cell.rs | wired | ✅ |
+| 7 | Spatial coupling | whole_cell/spatial.rs | ~150 | ✅ |
+| 8 | Quantum auto-discovery | whole_cell.rs | ~120 new | 5 tests ✅ |
+| 9 | GPU Monod dynamics | terrarium_substrate.metal | already done | ✅ |
+
+### Phase 8: Quantum Auto-Discovery (NEW)
+- `QuantumDiscoveredReaction` + `QuantumProfileChannel` types
+- `run_quantum_auto_discovery()`: scans organism reactions by class + subsystem targets
+- `refine_quantum_corrections_from_probe()`: EMA (α=0.12) updates from MD probe thermodynamics
+- `apply_quantum_discovery_to_profile()`: geometric mean per channel → quantum_profile
+- Wired into `new()`, `from_program_spec()`, and local_chemistry MD probe cycle
+
+### Observable Auto-Calibration Engine (NOVEL)
+- `ObservableKind` enum: 13 measurable quantities (ATP, amino acids, ribosomes, volume, growth rate, etc.)
+- `ObservableTarget`: experimental target with tolerance and weight
+- `calibrate_from_observables()`: coordinate-descent optimizer over 5 quantum profile efficiencies
+  - Multi-scale grid search (step sizes 0.20, 0.10, 0.05, 0.02)
+  - Creates fresh simulators per evaluation (no Clone dependency)
+  - Returns `ObservableCalibrationResult` with per-target errors and fitted profile
+- 3 unit tests pass (loss computation, observe all kinds)
+
+## Remaining Critical Path
+
+- [ ] Wire orphaned submodules in `terrarium_world/` directory (14k lines uncompiled)
+- [ ] Wire `whole_cell_quantum_runtime.rs` (324KB, not in lib.rs)
+- [ ] Full doubling-time validation against Syn3A literature (~65 min)
 
 ## Product Direction
 

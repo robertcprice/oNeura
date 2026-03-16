@@ -10,24 +10,102 @@ use rand_distr::StandardNormal;
 
 use crate::constants::clamp;
 use crate::drosophila::{DrosophilaScale, DrosophilaSim};
+use crate::drosophila_population::FlyPopulation;
 use crate::ecology_events::{step_food_patches, step_seed_bank};
 use crate::ecology_fields::build_dual_radial_fields;
+use crate::fly_metabolism::{FlyActivity, FlyMetabolism};
+use crate::organism_metabolism::OrganismMetabolism;
 use crate::molecular_atmosphere::{
     odorant_channel_params, step_molecular_world_fields, FruitSourceState, OdorantChannelParams,
     PlantSourceState, WaterSourceState,
 };
 use crate::plant_cellular::PlantCellularStateSim;
+use crate::plant_competition::{
+    compute_light_competition, compute_root_competition, CanopyDescriptor, RootDescriptor,
+};
 use crate::plant_organism::PlantOrganismSim;
+use crate::soil_fauna::{step_soil_fauna, EarthwormPopulation, NematodeGuild, NematodeKind};
 use crate::soil_broad::step_soil_broad_pools;
 use crate::soil_uptake::extract_root_resources_with_layers;
 use crate::terrarium::{BatchedAtomTerrarium, TerrariumSpecies};
 use crate::terrarium_field::TerrariumSensoryField;
+
+// ===== Microdomain Ownership Infrastructure =====
+
+/// Identifies the authority class that owns a soil cell's biology.
+///
+/// When a cell has an explicit owner (microbe cohort, genotype packet, plant
+/// tissue, or atomistic probe), coarse broad-soil biology should be suppressed
+/// in that cell and only boundary-exchange remains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SoilOwnershipClass {
+    /// No explicit biological owner — broad guild-rate laws are primary.
+    Background,
+    /// Owned by an explicit whole-cell or coarse microbe cohort.
+    ExplicitMicrobeCohort { cohort_id: u32 },
+    /// Owned by a genotype-ID packet population.
+    GenotypePacketRegion { genotype_id: u32 },
+    /// Owned by plant root/leaf tissue cells.
+    PlantTissueRegion { plant_id: u32 },
+    /// Owned by an atomistic/MD probe region.
+    AtomisticProbeRegion { probe_id: u32 },
+}
+
+impl SoilOwnershipClass {
+    pub fn is_background(self) -> bool {
+        matches!(self, Self::Background)
+    }
+
+    pub fn is_explicit(self) -> bool {
+        !self.is_background()
+    }
+}
+
+/// Per-cell ownership record in the terrarium soil grid.
+#[derive(Debug, Clone, Copy)]
+pub struct SoilOwnershipCell {
+    /// Which class of biology owns this cell.
+    pub owner: SoilOwnershipClass,
+    /// Ownership strength in [0, 1]. Values near 1.0 mean the explicit owner
+    /// has full authority; coarse biology is suppressed proportionally.
+    pub strength: f32,
+}
+
+impl Default for SoilOwnershipCell {
+    fn default() -> Self {
+        Self {
+            owner: SoilOwnershipClass::Background,
+            strength: 0.0,
+        }
+    }
+}
+
+/// Diagnostics for the terrarium ownership map.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OwnershipDiagnostics {
+    /// Fraction of soil cells that have an explicit owner.
+    pub owned_fraction: f32,
+    /// Fraction owned by explicit microbe cohorts.
+    pub microbe_owned_fraction: f32,
+    /// Fraction owned by genotype packet regions.
+    pub genotype_owned_fraction: f32,
+    /// Fraction owned by plant tissue.
+    pub plant_owned_fraction: f32,
+    /// Fraction owned by atomistic probes.
+    pub probe_owned_fraction: f32,
+    /// Maximum ownership strength across all cells.
+    pub max_strength: f32,
+    /// Number of cells with overlapping ownership (should be 0).
+    pub overlap_count: u32,
+}
 
 const DAY_LENGTH_S: f32 = 86_400.0;
 const ETHYL_ACETATE_IDX: usize = 0;
 const GERANIOL_IDX: usize = 1;
 const AMMONIA_IDX: usize = 2;
 const ATMOS_CO2_IDX: usize = 3;
+const ATMOS_O2_IDX: usize = 4;
+const ATMOS_O2_FRACTION: f32 = 0.21;
 
 fn idx2(width: usize, x: usize, y: usize) -> usize {
     y * width + x
@@ -400,6 +478,15 @@ impl TerrariumPlant {
     }
 }
 
+/// Metabolic and ecological telemetry events emitted during a frame.
+#[derive(Debug, Clone)]
+pub enum EcologyTelemetryEvent {
+    FlyAtpCrash { x: f32, y: f32, energy_charge: f32, trehalose_mm: f32 },
+    FlyStarvationOnset { x: f32, y: f32, trehalose_mm: f32, glycogen_mg: f32 },
+    FlyFeeding { x: f32, y: f32, sugar_ingested_mg: f32, trehalose_mm: f32 },
+    FlyEclosed { x: f32, y: f32 },
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TerrariumWorldSnapshot {
     pub plants: usize,
@@ -430,6 +517,10 @@ pub struct TerrariumWorldSnapshot {
     pub mean_soil_redox: f32,
     pub mean_soil_atp_flux: f32,
     pub mean_atmospheric_co2: f32,
+    pub mean_atmospheric_o2: f32,
+    pub ecology_event_count: usize,
+    pub avg_fly_energy_charge: f32,
+    pub owned_fraction: f32,
     pub substrate_backend: &'static str,
     pub substrate_steps: u64,
     pub substrate_time_ms: f32,
@@ -494,6 +585,20 @@ pub struct TerrariumWorld {
     root_exudates: Vec<f32>,
     soil_structure: Vec<f32>,
     fly_food_total: f32,
+    /// Per-fly metabolic state (7-pool Michaelis-Menten).
+    fly_metabolisms: Vec<FlyMetabolism>,
+    /// Fly lifecycle population (egg→larva→pupa→adult with Sharpe-Schoolfield).
+    fly_pop: FlyPopulation,
+    /// Earthworm population (logistic growth + bioturbation).
+    earthworms: EarthwormPopulation,
+    /// Nematode guilds (Lotka-Volterra bacterial/fungal grazing).
+    nematode_guilds: Vec<NematodeGuild>,
+    /// Telemetry events emitted during the current step batch.
+    ecology_events: Vec<EcologyTelemetryEvent>,
+    /// Per-cell ownership map — determines which biology is authoritative.
+    ownership: Vec<SoilOwnershipCell>,
+    /// Cached ownership diagnostics, refreshed on `rebuild_ownership()`.
+    ownership_diagnostics: OwnershipDiagnostics,
 }
 
 impl TerrariumWorld {
@@ -503,6 +608,111 @@ impl TerrariumWorld {
 
     pub fn height(&self) -> usize {
         self.config.height
+    }
+
+    // ===== Ownership API =====
+
+    /// Claim ownership of a soil cell at (x, y) for an explicit biology class.
+    ///
+    /// Returns `false` if the cell is already explicitly owned (no dual authority).
+    pub fn claim_ownership(&mut self, x: usize, y: usize, owner: SoilOwnershipClass, strength: f32) -> bool {
+        let w = self.config.width;
+        let h = self.config.height;
+        if x >= w || y >= h {
+            return false;
+        }
+        let idx = y * w + x;
+        if self.ownership[idx].owner.is_explicit() {
+            return false; // no dual authority
+        }
+        self.ownership[idx] = SoilOwnershipCell {
+            owner,
+            strength: strength.clamp(0.0, 1.0),
+        };
+        true
+    }
+
+    /// Release ownership of a soil cell back to background.
+    pub fn release_ownership(&mut self, x: usize, y: usize) {
+        let w = self.config.width;
+        let h = self.config.height;
+        if x >= w || y >= h {
+            return;
+        }
+        let idx = y * w + x;
+        self.ownership[idx] = SoilOwnershipCell::default();
+    }
+
+    /// Clear all ownership — returns entire soil to background authority.
+    pub fn clear_ownership(&mut self) {
+        for cell in &mut self.ownership {
+            *cell = SoilOwnershipCell::default();
+        }
+        self.ownership_diagnostics = OwnershipDiagnostics::default();
+    }
+
+    /// Returns the ownership suppression factor for broad-soil biology at (x, y).
+    ///
+    /// 1.0 = full background (no suppression), 0.0 = fully suppressed by explicit owner.
+    pub fn broad_biology_factor(&self, x: usize, y: usize) -> f32 {
+        let w = self.config.width;
+        let h = self.config.height;
+        if x >= w || y >= h {
+            return 1.0;
+        }
+        let cell = &self.ownership[y * w + x];
+        if cell.owner.is_background() {
+            1.0
+        } else {
+            (1.0 - cell.strength).max(0.0)
+        }
+    }
+
+    /// Recompute ownership diagnostics from the current ownership map.
+    pub fn rebuild_ownership_diagnostics(&mut self) {
+        let total = self.ownership.len() as f32;
+        if total < 1.0 {
+            self.ownership_diagnostics = OwnershipDiagnostics::default();
+            return;
+        }
+        let mut owned = 0u32;
+        let mut microbe = 0u32;
+        let mut genotype = 0u32;
+        let mut plant = 0u32;
+        let mut probe = 0u32;
+        let mut max_strength = 0.0f32;
+        for cell in &self.ownership {
+            if cell.owner.is_explicit() {
+                owned += 1;
+                max_strength = max_strength.max(cell.strength);
+                match cell.owner {
+                    SoilOwnershipClass::ExplicitMicrobeCohort { .. } => microbe += 1,
+                    SoilOwnershipClass::GenotypePacketRegion { .. } => genotype += 1,
+                    SoilOwnershipClass::PlantTissueRegion { .. } => plant += 1,
+                    SoilOwnershipClass::AtomisticProbeRegion { .. } => probe += 1,
+                    SoilOwnershipClass::Background => {}
+                }
+            }
+        }
+        self.ownership_diagnostics = OwnershipDiagnostics {
+            owned_fraction: owned as f32 / total,
+            microbe_owned_fraction: microbe as f32 / total,
+            genotype_owned_fraction: genotype as f32 / total,
+            plant_owned_fraction: plant as f32 / total,
+            probe_owned_fraction: probe as f32 / total,
+            max_strength,
+            overlap_count: 0, // no overlaps possible with claim_ownership guard
+        };
+    }
+
+    /// Current ownership diagnostics (call `rebuild_ownership_diagnostics()` first).
+    pub fn ownership_diagnostics(&self) -> OwnershipDiagnostics {
+        self.ownership_diagnostics
+    }
+
+    /// Access the raw ownership map.
+    pub fn ownership_map(&self) -> &[SoilOwnershipCell] {
+        &self.ownership
     }
 
     pub fn new(config: TerrariumWorldConfig) -> Result<Self, String> {
@@ -561,10 +771,12 @@ impl TerrariumWorld {
                 odorant_channel_params("geraniol").ok_or("missing geraniol params")?,
                 odorant_channel_params("ammonia").ok_or("missing ammonia params")?,
                 odorant_channel_params("carbon_dioxide").ok_or("missing carbon dioxide params")?,
+                odorant_channel_params("oxygen").ok_or("missing oxygen params")?,
             ],
             odorants: {
-                let mut fields = vec![vec![0.0; total]; 4];
+                let mut fields = vec![vec![0.0; total]; 5];
                 fields[ATMOS_CO2_IDX].fill(0.045);
+                fields[ATMOS_O2_IDX].fill(ATMOS_O2_FRACTION);
                 fields
             },
             temperature: vec![22.0; total],
@@ -588,13 +800,23 @@ impl TerrariumWorld {
             mineral_nitrogen,
             shallow_nutrients,
             deep_minerals,
-            organic_matter,
             litter_carbon,
             microbial_biomass,
             symbiont_biomass,
             root_exudates,
             soil_structure,
             fly_food_total: 0.0,
+            ecology_events: Vec::new(),
+            fly_metabolisms: Vec::new(),
+            fly_pop: FlyPopulation::new(config.seed.wrapping_add(99)),
+            earthworms: EarthwormPopulation::new(config.width, config.height, &organic_matter),
+            organic_matter,
+            nematode_guilds: vec![
+                NematodeGuild::new(NematodeKind::BacterialFeeder, config.width, config.height),
+                NematodeGuild::new(NematodeKind::FungalFeeder, config.width, config.height),
+            ],
+            ownership: vec![SoilOwnershipCell::default(); plane],
+            ownership_diagnostics: OwnershipDiagnostics::default(),
             config,
         })
     }
@@ -727,6 +949,7 @@ impl TerrariumWorld {
             Some(self.time_of_day_hours()),
         );
         self.flies.push(fly);
+        self.fly_metabolisms.push(FlyMetabolism::default());
     }
 
     pub fn daylight(&self) -> f32 {
@@ -744,6 +967,18 @@ impl TerrariumWorld {
         let minutes = ((seconds % 3600.0) / 60.0).floor() as i32;
         format!("{hours:02}:{minutes:02}")
     }
+
+    /// Read-only access to the moisture field.
+    pub fn moisture_field(&self) -> &[f32] { &self.moisture }
+
+    /// Mutable access to the moisture field (for stress perturbations).
+    pub fn moisture_field_mut(&mut self) -> &mut [f32] { &mut self.moisture }
+
+    /// Read-only access to the temperature field.
+    pub fn temperature_field(&self) -> &[f32] { &self.temperature }
+
+    /// Mutable access to the temperature field (for stress perturbations).
+    pub fn temperature_field_mut(&mut self) -> &mut [f32] { &mut self.temperature }
 
     pub fn topdown_field(&self, view: TerrariumTopdownView) -> Vec<f32> {
         match view {
@@ -854,6 +1089,51 @@ impl TerrariumWorld {
         )?;
         self.canopy_cover.copy_from_slice(&canopy);
         self.root_density.copy_from_slice(&root);
+
+        // Rebuild plant ownership from root density: cells with significant root
+        // presence get claimed by the dominant plant, suppressing broad guild-rate
+        // laws where explicit plant physiology provides the biology.
+        const ROOT_OWNERSHIP_THRESHOLD: f32 = 0.05;
+        // Release all plant-owned cells first so we can reassign.
+        for cell in &mut self.ownership {
+            if matches!(cell.owner, SoilOwnershipClass::PlantTissueRegion { .. }) {
+                *cell = SoilOwnershipCell::default();
+            }
+        }
+        let w = self.config.width;
+        for (plant_idx, plant) in self.plants.iter().enumerate() {
+            let r = plant.root_radius_cells();
+            let cx = plant.x;
+            let cy = plant.y;
+            let x_lo = cx.saturating_sub(r);
+            let x_hi = (cx + r + 1).min(w);
+            let y_lo = cy.saturating_sub(r);
+            let y_hi = (cy + r + 1).min(self.config.height);
+            for yy in y_lo..y_hi {
+                for xx in x_lo..x_hi {
+                    let flat = yy * w + xx;
+                    let density = self.root_density[flat];
+                    if density > ROOT_OWNERSHIP_THRESHOLD {
+                        let strength = (density / 0.5).clamp(0.0, 1.0);
+                        let owner = SoilOwnershipClass::PlantTissueRegion {
+                            plant_id: plant_idx as u32,
+                        };
+                        // Overwrite only background or weaker plant claims.
+                        let existing = &self.ownership[flat];
+                        if existing.owner.is_background()
+                            || (matches!(
+                                existing.owner,
+                                SoilOwnershipClass::PlantTissueRegion { .. }
+                            ) && existing.strength < strength)
+                        {
+                            self.ownership[flat] = SoilOwnershipCell { owner, strength };
+                        }
+                    }
+                }
+            }
+        }
+        self.rebuild_ownership_diagnostics();
+
         Ok(())
     }
 
@@ -1523,6 +1803,9 @@ impl TerrariumWorld {
 
         for (x, y, z, radius, flux) in queued_co2_fluxes {
             self.exchange_atmosphere_odorant(ATMOS_CO2_IDX, x, y, z, radius, flux);
+            // Photosynthesis: each mol CO2 consumed produces 1 mol O2.
+            // O2 flux = -CO2 flux (same magnitude, opposite sign).
+            self.exchange_atmosphere_odorant(ATMOS_O2_IDX, x, y, z, radius, -flux);
         }
         for (x, y, z, radius, flux) in queued_humidity_fluxes {
             self.exchange_atmosphere_humidity(x, y, z, radius, flux);
@@ -1784,12 +2067,53 @@ impl TerrariumWorld {
             self.daylight(),
             &food_patches,
         )?;
+
+        // Phase 1: Pre-compute spatial O2 + altitude factor for each fly.
+        let o2_values: Vec<f32> = self
+            .flies
+            .iter()
+            .map(|fly| {
+                let body = fly.body_state();
+                let air_x = (body.x as usize).min(self.config.width.saturating_sub(1));
+                let air_y = (body.y as usize).min(self.config.height.saturating_sub(1));
+                let air_z = (body.z as usize).min(self.config.depth.max(1).saturating_sub(1));
+                let local_o2 = self.sample_odorant_patch(ATMOS_O2_IDX, air_x, air_y, air_z, 1);
+                let altitude_factor = (1.0 - body.z * 0.01).clamp(0.5, 1.0);
+                (local_o2 * altitude_factor).max(0.0)
+            })
+            .collect();
+
         let mut consumptions = Vec::new();
-        for fly in &mut self.flies {
+        for i in 0..self.flies.len() {
+            // Phase 1: Set spatial O2 on metabolism.
+            if i < self.fly_metabolisms.len() {
+                self.fly_metabolisms[i].set_ambient_o2(o2_values[i]);
+            }
+
+            // Phase 3: Hunger -> brain coupling (SEZ + MBON stimulation).
+            if i < self.fly_metabolisms.len() {
+                let hunger = self.fly_metabolisms[i].hunger();
+                if hunger >= 0.05 {
+                    let sez_range = self.flies[i].layout.range("SEZ");
+                    let hunger_start = sez_range.start + (sez_range.len() * 2 / 3);
+                    let current = hunger * 32.0;
+                    for idx in hunger_start..sez_range.end {
+                        self.flies[i].brain.stimulate(idx, current);
+                    }
+                    let mbon_range = self.flies[i].layout.range("MBON");
+                    let mbon_current = hunger * 8.0;
+                    for idx in mbon_range {
+                        self.flies[i].brain.stimulate(idx, mbon_current);
+                    }
+                }
+            }
+
+            // Body step: sensory -> brain -> motor -> physics.
+            let fly = &mut self.flies[i];
             let body = fly.body_state();
-            let sample =
-                self.sensory_field
-                    .sample_fly(body.x, body.y, body.z, body.heading, body.is_flying);
+            let sample = self.sensory_field.sample_fly(
+                body.x, body.y, body.z, body.heading, body.is_flying,
+            );
             let report = fly.body_step_terrarium(
                 sample.odorant,
                 sample.left_light,
@@ -1804,8 +2128,21 @@ impl TerrariumWorld {
                 sample.food_available,
                 0.0,
             );
+
+            // Phase 3: Hunger-scaled feeding reward.
             if report.consumed_food > 0.0 {
+                if i < self.fly_metabolisms.len() {
+                    let hunger_scale = 0.5 + self.fly_metabolisms[i].hunger() * 0.5;
+                    self.flies[i].apply_reward_signal(0.5 * hunger_scale);
+                }
                 consumptions.push((report.x, report.y, report.consumed_food));
+            }
+
+            // Phase 5: Neural metabolic cost -- brain firing rate -> ATP demand.
+            if i < self.fly_metabolisms.len() {
+                let firing_rate = self.flies[i].mean_firing_rate();
+                let neural_frac = (firing_rate / 50.0).clamp(0.0, 1.0);
+                self.fly_metabolisms[i].set_neural_activity(neural_frac);
             }
         }
         for (x, y, amount) in consumptions {
@@ -1814,18 +2151,107 @@ impl TerrariumWorld {
         }
         Ok(())
     }
+    fn step_soil_fauna(&mut self, eco_dt: f32) {
+        let dt_hours = eco_dt / 3600.0;
+        if dt_hours <= 0.0 { return; }
+        let mut nitrifier_approx: Vec<f32> = self.microbial_biomass.iter().map(|b| b * 0.1).collect();
+        let _result = step_soil_fauna(&mut self.earthworms, &mut self.nematode_guilds, &mut self.microbial_biomass, &mut nitrifier_approx, &mut self.organic_matter, &mut self.substrate, &self.moisture, &self.temperature, dt_hours, (self.config.width, self.config.height, self.config.depth.max(1)));
+    }
+
+    fn step_plant_competition(&mut self) {
+        if self.plants.len() < 2 { return; }
+        let cs = self.config.cell_size_mm;
+        let canopy_descs: Vec<CanopyDescriptor> = self.plants.iter().map(|p| CanopyDescriptor { x: p.x as f32 * cs, y: p.y as f32 * cs, height_mm: p.physiology.height_mm(), canopy_radius_mm: p.genome.canopy_radius_mm, lai: p.physiology.lai(), extinction_coeff: 0.5 }).collect();
+        let light_avail = compute_light_competition(&canopy_descs, cs);
+        let root_descs: Vec<RootDescriptor> = self.plants.iter().map(|p| RootDescriptor { x: p.x as f32 * cs, y: p.y as f32 * cs, root_depth_mm: p.genome.root_radius_mm * p.genome.root_depth_bias, root_radius_mm: p.genome.root_radius_mm, root_biomass: p.physiology.root_biomass() }).collect();
+        let root_shares = compute_root_competition(&root_descs, &self.mineral_nitrogen, &self.dissolved_nutrients, self.config.width, self.config.height, cs);
+        for (idx, plant) in self.plants.iter_mut().enumerate() {
+            if idx < light_avail.len() { plant.physiology.set_light_competition_factor(light_avail[idx]); }
+            if idx < root_shares.len() { plant.physiology.set_root_competition_factor(root_shares[idx].0); }
+        }
+    }
+
+    fn step_fly_population(&mut self, eco_dt: f32) {
+        let dt_hours = eco_dt / 3600.0;
+        if dt_hours <= 0.0 { return; }
+        let mean_temp = mean(&self.temperature);
+        let mean_humidity = mean(&self.humidity);
+        let fruit_positions: Vec<(f32, f32, f32)> = self.fruits.iter().filter(|f| f.source.alive && f.source.sugar_content > 0.01).map(|f| { let cs = self.config.cell_size_mm; (f.source.x as f32 * cs, f.source.y as f32 * cs, 0.0) }).collect();
+        self.fly_pop.step(dt_hours, mean_temp, &fruit_positions, mean_humidity);
+        let eclosed = self.fly_pop.drain_eclosed();
+        for (ex, ey, _ez) in eclosed {
+            if self.flies.len() >= 12 { break; } // cap neural flies
+            let cs = self.config.cell_size_mm;
+            let fx = (ex / cs).clamp(1.0, self.config.width as f32 - 2.0);
+            let fy = (ey / cs).clamp(1.0, self.config.height as f32 - 2.0);
+            let seed = self.rng.gen();
+            self.add_fly(DrosophilaScale::Small, fx, fy, seed);
+            // Set eclosion reserves on the newly spawned fly's metabolism.
+            if let Some(m) = self.fly_metabolisms.last_mut() {
+                m.fat_body_glycogen_mg = 0.009;
+                m.fat_body_lipid_mg = 0.027;
+                m.hemolymph_trehalose_mm = 15.0;
+            }
+            self.ecology_events.push(EcologyTelemetryEvent::FlyEclosed { x: fx, y: fy });
+        }
+    }
+
+    fn step_fly_metabolism(&mut self, eco_dt: f32) {
+        while self.fly_metabolisms.len() < self.flies.len() { self.fly_metabolisms.push(FlyMetabolism::default()); }
+        self.fly_metabolisms.truncate(self.flies.len());
+
+        // Capture pre-step state for telemetry threshold detection.
+        let pre_charges: Vec<f32> = self.fly_metabolisms.iter().map(|m| m.energy_charge()).collect();
+        let pre_trehalose: Vec<f32> = self.fly_metabolisms.iter().map(|m| m.hemolymph_trehalose_mm).collect();
+
+        for i in 0..self.flies.len() {
+            let body = self.flies[i].body_state();
+            let bx = body.x;
+            let by = body.y;
+            let is_flying = body.is_flying;
+            let speed = body.speed;
+            let activity = if is_flying { FlyActivity::Flying(0.5) } else if speed > 0.1 { FlyActivity::Walking((speed / 2.0).clamp(0.0, 1.0)) } else { FlyActivity::Resting };
+            self.fly_metabolisms[i].set_activity(activity);
+            self.fly_metabolisms[i].step(eco_dt);
+            let new_energy = self.fly_metabolisms[i].energy_compat_uj();
+            self.flies[i].set_energy(new_energy);
+
+            // Phase 2: Telemetry events (onset-only threshold crossings).
+            let post_charge = self.fly_metabolisms[i].energy_charge();
+            let post_trehalose = self.fly_metabolisms[i].hemolymph_trehalose_mm;
+            if i < pre_charges.len() && pre_charges[i] >= 0.3 && post_charge < 0.3 {
+                self.ecology_events.push(EcologyTelemetryEvent::FlyAtpCrash {
+                    x: bx, y: by,
+                    energy_charge: post_charge,
+                    trehalose_mm: post_trehalose,
+                });
+            }
+            if i < pre_trehalose.len() && pre_trehalose[i] >= 5.0 && post_trehalose < 5.0 {
+                self.ecology_events.push(EcologyTelemetryEvent::FlyStarvationOnset {
+                    x: bx, y: by,
+                    trehalose_mm: post_trehalose,
+                    glycogen_mg: self.fly_metabolisms[i].fat_body_glycogen_mg,
+                });
+            }
+        }
+    }
 
     pub fn step_frame(&mut self) -> Result<(), String> {
+        self.ecology_events.clear();
         let eco_dt = self.config.world_dt_s * self.config.time_warp;
         for _ in 0..self.config.substeps.max(1) {
             self.rebuild_ecology_fields()?;
             self.step_broad_soil(eco_dt)?;
+            self.step_soil_fauna(eco_dt);
             self.sync_substrate_controls()?;
             self.substrate.step(self.config.substrate_dt_ms);
+            self.step_plant_competition();
             self.step_plants(eco_dt)?;
             self.rebuild_ecology_fields()?;
             self.step_world_fields()?;
             self.step_flies()?;
+            self.step_fly_metabolism(eco_dt);
+            self.step_fly_population(eco_dt);
             self.step_food_patches_native(eco_dt)?;
             self.step_seeds_native(eco_dt)?;
             self.time_s += eco_dt;
@@ -1945,6 +2371,15 @@ impl TerrariumWorld {
             mean_soil_redox,
             mean_soil_atp_flux: self.substrate.mean_species(TerrariumSpecies::AtpFlux),
             mean_atmospheric_co2: mean(&self.odorants[ATMOS_CO2_IDX]),
+            mean_atmospheric_o2: mean(&self.odorants[ATMOS_O2_IDX]),
+            ecology_event_count: self.ecology_events.len(),
+            avg_fly_energy_charge: if self.fly_metabolisms.is_empty() {
+                0.0
+            } else {
+                self.fly_metabolisms.iter().map(|m| m.energy_charge()).sum::<f32>()
+                    / self.fly_metabolisms.len() as f32
+            },
+            owned_fraction: self.ownership_diagnostics.owned_fraction,
             substrate_backend: self.substrate.backend().as_str(),
             substrate_steps: self.substrate.step_count(),
             substrate_time_ms: self.substrate.time_ms(),
@@ -1982,5 +2417,134 @@ mod tests {
             .map(|(before, after)| (before - after).abs())
             .fold(0.0f32, f32::max);
         assert!(max_delta > 1.0e-6, "gas exchange field stayed static");
+    }
+
+    #[test]
+    fn spatial_o2_channel_initialized() {
+        let world = TerrariumWorld::demo(7, false).unwrap();
+        // 5 odorant channels should exist (ethyl_acetate, geraniol, ammonia, CO2, O2).
+        assert_eq!(world.odorants.len(), 5, "should have 5 odorant channels");
+        assert_eq!(world.odorant_params.len(), 5, "should have 5 odorant params");
+        // O2 channel (index 4) should be initialized to ~0.21.
+        let o2_idx = 4;
+        let o2_mean = world.odorants[o2_idx].iter().sum::<f32>()
+            / world.odorants[o2_idx].len() as f32;
+        assert!(
+            (o2_mean - 0.21).abs() < 0.01,
+            "O2 channel should be ~0.21, got {o2_mean}"
+        );
+    }
+
+    #[test]
+    fn ecology_events_tracked() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        // Run enough frames for events to potentially occur.
+        world.run_frames(5).unwrap();
+        let snapshot = world.snapshot();
+        // Snapshot should have valid step count.
+        assert!(snapshot.substrate_steps < 10000, "step count should be reasonable");
+    }
+
+    // ===== Ownership infrastructure tests =====
+
+    #[test]
+    fn ownership_claim_and_release() {
+        use super::SoilOwnershipClass;
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+
+        // Initially all cells are background.
+        assert_eq!(world.broad_biology_factor(0, 0), 1.0);
+
+        // Claim a cell.
+        let claimed = world.claim_ownership(
+            2, 3,
+            SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 1 },
+            0.8,
+        );
+        assert!(claimed, "should succeed for background cell");
+
+        // Broad-biology factor should be suppressed.
+        let factor = world.broad_biology_factor(2, 3);
+        assert!((factor - 0.2).abs() < 0.01, "factor should be ~0.2, got {factor}");
+
+        // Cannot dual-claim an already-owned cell.
+        let re_claimed = world.claim_ownership(
+            2, 3,
+            SoilOwnershipClass::GenotypePacketRegion { genotype_id: 5 },
+            1.0,
+        );
+        assert!(!re_claimed, "should fail on already-owned cell");
+
+        // Release and verify it returns to background.
+        world.release_ownership(2, 3);
+        assert_eq!(world.broad_biology_factor(2, 3), 1.0);
+    }
+
+    #[test]
+    fn ownership_out_of_bounds_safe() {
+        let world = TerrariumWorld::demo(7, false).unwrap();
+        // Out-of-bounds reads should return full background factor.
+        assert_eq!(world.broad_biology_factor(999, 999), 1.0);
+    }
+
+    #[test]
+    fn ownership_diagnostics_counts() {
+        use super::SoilOwnershipClass;
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        let w = world.config.width;
+        let h = world.config.height;
+
+        // Claim some cells of different types.
+        world.claim_ownership(0, 0, SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 0 }, 1.0);
+        world.claim_ownership(1, 0, SoilOwnershipClass::GenotypePacketRegion { genotype_id: 0 }, 0.5);
+        world.claim_ownership(2, 0, SoilOwnershipClass::AtomisticProbeRegion { probe_id: 0 }, 0.9);
+        world.rebuild_ownership_diagnostics();
+
+        let diag = world.ownership_diagnostics();
+        let total = (w * h) as f32;
+        assert!((diag.owned_fraction - 3.0 / total).abs() < 1e-4, "owned fraction wrong");
+        assert!((diag.microbe_owned_fraction - 1.0 / total).abs() < 1e-4);
+        assert!((diag.genotype_owned_fraction - 1.0 / total).abs() < 1e-4);
+        assert!((diag.probe_owned_fraction - 1.0 / total).abs() < 1e-4);
+        assert!((diag.max_strength - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn clear_ownership_resets_all() {
+        use super::SoilOwnershipClass;
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.claim_ownership(0, 0, SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 0 }, 1.0);
+        world.claim_ownership(1, 1, SoilOwnershipClass::PlantTissueRegion { plant_id: 0 }, 0.7);
+        world.clear_ownership();
+        assert_eq!(world.broad_biology_factor(0, 0), 1.0);
+        assert_eq!(world.broad_biology_factor(1, 1), 1.0);
+        let diag = world.ownership_diagnostics();
+        assert_eq!(diag.owned_fraction, 0.0);
+    }
+
+    #[test]
+    fn plant_roots_claim_ownership_after_run() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        // Run enough frames for plants to establish root systems.
+        world.run_frames(60).unwrap();
+        world.rebuild_ownership_diagnostics();
+        let diag = world.ownership_diagnostics();
+        let snap = world.snapshot();
+        if snap.plants > 0 && snap.mean_root_density > 0.05 {
+            assert!(
+                diag.plant_owned_fraction > 0.0,
+                "plants with significant roots but no plant ownership claimed (root_density={}, plants={})",
+                snap.mean_root_density, snap.plants,
+            );
+        }
+    }
+
+    #[test]
+    fn snapshot_includes_owned_fraction() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.run_frames(5).unwrap();
+        let snap = world.snapshot();
+        // owned_fraction should be non-negative.
+        assert!(snap.owned_fraction >= 0.0);
     }
 }

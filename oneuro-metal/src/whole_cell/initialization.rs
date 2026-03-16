@@ -1,11 +1,11 @@
 use super::*;
 
-impl super::WholeCellSimulator {
-    fn surface_area_from_radius(radius_nm: f32) -> f32 {
+impl WholeCellSimulator {
+    pub(crate) fn surface_area_from_radius(radius_nm: f32) -> f32 {
         4.0 * PI * radius_nm * radius_nm
     }
 
-    fn volume_from_radius(radius_nm: f32) -> f32 {
+    pub(crate) fn volume_from_radius(radius_nm: f32) -> f32 {
         4.0 / 3.0 * PI * radius_nm.powi(3)
     }
 
@@ -355,9 +355,9 @@ impl super::WholeCellSimulator {
         simulator.refresh_organism_expression_state();
         simulator.initialize_complex_assembly_state();
         simulator.initialize_runtime_process_state();
-        simulator.run_quantum_auto_discovery();
         simulator.refresh_multirate_scheduler();
         simulator.initialize_surrogate_pool_diagnostics();
+        simulator.run_quantum_auto_discovery();
         simulator
     }
 
@@ -543,7 +543,6 @@ impl super::WholeCellSimulator {
         if simulator.organism_species.is_empty() || simulator.organism_reactions.is_empty() {
             simulator.initialize_runtime_process_state();
         }
-        simulator.run_quantum_auto_discovery();
 
         // Preserve explicit multirate clocks when they are supplied with the program
         // spec. Unlike the descriptor-driven default path, these clocks may already
@@ -556,6 +555,7 @@ impl super::WholeCellSimulator {
             simulator.refresh_multirate_scheduler();
         }
         simulator.initialize_surrogate_pool_diagnostics();
+        simulator.run_quantum_auto_discovery();
         simulator
     }
 
@@ -717,4 +717,5 @@ impl super::WholeCellSimulator {
         simulator.restore_saved_state(saved)?;
         Ok(simulator)
     }
+
 }

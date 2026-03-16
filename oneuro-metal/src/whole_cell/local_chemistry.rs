@@ -213,6 +213,12 @@ impl WholeCellSimulator {
                 .sum::<f32>()
                 / count;
             self.last_md_probe = due_reports.last().map(|(_, report)| *report);
+
+            // Refine quantum auto-discovered corrections from probe thermodynamics.
+            let probe_copy = self.last_md_probe;
+            if let Some(probe) = probe_copy {
+                self.refine_quantum_corrections_from_probe(&probe);
+            }
         }
     }
 

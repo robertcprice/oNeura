@@ -105,6 +105,13 @@ pub fn odorant_channel_params(name: &str) -> Option<OdorantChannelParams> {
             molecular_weight: 44.01,
         });
     }
+    if key.contains("oxygen") || key == "o2" {
+        return Some(OdorantChannelParams {
+            diffusion_mm2_per_s: 21.8,  // O2 in air at 25°C
+            decay_per_s: 0.0,           // O2 doesn't decay
+            molecular_weight: 32.0,
+        });
+    }
     None
 }
 
@@ -477,6 +484,18 @@ mod tests {
         odorant_channel_params, step_molecular_atmosphere_fields, step_molecular_world_fields,
         FruitSourceState, OdorantChannelParams, PlantSourceState, WaterSourceState,
     };
+
+    #[test]
+    fn o2_channel_params_exist() {
+        let params = odorant_channel_params("oxygen");
+        assert!(params.is_some(), "oxygen channel params should exist");
+        let params = params.unwrap();
+        assert!(params.diffusion_mm2_per_s > 0.0);
+        assert_eq!(params.decay_per_s, 0.0); // O2 doesn't decay
+        assert!((params.molecular_weight - 32.0).abs() < 0.1);
+        // Also test "o2" alias
+        assert!(odorant_channel_params("o2").is_some());
+    }
 
     #[test]
     fn odorant_transport_stays_bounded() {

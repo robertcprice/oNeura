@@ -212,28 +212,49 @@ Current in-flight slice:
 
 ## Current Hard Limits
 
-1. The native ED kernel is still bounded to small active spaces.
+1. The native ED kernel is bounded by CIPSI_MAX_VARIATIONAL_DIM=8000 and
+   MAX_SPATIAL_ORBITALS=48 — large enough for realistic fragment chemistry
+   but not full-enzyme active sites.
 2. Runtime quantum regions are still bounded local fragments rather than large
    joint subsystem solves.
-3. Runtime microdomains are still template-seeded representatives in many
-   places, even though live state now controls their size and replenishment.
-4. Only selected chemistry hotspots are currently quantum-authoritative.
+3. Live-state quantum carving now modulates corrections from cell state every
+   100 steps, but the underlying fragment geometries still come from template
+   scaffolds where explicit atomistic ownership is absent.
+4. 12/17 reaction classes are now quantum-authoritative (up from 5/17), but
+   5 classes remain unclassified (BulkPoolDecay, BulkPoolSynthesis,
+   BulkPoolInterconversion, EnvironmentExchange, RegulatoryBinding).
 
 ## Next Execution Steps
 
-### Immediate
+### Completed (2026-03-16)
 
-1. Expand the native ED headroom or add a larger-fragment fallback path.
-2. Promote runtime site builders from representative templates to live explicit
+1. ✅ Expand the native ED headroom or add a larger-fragment fallback path.
+   - CIPSI_MAX_VARIATIONAL_DIM=8000, MAX_BASIS_SIZE=2048, MAX_SPATIAL_ORBITALS=48
+   - Per-kind fragment atom budgets lifted: 12/10/8/10/10 (was 8/6/4/6/4)
+2. ✅ Promote runtime site builders from representative templates to live explicit
    atomistic neighborhoods where the owning assembly/material state exists.
-3. Expand the supported quantum-authoritative reaction families.
+   - `refresh_quantum_corrections_from_live_state()` reads complex assembly counts,
+     subsystem activity scalars, and bulk energy charge to modulate discovered
+     quantum reaction correction factors every 100 steps.
+   - `refine_quantum_corrections_from_probe()` maps MD probe thermodynamics
+     (thermal stability, structural/electrostatic order) to 5 quantum efficiency
+     channels with α=0.12 exponential blending.
+3. ✅ Expand the supported quantum-authoritative reaction families.
+   - Auto-discovery broadened from 5/17 to 12/17 reaction classes.
+   - 9 quantum hotspot kinds (7 original + AtpBandElectronTransfer +
+     MembraneProteinInsertion).
+   - Surrogate pool diagnostics fast-path extended to include named_complexes
+     and complex_assembly inventory.
 
-### After That
+### Immediate (Next)
 
 4. Add broader Rust-native topology/parameter ingestion for real biomolecular
    subsystems.
 5. Add local MD under the same authority chain for structured atomistic
    neighborhoods.
+
+### After That
+
 6. Feed larger parts of whole-cell local chemistry directly from explicit
    molecule/material state.
 7. Continue removing authored scheduler/process surrogates where lower-scale

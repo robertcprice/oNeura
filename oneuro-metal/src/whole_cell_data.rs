@@ -2113,6 +2113,7 @@ fn interval_contains_bp(start_bp: u32, end_bp: u32, position_bp: u32) -> bool {
     position_bp >= start_bp && position_bp <= end_bp
 }
 
+#[allow(dead_code)]
 fn chromosome_domain_id_for_position(
     domains: &[WholeCellChromosomeDomainSpec],
     position_bp: u32,

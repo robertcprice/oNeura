@@ -358,7 +358,7 @@ pub fn evaluate_fitness(objective: FitnessObjective, snapshot: &TerrariumWorldSn
             snapshot.mean_microbes + snapshot.mean_symbionts
         }
         FitnessObjective::MaxFlyEcosystem => {
-            let energy_frac = snapshot.avg_fly_energy_charge.clamp(0.0, 1.0);
+            let energy_frac = (snapshot.avg_fly_energy / 100.0).clamp(0.0, 1.0);
             snapshot.flies as f32 * 10.0 + snapshot.fruits as f32 * 2.0 + energy_frac * 5.0
         }
     }
