@@ -2546,6 +2546,7 @@ impl TerrariumWorld {
             mean_nitrifier_vitality: 0.0,
             mean_nitrifier_dormancy: 0.0,
             mean_nitrifier_reserve: 0.0,
+            mean_nitrification_potential: 0.0,
             mean_denitrifiers: 0.0,
             mean_denitrifier_cells: 0.0,
             mean_denitrifier_packets: 0.0,
