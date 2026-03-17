@@ -18,6 +18,8 @@ pub(crate) struct SecondaryGenotypeRecord {
     pub(crate) genotype_divergence: f32,
     pub(crate) generation: f32,
     pub(crate) novelty: f32,
+    pub(crate) genotype_id: u32,
+    pub(crate) lineage_id: u32,
 }
 
 impl Default for SecondaryGenotypeRecord {
