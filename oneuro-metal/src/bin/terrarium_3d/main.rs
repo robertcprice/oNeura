@@ -290,10 +290,10 @@ fn main() -> ExitCode {
             // Fly trail particles for flying flies
             for (i, fly) in world.flies.iter().enumerate() {
                 let b = fly.body_state();
+                let gx = b.x.clamp(0.0, (gw - 1) as f32) as usize;
+                let gy = b.y.clamp(0.0, (gh - 1) as f32) as usize;
+                let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
                 if b.is_flying {
-                    let gx = b.x.clamp(0.0, (gw - 1) as f32) as usize;
-                    let gy = b.y.clamp(0.0, (gh - 1) as f32) as usize;
-                    let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
                     particle_sys.spawn_fly_trail(
                         b.x * CELL_SIZE, base_y + b.z * 0.4 + 0.05, b.y * CELL_SIZE,
                         b.heading, b.speed, frame_idx, i,

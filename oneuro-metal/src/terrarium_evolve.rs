@@ -3728,6 +3728,252 @@ pub fn ecosystem_dashboard(snapshots: &[TerrariumWorldSnapshot], width: usize) -
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Fitness Landscape Scanner
+// ---------------------------------------------------------------------------
+
+/// A 2D fitness landscape scan result.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FitnessLandscape {
+    pub x_param: String,
+    pub y_param: String,
+    pub x_values: Vec<f32>,
+    pub y_values: Vec<f32>,
+    pub fitness: Vec<f32>,
+    pub resolution: usize,
+    pub objective: String,
+    pub peak: (f32, f32, f32),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LandscapeAxis {
+    pub param_index: usize,
+    pub lo: f32,
+    pub hi: f32,
+}
+
+impl LandscapeAxis {
+    pub fn new(param_index: usize) -> Self {
+        Self { param_index, lo: 0.0, hi: 1.0 }
+    }
+}
+
+fn apply_param(genome: &mut WorldGenome, param_idx: usize, value: f32) {
+    fn denorm(value: f32, lo: f32, hi: f32) -> f32 { lo + value.clamp(0.0, 1.0) * (hi - lo) }
+    fn denorm_usize(value: f32, lo: usize, hi: usize) -> usize {
+        (lo as f32 + value.clamp(0.0, 1.0) * (hi - lo) as f32).round() as usize
+    }
+    match param_idx {
+        0 => genome.initial_proton_scale = denorm(value, GenomeRange::PROTON_SCALE.0, GenomeRange::PROTON_SCALE.1),
+        1 => genome.soil_temperature_c = denorm(value, GenomeRange::TEMPERATURE.0, GenomeRange::TEMPERATURE.1),
+        2 => genome.water_source_count = denorm_usize(value, GenomeRange::WATER_COUNT.0, GenomeRange::WATER_COUNT.1),
+        3 => genome.water_volume = denorm(value, GenomeRange::WATER_VOLUME.0, GenomeRange::WATER_VOLUME.1),
+        4 => genome.initial_moisture_scale = denorm(value, GenomeRange::MOISTURE_SCALE.0, GenomeRange::MOISTURE_SCALE.1),
+        5 => genome.plant_count = denorm_usize(value, GenomeRange::PLANT_COUNT.0, GenomeRange::PLANT_COUNT.1),
+        6 => genome.fruit_count = denorm_usize(value, GenomeRange::FRUIT_COUNT.0, GenomeRange::FRUIT_COUNT.1),
+        7 => genome.fly_count = denorm_usize(value, GenomeRange::FLY_COUNT.0, GenomeRange::FLY_COUNT.1),
+        8 => genome.microbe_cohort_count = denorm_usize(value, GenomeRange::MICROBE_COUNT.0, GenomeRange::MICROBE_COUNT.1),
+        9 => genome.fly_psc_scale = denorm(value, GenomeRange::PSC_SCALE.0, GenomeRange::PSC_SCALE.1),
+        10 => genome.fly_neural_steps = denorm(value, GenomeRange::NEURAL_STEPS.0 as f32, GenomeRange::NEURAL_STEPS.1 as f32) as u32,
+        11 => genome.respiration_vmax_scale = denorm(value, GenomeRange::VMAX_SCALE.0, GenomeRange::VMAX_SCALE.1),
+        12 => genome.nitrification_vmax_scale = denorm(value, GenomeRange::VMAX_SCALE.0, GenomeRange::VMAX_SCALE.1),
+        13 => genome.photosynthesis_vmax_scale = denorm(value, GenomeRange::VMAX_SCALE.0, GenomeRange::VMAX_SCALE.1),
+        14 => genome.mineralization_vmax_scale = denorm(value, GenomeRange::VMAX_SCALE.0, GenomeRange::VMAX_SCALE.1),
+        15 => genome.time_warp = denorm(value, GenomeRange::TIME_WARP.0, GenomeRange::TIME_WARP.1),
+        16 => genome.enzyme_probe_x = denorm(value, GenomeRange::ENZYME_POS.0, GenomeRange::ENZYME_POS.1),
+        17 => genome.enzyme_probe_y = denorm(value, GenomeRange::ENZYME_POS.0, GenomeRange::ENZYME_POS.1),
+        _ => {}
+    }
+}
+
+/// Scan a 2D slice of the fitness landscape.
+pub fn scan_fitness_landscape(
+    base: &WorldGenome,
+    x_axis: LandscapeAxis,
+    y_axis: LandscapeAxis,
+    objective: FitnessObjective,
+    resolution: usize,
+    frames: usize,
+) -> FitnessLandscape {
+    let res = resolution.max(2);
+    let mut x_values = Vec::with_capacity(res);
+    let mut y_values = Vec::with_capacity(res);
+    for i in 0..res {
+        let t = i as f32 / (res - 1) as f32;
+        x_values.push(x_axis.lo + t * (x_axis.hi - x_axis.lo));
+        y_values.push(y_axis.lo + t * (y_axis.hi - y_axis.lo));
+    }
+    let mut fitness = Vec::with_capacity(res * res);
+    let mut peak = (0.0f32, 0.0f32, f32::NEG_INFINITY);
+    for yi in 0..res {
+        for xi in 0..res {
+            let mut genome = base.clone();
+            apply_param(&mut genome, x_axis.param_index, x_values[xi]);
+            apply_param(&mut genome, y_axis.param_index, y_values[yi]);
+            let f = match genome.build_world_lite() {
+                Ok(mut world) => {
+                    for _ in 0..frames { let _ = world.step_frame(); }
+                    let snap = world.snapshot();
+                    evaluate_fitness(objective, &snap, &[])
+                }
+                Err(_) => 0.0,
+            };
+            fitness.push(f);
+            if f > peak.2 { peak = (x_values[xi], y_values[yi], f); }
+        }
+    }
+    const PARAM_NAMES: &[&str] = &[
+        "proton_scale", "temperature_c", "water_count", "water_volume",
+        "moisture_scale", "plant_count", "fruit_count", "fly_count",
+        "microbe_count", "psc_scale", "neural_steps",
+        "respiration_vmax", "nitrification_vmax", "photosynthesis_vmax",
+        "mineralization_vmax", "time_warp", "enzyme_probe_x", "enzyme_probe_y",
+    ];
+    let x_name = PARAM_NAMES.get(x_axis.param_index).unwrap_or(&"unknown").to_string();
+    let y_name = PARAM_NAMES.get(y_axis.param_index).unwrap_or(&"unknown").to_string();
+    FitnessLandscape {
+        x_param: x_name, y_param: y_name, x_values, y_values,
+        fitness, resolution: res, objective: format!("{:?}", objective), peak,
+    }
+}
+
+impl FitnessLandscape {
+    pub fn to_csv(&self) -> String {
+        let mut out = String::with_capacity(self.resolution * self.resolution * 30);
+        out.push_str(&format!("{},{},fitness\n", self.x_param, self.y_param));
+        for yi in 0..self.resolution {
+            for xi in 0..self.resolution {
+                out.push_str(&format!("{:.4},{:.4},{:.6}\n",
+                    self.x_values[xi], self.y_values[yi],
+                    self.fitness[yi * self.resolution + xi]));
+            }
+        }
+        out
+    }
+
+    pub fn to_ascii(&self, width: usize) -> String {
+        let blocks = [' ', '\u{2591}', '\u{2592}', '\u{2593}', '\u{2588}'];
+        let w = width.min(self.resolution);
+        let h = (w as f32 * 0.5) as usize;
+        let max_f = self.fitness.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let min_f = self.fitness.iter().cloned().fold(f32::INFINITY, f32::min);
+        let range = (max_f - min_f).max(1e-9);
+        let mut out = String::with_capacity(w * h * 4);
+        out.push_str(&format!("Fitness Landscape: {} vs {}\n", self.x_param, self.y_param));
+        out.push_str(&format!("Objective: {}  Peak: ({:.2}, {:.2}) = {:.4}\n", self.objective, self.peak.0, self.peak.1, self.peak.2));
+        out.push_str(&format!("Range: [{:.4}, {:.4}]\n\n", min_f, max_f));
+        for row in (0..h).rev() {
+            let fy = row as f32 / (h - 1).max(1) as f32;
+            let yi = (fy * (self.resolution - 1) as f32).round() as usize;
+            if row % 5 == 0 {
+                out.push_str(&format!("{:.2}|", self.y_values[yi.min(self.resolution - 1)]));
+            } else {
+                out.push_str("    |");
+            }
+            for col in 0..w {
+                let fx = col as f32 / (w - 1).max(1) as f32;
+                let xi = (fx * (self.resolution - 1) as f32).round() as usize;
+                let idx = yi.min(self.resolution - 1) * self.resolution + xi.min(self.resolution - 1);
+                let val = (self.fitness[idx] - min_f) / range;
+                let bi = (val * (blocks.len() - 1) as f32).round() as usize;
+                out.push(blocks[bi.min(blocks.len() - 1)]);
+            }
+            out.push('\n');
+        }
+        out.push_str("    +");
+        for _ in 0..w { out.push('-'); }
+        out.push('\n');
+        out.push_str(&format!("     {} ->\n", self.x_param));
+        out
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// CSV / Prometheus Export
+// ---------------------------------------------------------------------------
+
+/// Parameter names for genome fields (matches normalized_params() order).
+pub const GENOME_PARAM_NAMES: &[&str] = &[
+    "proton_scale", "temperature_c", "water_count", "water_volume",
+    "moisture_scale", "plant_count", "fruit_count", "fly_count",
+    "microbe_count", "psc_scale", "neural_steps", "respiration_vmax",
+    "nitrification_vmax", "photosynthesis_vmax", "mineralization_vmax",
+    "time_warp", "enzyme_probe_x", "enzyme_probe_y",
+];
+
+/// Export telemetry records as CSV with header row.
+pub fn telemetry_to_csv(records: &[GenerationTelemetry]) -> String {
+    let mut out = String::with_capacity(records.len() * 200);
+    out.push_str("generation,best_fitness,mean_fitness,worst_fitness,population_diversity,elapsed_ms,mode");
+    for name in GENOME_PARAM_NAMES {
+        out.push(',');
+        out.push_str(name);
+    }
+    out.push('\n');
+    for r in records {
+        out.push_str(&format!(
+            "{},{:.6},{:.6},{:.6},{:.6},{:.2},{}",
+            r.generation, r.best_fitness, r.mean_fitness, r.worst_fitness,
+            r.population_diversity, r.elapsed_ms,
+            r.mode.as_deref().unwrap_or(""),
+        ));
+        for (i, _name) in GENOME_PARAM_NAMES.iter().enumerate() {
+            let val = r.best_genome_params.get(i).copied().unwrap_or(0.0);
+            out.push_str(&format!(",{:.4}", val));
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Export telemetry records in Prometheus text exposition format.
+pub fn telemetry_to_prometheus(records: &[GenerationTelemetry], job: &str) -> String {
+    let mut out = String::with_capacity(records.len() * 500);
+    out.push_str("# HELP terrarium_best_fitness Best fitness per generation\n");
+    out.push_str("# TYPE terrarium_best_fitness gauge\n");
+    for r in records {
+        out.push_str(&format!(
+            "terrarium_best_fitness{{job=\"{}\",generation=\"{}\"}} {:.6}\n",
+            job, r.generation, r.best_fitness
+        ));
+    }
+    out.push_str("# HELP terrarium_mean_fitness Mean fitness per generation\n");
+    out.push_str("# TYPE terrarium_mean_fitness gauge\n");
+    for r in records {
+        out.push_str(&format!(
+            "terrarium_mean_fitness{{job=\"{}\",generation=\"{}\"}} {:.6}\n",
+            job, r.generation, r.mean_fitness
+        ));
+    }
+    out.push_str("# HELP terrarium_worst_fitness Worst fitness per generation\n");
+    out.push_str("# TYPE terrarium_worst_fitness gauge\n");
+    for r in records {
+        out.push_str(&format!(
+            "terrarium_worst_fitness{{job=\"{}\",generation=\"{}\"}} {:.6}\n",
+            job, r.generation, r.worst_fitness
+        ));
+    }
+    out.push_str("# HELP terrarium_population_diversity Population diversity per generation\n");
+    out.push_str("# TYPE terrarium_population_diversity gauge\n");
+    for r in records {
+        out.push_str(&format!(
+            "terrarium_population_diversity{{job=\"{}\",generation=\"{}\"}} {:.6}\n",
+            job, r.generation, r.population_diversity
+        ));
+    }
+    out.push_str("# HELP terrarium_elapsed_ms Wall-clock milliseconds per generation\n");
+    out.push_str("# TYPE terrarium_elapsed_ms gauge\n");
+    for r in records {
+        out.push_str(&format!(
+            "terrarium_elapsed_ms{{job=\"{}\",generation=\"{}\"}} {:.2}\n",
+            job, r.generation, r.elapsed_ms
+        ));
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -4807,5 +5053,39 @@ mod tests {
     }
 
 
+
+
+    #[test]
+    fn landscape_scan_produces_grid() {
+        let base = WorldGenome::default_with_seed(42);
+        let x_axis = LandscapeAxis::new(1);
+        let y_axis = LandscapeAxis::new(4);
+        let landscape = scan_fitness_landscape(
+            &base, x_axis, y_axis,
+            FitnessObjective::MaxBiomass, 3, 5,
+        );
+        assert_eq!(landscape.resolution, 3);
+        assert_eq!(landscape.fitness.len(), 9);
+        assert_eq!(landscape.x_values.len(), 3);
+        assert_eq!(landscape.y_values.len(), 3);
+        assert!(landscape.peak.2 >= 0.0);
+        let csv = landscape.to_csv();
+        assert!(csv.contains("temperature_c"));
+        assert!(csv.contains("moisture_scale"));
+        let ascii = landscape.to_ascii(40);
+        assert!(ascii.contains("Fitness Landscape"));
+        assert!(ascii.contains("Peak"));
+    }
+
+    #[test]
+    fn landscape_apply_param_roundtrip() {
+        let mut genome = WorldGenome::default_with_seed(1);
+        apply_param(&mut genome, 1, 0.0);
+        assert!((genome.soil_temperature_c - 10.0).abs() < 0.1);
+        apply_param(&mut genome, 1, 1.0);
+        assert!((genome.soil_temperature_c - 40.0).abs() < 0.1);
+        apply_param(&mut genome, 5, 0.5);
+        assert!(genome.plant_count >= 7 && genome.plant_count <= 11);
+    }
 
 }

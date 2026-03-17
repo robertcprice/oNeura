@@ -36,10 +36,10 @@ Extract the terrarium simulation into a standalone `oneura-terrarium` crate that
 | `terrarium_world/packet.rs` | 356 | Unconditional | GenotypePacketPopulation |
 | `terrarium_world/calibrator.rs` | 242 | Unconditional | MD→reaction rate bridge |
 | `terrarium_world/flora.rs` | 761 | Unconditional | Advanced plant stepping |
-| `terrarium_world/soil.rs` | 799 | Feature-gated | Needs guild infrastructure |
-| `terrarium_world/biomechanics.rs` | 561 | Feature-gated | Wind/pose biomechanics |
-| `terrarium_world/snapshot.rs` | 1284 | Feature-gated | Full snapshot with guilds |
-| `terrarium_world/explicit_microbe_impl.rs` | 2107 | Feature-gated | Whole-cell integration |
+| `terrarium_world/soil.rs` | 799 | **Unconditional** | Guild-aware soil stepping |
+| `terrarium_world/biomechanics.rs` | ~14 | **Unconditional** | Wind/pose biomechanics (stubbed) |
+| `terrarium_world/snapshot.rs` | 1285 | **Unconditional** | Full snapshot with guilds |
+| `terrarium_world/explicit_microbe_impl.rs` | ~220 | **Unconditional** | Whole-cell integration (stubbed) |
 
 #### Evolution Engine
 | Module | Lines | Dependencies | Notes |
@@ -51,18 +51,63 @@ Extract the terrarium simulation into a standalone `oneura-terrarium` crate that
 |--------|-------|-------------|-------|
 | `stochastic_expression.rs` | 400 | - | Gillespie tau-leaping |
 
+#### Whole-Cell & Quantum
+| Module | Lines | Dependencies | Notes |
+|--------|-------|-------------|-------|
+| `whole_cell.rs` + submodules (10) | ~19,780 | whole_cell_data | Full E. coli simulator |
+| `whole_cell_data.rs` | 11,445 | - | Biological constants + types |
+| `whole_cell_submodels.rs` | 5,300 | whole_cell_data | Sub-cellular models |
+| `whole_cell_quantum_runtime.rs` | 8,052 | subatomic_quantum | Quantum chemistry bridge |
+| `subatomic_quantum.rs` | 2,680 | - | Hartree-Fock / DFT SCF solver |
+| `atomistic_chemistry.rs` | 900+ | - | Molecular topology |
+| `atomistic_topology.rs` | ~300 | atomistic_chemistry | Topology utilities |
+| `structure_ingest.rs` | 1,200+ | atomistic_chemistry | PDB/mmCIF parser |
+| `molecular_dynamics.rs` | ~800 | atomistic_chemistry | Verlet integrator + TIP3P |
+
+#### Advanced Biology
+| Module | Lines | Dependencies | Notes |
+|--------|-------|-------------|-------|
+| `substrate_coupling.rs` | 611 | soil_broad | Substrate ↔ genotype coupling |
+| `ecology_events.rs` | ~300 | - | Ecology event types |
+| `ecology_fields.rs` | ~250 | - | Ecology field helpers |
+| `plant_cellular.rs` | ~400 | - | Plant tissue metabolism |
+| `plant_organism.rs` | ~350 | plant_cellular | Plant physiology |
+| `drug_discovery.rs` | ~600 | - | Persister cell + drug protocols |
+| `enzyme_engineering.rs` | ~500 | - | Directed enzyme evolution |
+| `enzyme_probes.rs` | ~400 | enzyme_engineering | Fluorescent probes |
+| `probe_coupling.rs` | ~300 | enzyme_probes | Probe ↔ substrate coupling |
+| `enzyme_evolution.rs` | ~400 | enzyme_engineering | Enzyme fitness landscapes |
+| `bioremediation.rs` | ~500 | enzyme_engineering | Bioremediation simulation |
+| `metabolic_flux.rs` | 1,725 | whole_cell_data | Flux balance analysis |
+| `phylogenetic_tracker.rs` | ~300 | - | Lineage tracking |
+| `climate_scenarios.rs` | ~400 | - | Climate forcing presets |
+| `horizontal_gene_transfer.rs` | 1,513 | - | HGT / conjugation |
+| `biofilm_dynamics.rs` | 1,456 | - | Biofilm + quorum sensing |
+| `guild_latent.rs` | 463 | - | Latent guild bank evolution |
+| `microbiome_assembly.rs` | 1,642 | - | Community assembly rules |
+| `resistance_evolution.rs` | 1,754 | drug_discovery | AMR evolution |
+| `eco_evolutionary_feedback.rs` | 1,686 | - | Eco-evo coupling |
+| `nutrient_cycling.rs` | 1,414 | - | Biogeochemical cycling |
+| `population_genetics.rs` | 1,514 | - | Pop-gen models |
+| `ecosystem_integration.rs` | ~800 | terrarium_world | Integration scenarios |
+| `molecular_atmosphere.rs` | ~300 | - | Gas exchange |
+
+**Estimated total**: ~85,000 lines (59% of codebase)
+
 ### Stays in `oneuro-metal`
 
 | Module | Reason |
 |--------|--------|
-| `whole_cell.rs` + submodules | Heavy GPU/Metal dependency |
-| `whole_cell_quantum_runtime.rs` | Quantum chemistry pipeline |
-| `atomistic_chemistry.rs` | PDB/mmCIF parsing, molecule graph |
-| `structure_ingest.rs` | Biomolecular file parsing |
+| `neuron_arrays.rs`, `synapse_arrays.rs` | Neural simulation core |
+| `spike_propagation.rs`, `stdp.rs` | Neural spike routing + plasticity |
+| `brain_regions.rs`, `consciousness.rs` | Cortical models + IIT/GNW |
+| `network.rs`, `retina.rs` | Network topology + visual processing |
+| `doom_brain.rs`, `dishbrain_pong.rs` | Embodied agents |
 | `gpu/` directory | Metal compute shaders |
 | `terrarium_substrate.metal` | GPU substrate chemistry |
-| `neural.rs`, `neural_*.rs` | Neural simulation |
-| All render modules | Bevy/minifb rendering pipeline |
+| `python.rs` | PyO3 bindings (bridges both crates) |
+| `constants.rs`, `types.rs` | Shared (re-exported by both) |
+| Render modules (4 files) | Need `terrarium_render` infrastructure |
 
 ### Shared Interface (trait-based)
 
@@ -119,14 +164,14 @@ oneuro-metal (existing)
 |------|-----------|
 | Circular dependency | WholeCellBridge trait breaks the cycle |
 | Borrow checker issues in split modules | Index-based access patterns already used |
-| Test breakage | Run full 211-test regression after each phase |
+| Test breakage | Run full 216-test regression after each phase |
 | Build time increase | Workspace-level caching, shared target dir |
 | GPU substrate sync | Keep terrarium_substrate.metal in oneuro-metal |
 
 ## Success Criteria
 
 - [ ] `oneura-terrarium` compiles standalone with 0 errors
-- [ ] All 211 regression tests pass
+- [ ] All 216+ regression tests pass
 - [ ] `terrarium_evolve` binary builds from oneura-terrarium
 - [ ] `oneuro-metal` depends on oneura-terrarium (no duplication)
 - [ ] No GPU/Metal/Bevy dependencies in oneura-terrarium

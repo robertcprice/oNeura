@@ -124,6 +124,8 @@ pub use terrarium_evolve::{
     CoevolutionMode, CoevolutionResult, SpeciesGenome,
     GeneRegulatoryNetwork, GRNPhenotype, GRNEvolutionResult,
     EcosystemHealthReport, WorldExport, WorldExportMetadata,
+    FitnessLandscape, LandscapeAxis, scan_fitness_landscape,
+    telemetry_to_csv, telemetry_to_prometheus, GENOME_PARAM_NAMES,
 };
 
 // ===== High-level orchestration =====
