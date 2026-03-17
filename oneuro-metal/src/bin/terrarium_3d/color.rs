@@ -13,6 +13,26 @@ pub enum OverlayMode {
     Elevation,        // 6 — topographic elevation bands
     SubstrateO2,      // 7 — real O2 concentration from substrate grid
     SubstrateGlucose, // 8 — real glucose concentration from substrate grid
+    SubstrateCO2,     // 9 — real CO2 concentration from substrate grid
+    SubstrateNitrogen,// 0 — real nitrogen concentration from substrate grid
+}
+
+impl OverlayMode {
+    /// Cycle to next overlay mode (backtick key).
+    pub fn next(&self) -> Self {
+        match self {
+            OverlayMode::Default => OverlayMode::Moisture,
+            OverlayMode::Moisture => OverlayMode::Temperature,
+            OverlayMode::Temperature => OverlayMode::Organic,
+            OverlayMode::Organic => OverlayMode::Chemistry,
+            OverlayMode::Chemistry => OverlayMode::Elevation,
+            OverlayMode::Elevation => OverlayMode::SubstrateO2,
+            OverlayMode::SubstrateO2 => OverlayMode::SubstrateGlucose,
+            OverlayMode::SubstrateGlucose => OverlayMode::SubstrateCO2,
+            OverlayMode::SubstrateCO2 => OverlayMode::SubstrateNitrogen,
+            OverlayMode::SubstrateNitrogen => OverlayMode::Default,
+        }
+    }
 }
 
 impl OverlayMode {
@@ -26,6 +46,8 @@ impl OverlayMode {
             OverlayMode::Elevation => "ELEVATION",
             OverlayMode::SubstrateO2 => "SUBSTRATE O2",
             OverlayMode::SubstrateGlucose => "SUBSTRATE GLUCOSE",
+            OverlayMode::SubstrateCO2 => "SUBSTRATE CO2",
+            OverlayMode::SubstrateNitrogen => "SUBSTRATE N",
         }
     }
 }
@@ -147,5 +169,25 @@ pub fn substrate_glucose_v3(gluc: f32) -> V3 {
         lerp3([0.2, 0.18, 0.1], [0.8, 0.6, 0.1], t * 2.0)
     } else {
         lerp3([0.8, 0.6, 0.1], [1.0, 0.4, 0.0], (t - 0.5) * 2.0)
+    }
+}
+
+/// CO2 overlay: green (low=0) -> yellow -> red (high=1).
+pub fn substrate_co2_v3(co2: f32) -> V3 {
+    let t = co2.clamp(0.0, 1.0);
+    if t < 0.5 {
+        lerp3([0.1, 0.3, 0.1], [0.7, 0.7, 0.1], t * 2.0)
+    } else {
+        lerp3([0.7, 0.7, 0.1], [0.9, 0.2, 0.1], (t - 0.5) * 2.0)
+    }
+}
+
+/// Nitrogen overlay: brown (depleted=0) -> lime green (rich=1).
+pub fn substrate_nitrogen_v3(n: f32) -> V3 {
+    let t = n.clamp(0.0, 1.0);
+    if t < 0.5 {
+        lerp3([0.25, 0.15, 0.08], [0.4, 0.5, 0.15], t * 2.0)
+    } else {
+        lerp3([0.4, 0.5, 0.15], [0.3, 0.85, 0.2], (t - 0.5) * 2.0)
     }
 }

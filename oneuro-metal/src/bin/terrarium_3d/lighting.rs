@@ -63,6 +63,33 @@ pub fn sky_gradient(light: f32) -> (V3, V3) {
     }
 }
 
+/// Moon disc position in screen-space for rendering (azimuth, elevation in radians).
+/// The moon rises opposite the sun: when light is low (night), moon is high.
+pub fn moon_position(lunar_phase: f32, light: f32) -> (f32, f32) {
+    let night = (1.0 - light * 2.0).clamp(0.0, 1.0);
+    // Moon azimuth shifts with phase (full moon opposite sun)
+    let azimuth = std::f32::consts::PI * (0.5 + lunar_phase);
+    // Elevation peaks at midnight
+    let elevation = night * std::f32::consts::FRAC_PI_4 * 1.2;
+    (azimuth, elevation)
+}
+
+/// Generate star positions (deterministic from seed). Returns Vec of (x_norm, y_norm, brightness).
+pub fn generate_stars(count: usize, seed: u32) -> Vec<(f32, f32, f32)> {
+    let mut stars = Vec::with_capacity(count);
+    let mut hash = seed;
+    for _ in 0..count {
+        hash = hash.wrapping_mul(1103515245).wrapping_add(12345);
+        let x = (hash >> 16) as f32 / 65535.0;
+        hash = hash.wrapping_mul(1103515245).wrapping_add(12345);
+        let y = ((hash >> 16) as f32 / 65535.0) * 0.6 + 0.1; // upper 70% of sky
+        hash = hash.wrapping_mul(1103515245).wrapping_add(12345);
+        let brightness = ((hash >> 16) as f32 / 65535.0).powf(2.0); // most stars dim
+        stars.push((x, y, brightness));
+    }
+    stars
+}
+
 pub fn sky_color_at(light: f32, screen_y: f32) -> u32 {
     let sun_height = (light * std::f32::consts::PI).sin().max(0.0);
     let day_top     = [0.30, 0.50, 0.85];

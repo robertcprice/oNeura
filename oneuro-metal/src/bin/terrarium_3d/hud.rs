@@ -8,6 +8,23 @@ use super::mesh::EntityTag;
 use super::selection::Selection;
 use super::{VIEWPORT_W, PANEL_W, TOTAL_W, TOTAL_H, CELL_SIZE};
 
+/// ASCII art representation of the current moon phase.
+/// Returns a 4-character string approximating the illuminated portion.
+fn moon_ascii(phase: f32) -> &'static str {
+    let p = phase.clamp(0.0, 1.0);
+    match () {
+        _ if p < 0.0625  => "(  )",
+        _ if p < 0.1875  => "( |)",
+        _ if p < 0.3125  => "( ))",
+        _ if p < 0.4375  => "(|))",
+        _ if p < 0.5625  => "(())",
+        _ if p < 0.6875  => "((|)",
+        _ if p < 0.8125  => "(( )",
+        _ if p < 0.9375  => "(| )",
+        _                 => "(  )",
+    }
+}
+
 pub fn draw_rect(buffer: &mut [u32], bw: usize, bh: usize, x: usize, y: usize, w: usize, h: usize, color: u32) {
     let x1 = (x + w).min(bw);
     let y1 = (y + h).min(bh);
@@ -70,11 +87,50 @@ pub fn draw_panel(
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "LIGHT", rgb(210, 214, 220)); y += 10;
     draw_bar(buffer, TOTAL_W, TOTAL_H, x, y, PANEL_W - 28, 8, snapshot.light, rgb(230, 200, 88)); y += 18;
 
-    // Moon phase display (emoji + name, moonlight bar, tidal factor)
-    let moon_label = format!("{} {}", world.moon_phase_emoji(), world.moon_phase_name());
-    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &moon_label, rgb(200, 210, 230)); y += 12;
-    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &format!("moon  {:.0}%", snapshot.moonlight * 100.0), rgb(180, 190, 210)); y += 11;
-    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &format!("tide   {:.0}%", snapshot.tidal_moisture_factor * 100.0), rgb(150, 180, 210)); y += 14;
+    // Moon phase display — ASCII art + phase name + moonlight bar
+    let moon_art = moon_ascii(snapshot.lunar_phase);
+    let moon_name = world.moon_phase_name();
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &format!("Moon: {} {}", moon_art, moon_name), rgb(200, 210, 230)); y += 12;
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "MOONLIGHT", rgb(180, 190, 210)); y += 10;
+    draw_bar(buffer, TOTAL_W, TOTAL_H, x, y, PANEL_W - 28, 6, snapshot.moonlight, rgb(160, 175, 220)); y += 14;
+
+    // Tidal moisture indicator — directional arrows showing spring/neap tide
+    let tf = snapshot.tidal_moisture_factor;
+    let tide_label = if tf >= 1.005 {
+        let arrows = match () {
+            _ if tf > 1.10 => "====>",
+            _ if tf > 1.05 => "===>",
+            _              => "==>",
+        };
+        format!("Tide: {} {:.2}", arrows, tf)
+    } else if tf <= 0.995 {
+        let arrows = match () {
+            _ if tf < 0.90 => "<====",
+            _ if tf < 0.95 => "<===",
+            _              => "<==",
+        };
+        format!("Tide: {} {:.2}", arrows, tf)
+    } else {
+        format!("Tide: ---- {:.2}", tf)
+    };
+    let tide_color = if tf > 1.05 { rgb(100, 180, 240) } else if tf < 0.95 { rgb(180, 140, 100) } else { rgb(150, 160, 170) };
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &tide_label, tide_color); y += 14;
+
+    // Ecosystem energy budget — photosynthesis vs respiration carbon balance
+    let photosynthesis = snapshot.mean_atmospheric_o2 * snapshot.light;
+    let respiration = snapshot.mean_atmospheric_co2 * (1.0 + snapshot.flies as f32 * 0.01);
+    let net_carbon = photosynthesis - respiration;
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "ENERGY BUDGET", rgb(210, 214, 220)); y += 11;
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y,
+        &format!("Photo {:.3} | Resp {:.3}", photosynthesis, respiration),
+        rgb(184, 190, 198)); y += 11;
+    let net_str = if net_carbon >= 0.0 {
+        format!("Net  +{:.4} capture", net_carbon)
+    } else {
+        format!("Net  {:.4} emission", net_carbon)
+    };
+    let net_color = if net_carbon >= 0.0 { rgb(80, 200, 100) } else { rgb(230, 80, 70) };
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &net_str, net_color); y += 14;
 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "HUMIDITY", rgb(210, 214, 220)); y += 10;
     draw_bar(buffer, TOTAL_W, TOTAL_H, x, y, PANEL_W - 28, 8, snapshot.humidity, rgb(80, 156, 228)); y += 18;
@@ -147,13 +203,15 @@ pub fn draw_panel(
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &format!("dist {:.1}", cam.distance), rgb(160, 166, 174));
 
     // Controls legend at bottom
-    let cy = TOTAL_H.saturating_sub(110);
+    let cy = TOTAL_H.saturating_sub(130);
     for (i, line) in [
         "L-drag  rotate", "R-drag  pan", "scroll  zoom", "click   select",
         "Tab     cycle", "WASD    pan", "L       lighting", "F       follow",
-        "T       orbit", "[/]     speed", "1-8     overlay", "E       export CSV",
-        "V       record", "space   pause", "F12     screenshot",
-        "R       reset cam", "esc     quit",
+        "T       orbit", "[/]     speed", "1-0     overlay", "`       cycle ovl",
+        "E       export CSV", "J       export JSON", "M       metrics",
+        "N       notebook", "V       record", "G       present",
+        "space   pause", "F12     screenshot", "R       reset cam",
+        "esc     quit",
     ].iter().enumerate() {
         draw_text(buffer, TOTAL_W, TOTAL_H, x, cy + i * 10, line, rgb(128, 134, 142));
     }
@@ -268,7 +326,7 @@ fn draw_minimap(buffer: &mut [u32], world: &TerrariumWorld, x: usize, y: usize) 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y + map_h + 2, "MINIMAP", rgb(130, 136, 144));
 }
 
-pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool, overlay: &OverlayMode, recording: bool, sim_ms: f32, render_ms: f32) {
+pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool, overlay: &OverlayMode, recording: bool, sim_ms: f32, render_ms: f32, presentation: bool) {
     let label = if realistic { "3D REALISTIC" } else { "3D FLAT" };
     draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 4, label.len() * 8 + 8, 14, rgb(10, 12, 16));
     draw_text(buffer, TOTAL_W, TOTAL_H, 8, 7, label, if realistic { rgb(230, 200, 88) } else { rgb(160, 160, 170) });
@@ -318,6 +376,13 @@ pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_ms
         let rw = rmsg.len() * 8 + 8;
         draw_rect(buffer, TOTAL_W, TOTAL_H, ix, 40, rw, 14, rgb(80, 10, 10));
         draw_text(buffer, TOTAL_W, TOTAL_H, ix + 4, 43, rmsg, rgb(255, 60, 60));
+        ix += rw + 4;
+    }
+    if presentation {
+        let pmsg = "PRESENT";
+        let pw = pmsg.len() * 8 + 8;
+        draw_rect(buffer, TOTAL_W, TOTAL_H, ix, 40, pw, 14, rgb(10, 30, 60));
+        draw_text(buffer, TOTAL_W, TOTAL_H, ix + 4, 43, pmsg, rgb(100, 180, 255));
     }
     if paused {
         let msg = "PAUSED";

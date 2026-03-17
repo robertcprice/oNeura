@@ -1,9 +1,10 @@
 //! Core software rasterizer — barycentric triangle fill with depth buffer, entity tags, and SSAO.
+//! Multi-threaded using rayon for parallel post-processing passes.
 
-use oneuro_metal::TerrariumWorld;
+use rayon::prelude::*;
 use super::math::*;
 use super::color::{rgb_f, u32_to_v3, blend};
-use super::lighting::{sky_color_at, sky_gradient};
+use super::lighting::{sky_color_at, sky_gradient, moon_position};
 use super::mesh::{Triangle, EntityTag};
 use super::{NEAR, HEIGHT_SCALE, FOG_NEAR, FOG_FAR, CELL_SIZE, SHADOW_STEPS, SHADOW_STEP_SIZE, SHADOW_DARKEN};
 
@@ -29,22 +30,35 @@ impl Rasterizer {
         }
     }
 
+    /// Clear all buffers with sky gradient — multi-threaded using rayon chunks.
     pub fn clear(&mut self, light: f32) {
         let (horizon, zenith) = sky_gradient(light);
-        for y in 0..self.height {
-            let t = y as f32 / self.height as f32;
-            let sky_c = lerp3(horizon, zenith, t);
-            let sky = rgb_f(sky_c[0], sky_c[1], sky_c[2]);
-            let row_start = y * self.width;
-            for x in 0..self.width {
-                let idx = row_start + x;
-                self.color_buf[idx] = sky;
-                self.z_buf[idx] = f32::MAX;
-                self.world_pos_buf[idx] = [0.0; 3];
-                self.world_normal_buf[idx] = [0.0, 1.0, 0.0];
-                self.entity_tag_buf[idx] = EntityTag::None;
-            }
-        }
+        let width = self.width;
+        let height = self.height;
+
+        // Pre-compute sky colors for each row
+        let row_sky_colors: Vec<u32> = (0..height)
+            .map(|y| {
+                let t = y as f32 / height as f32;
+                let sky_c = lerp3(horizon, zenith, t);
+                rgb_f(sky_c[0], sky_c[1], sky_c[2])
+            })
+            .collect();
+
+        // Clear color buffer in parallel rows
+        self.color_buf
+            .par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(y, row)| {
+                let sky = row_sky_colors[y];
+                row.fill(sky);
+            });
+
+        // Clear other buffers in parallel
+        self.z_buf.par_iter_mut().for_each(|z| *z = f32::MAX);
+        self.world_pos_buf.par_iter_mut().for_each(|p| *p = [0.0; 3]);
+        self.world_normal_buf.par_iter_mut().for_each(|n| *n = [0.0, 1.0, 0.0]);
+        self.entity_tag_buf.par_iter_mut().for_each(|t| *t = EntityTag::None);
     }
 
     /// Return the entity tag at the given screen pixel, for click-to-select.
@@ -136,27 +150,38 @@ impl Rasterizer {
     }
 
     /// Screen-space ambient occlusion — samples depth neighbors to darken crevices and contact areas.
+    /// Multi-threaded using rayon.
     pub fn ssao_pass(&mut self) {
         let offsets: [(i32, i32); 8] = [
             (-3, 0), (3, 0), (0, -3), (0, 3),
             (-2, -2), (2, -2), (-2, 2), (2, 2),
         ];
-        // Compute AO factor per pixel
         let npx = self.width * self.height;
-        let mut ao_buf = vec![0.0f32; npx];
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let idx = y * self.width + x;
-                if self.z_buf[idx] >= f32::MAX * 0.9 { continue; }
-                let center_z = self.z_buf[idx];
+        let width = self.width;
+        let height = self.height;
+
+        // Extract z_buf reference before parallel closure
+        let z_buf = &self.z_buf;
+
+        // Compute AO factors in parallel
+        let ao_buf: Vec<f32> = (0..npx)
+            .into_par_iter()
+            .map(|idx| {
+                let z_val = z_buf[idx];
+                if z_val >= f32::MAX * 0.9 {
+                    return 0.0;
+                }
+                let y = idx / width;
+                let x = idx % width;
+                let center_z = z_val;
                 let mut occlusion = 0.0f32;
                 let mut samples = 0.0f32;
                 for &(dx, dy) in &offsets {
                     let nx = x as i32 + dx;
                     let ny = y as i32 + dy;
-                    if nx >= 0 && nx < self.width as i32 && ny >= 0 && ny < self.height as i32 {
-                        let ni = ny as usize * self.width + nx as usize;
-                        let nz = self.z_buf[ni];
+                    if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
+                        let ni = ny as usize * width + nx as usize;
+                        let nz = z_buf[ni];
                         if nz < f32::MAX * 0.9 {
                             let diff = center_z - nz;
                             if diff > 0.0005 && diff < 0.06 {
@@ -167,68 +192,194 @@ impl Rasterizer {
                     }
                 }
                 if samples > 0.0 {
-                    ao_buf[idx] = (occlusion / samples).clamp(0.0, 0.55);
+                    (occlusion / samples).clamp(0.0, 0.55)
+                } else {
+                    0.0
                 }
-            }
-        }
-        // Apply AO darkening
-        for idx in 0..npx {
-            if ao_buf[idx] > 0.001 {
-                let c = u32_to_v3(self.color_buf[idx]);
-                let factor = 1.0 - ao_buf[idx];
-                self.color_buf[idx] = rgb_f(c[0] * factor, c[1] * factor, c[2] * factor);
-            }
-        }
+            })
+            .collect();
+
+        // Apply AO darkening in parallel
+        self.color_buf
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(idx, pixel)| {
+                let ao = ao_buf[idx];
+                if ao > 0.001 {
+                    let c = u32_to_v3(*pixel);
+                    let factor = 1.0 - ao;
+                    *pixel = rgb_f(c[0] * factor, c[1] * factor, c[2] * factor);
+                }
+            });
     }
 
-    pub fn shadow_pass(&mut self, world: &TerrariumWorld, sun_dir: V3) {
-        let gw = world.config.width;
-        let gh = world.config.height;
-        let moisture = world.moisture_field();
-        let terrain_y_at = |wx: f32, wz: f32| -> f32 {
-            let gx = (wx / CELL_SIZE).clamp(0.0, (gw - 1) as f32);
-            let gz = (wz / CELL_SIZE).clamp(0.0, (gh - 1) as f32);
-            let x0 = gx.floor() as usize;
-            let z0 = gz.floor() as usize;
-            let x1 = (x0 + 1).min(gw - 1);
-            let z1 = (z0 + 1).min(gh - 1);
-            let fx = gx - x0 as f32;
-            let fz = gz - z0 as f32;
-            let m00 = moisture.get(z0 * gw + x0).copied().unwrap_or(0.3);
-            let m10 = moisture.get(z0 * gw + x1).copied().unwrap_or(0.3);
-            let m01 = moisture.get(z1 * gw + x0).copied().unwrap_or(0.3);
-            let m11 = moisture.get(z1 * gw + x1).copied().unwrap_or(0.3);
-            (m00 * (1.0-fx)*(1.0-fz) + m10 * fx*(1.0-fz) + m01 * (1.0-fx)*fz + m11 * fx*fz) * HEIGHT_SCALE
-        };
-        for idx in 0..(self.width * self.height) {
-            if self.z_buf[idx] >= f32::MAX * 0.9 { continue; }
-            let wp = self.world_pos_buf[idx];
-            let wn = self.world_normal_buf[idx];
+    /// Shadow raycasting — parallel per-pixel heightfield march with rayon.
+    pub fn shadow_pass(&mut self, moisture: &[f32], gw: usize, gh: usize, sun_dir: V3) {
+        let width = self.width;
+        let z_buf = &self.z_buf;
+        let world_pos = &self.world_pos_buf;
+        let world_normal = &self.world_normal_buf;
+        let npx = width * self.height;
+
+        // Compute shadow flags in parallel
+        let shadow_flags: Vec<bool> = (0..npx).into_par_iter().map(|idx| {
+            if z_buf[idx] >= f32::MAX * 0.9 { return false; }
+            let wp = world_pos[idx];
+            let wn = world_normal[idx];
             let origin = add3(wp, scale3(wn, 0.05));
-            let mut in_shadow = false;
             for step in 1..=SHADOW_STEPS {
                 let t = step as f32 * SHADOW_STEP_SIZE;
                 let sample = add3(origin, scale3(sun_dir, t));
-                if sample[1] < terrain_y_at(sample[0], sample[2]) { in_shadow = true; break; }
-                if sample[1] > HEIGHT_SCALE * 1.5 + 1.0 { break; }
+                let gx_f = (sample[0] / CELL_SIZE).clamp(0.0, (gw - 1) as f32);
+                let gz_f = (sample[2] / CELL_SIZE).clamp(0.0, (gh - 1) as f32);
+                let x0 = gx_f.floor() as usize;
+                let z0 = gz_f.floor() as usize;
+                let x1 = (x0 + 1).min(gw - 1);
+                let z1 = (z0 + 1).min(gh - 1);
+                let fx = gx_f - x0 as f32;
+                let fz = gz_f - z0 as f32;
+                let m00 = moisture.get(z0 * gw + x0).copied().unwrap_or(0.3);
+                let m10 = moisture.get(z0 * gw + x1).copied().unwrap_or(0.3);
+                let m01 = moisture.get(z1 * gw + x0).copied().unwrap_or(0.3);
+                let m11 = moisture.get(z1 * gw + x1).copied().unwrap_or(0.3);
+                let terrain_h = (m00*(1.0-fx)*(1.0-fz) + m10*fx*(1.0-fz) + m01*(1.0-fx)*fz + m11*fx*fz) * HEIGHT_SCALE;
+                if sample[1] < terrain_h { return true; }
+                if sample[1] > HEIGHT_SCALE * 1.5 + 1.0 { return false; }
             }
+            false
+        }).collect();
+
+        // Apply shadow darkening in parallel
+        self.color_buf.par_iter_mut().zip(shadow_flags.par_iter()).for_each(|(c, &in_shadow)| {
             if in_shadow {
-                let c = u32_to_v3(self.color_buf[idx]);
-                self.color_buf[idx] = rgb_f(c[0] * SHADOW_DARKEN, c[1] * SHADOW_DARKEN, c[2] * SHADOW_DARKEN);
+                let cv = u32_to_v3(*c);
+                *c = rgb_f(cv[0] * SHADOW_DARKEN, cv[1] * SHADOW_DARKEN, cv[2] * SHADOW_DARKEN);
             }
+        });
+    }
+
+    /// Distance fog — parallel per-row blending toward sky color.
+    pub fn fog_pass(&mut self, cam_eye: V3, light: f32) {
+        let width = self.width;
+        let height = self.height;
+        let z_buf = &self.z_buf;
+        let world_pos = &self.world_pos_buf;
+
+        self.color_buf.par_chunks_mut(width).enumerate().for_each(|(y, row)| {
+            let screen_y = y as f32 / height as f32;
+            let sky = sky_color_at(light, screen_y);
+            for x in 0..width {
+                let idx = y * width + x;
+                if z_buf[idx] >= f32::MAX * 0.9 { continue; }
+                let wp = world_pos[idx];
+                let dist = len3(sub3(wp, cam_eye));
+                if dist <= FOG_NEAR { continue; }
+                let fog_t = ((dist - FOG_NEAR) / (FOG_FAR - FOG_NEAR)).clamp(0.0, 1.0);
+                row[x] = blend(row[x], sky, fog_t);
+            }
+        });
+    }
+
+    /// Draw procedural stars on the sky background during nighttime.
+    /// Stars twinkle using a frame-based brightness modulation.
+    pub fn draw_stars(&mut self, stars: &[(f32, f32, f32)], darkness: f32, frame: u64) {
+        if darkness < 0.3 {
+            return;
+        }
+        let w = self.width;
+        let h = self.height;
+        for (i, &(x_norm, y_norm, base_bright)) in stars.iter().enumerate() {
+            let px = (x_norm * w as f32) as i32;
+            let py = (y_norm * h as f32) as i32;
+            if px < 0 || px >= w as i32 || py < 0 || py >= h as i32 {
+                continue;
+            }
+            // Twinkle: per-star phase offset modulated by frame counter
+            let twinkle_phase = (frame as f32 * 0.07 + i as f32 * 2.37).sin() * 0.5 + 0.5;
+            let twinkle = 0.7 + 0.3 * twinkle_phase;
+            let brightness = base_bright * darkness * twinkle;
+            if brightness < 0.01 {
+                continue;
+            }
+            let idx = py as usize * w + px as usize;
+            // Additive blend with existing sky pixel
+            let existing = self.color_buf[idx];
+            let er = ((existing >> 16) & 0xFF) as f32 / 255.0;
+            let eg = ((existing >> 8) & 0xFF) as f32 / 255.0;
+            let eb = (existing & 0xFF) as f32 / 255.0;
+            let nr = (er + brightness * 0.95).min(1.0);
+            let ng = (eg + brightness * 0.97).min(1.0);
+            let nb = (eb + brightness * 1.0).min(1.0);
+            self.color_buf[idx] = rgb_f(nr, ng, nb);
         }
     }
 
-    pub fn fog_pass(&mut self, cam_eye: V3, light: f32) {
-        for idx in 0..(self.width * self.height) {
-            if self.z_buf[idx] >= f32::MAX * 0.9 { continue; }
-            let wp = self.world_pos_buf[idx];
-            let dist = len3(sub3(wp, cam_eye));
-            if dist <= FOG_NEAR { continue; }
-            let fog_t = ((dist - FOG_NEAR) / (FOG_FAR - FOG_NEAR)).clamp(0.0, 1.0);
-            let y = idx / self.width;
-            let screen_y = y as f32 / self.height as f32;
-            self.color_buf[idx] = blend(self.color_buf[idx], sky_color_at(light, screen_y), fog_t);
+    /// Draw a moon disc with phase-based illumination on the sky background.
+    /// The terminator (shadow cutoff) shifts based on `lunar_phase`:
+    /// < 0.5 waxing (right side lit), > 0.5 waning (left side lit).
+    pub fn draw_moon(&mut self, lunar_phase: f32, moonlight: f32, light: f32) {
+        if moonlight < 0.1 {
+            return;
+        }
+        let darkness = (1.0 - light * 2.0).clamp(0.0, 1.0);
+        if darkness < 0.2 {
+            return;
+        }
+        let w = self.width;
+        let h = self.height;
+        let (azimuth, elevation) = moon_position(lunar_phase, light);
+
+        // Map azimuth/elevation to screen pixel position
+        let screen_x = ((azimuth / std::f32::consts::TAU).fract() * w as f32) as i32;
+        let screen_y = ((1.0 - elevation / std::f32::consts::FRAC_PI_2) * 0.5 * h as f32) as i32;
+
+        let radius: i32 = (w as f32 * 0.012).clamp(8.0, 12.0) as i32;
+        let radius_sq = (radius * radius) as f32;
+        let moon_color: V3 = [1.0, 0.98, 0.85];
+
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let dist_sq = (dx * dx + dy * dy) as f32;
+                if dist_sq > radius_sq {
+                    continue;
+                }
+                let px = screen_x + dx;
+                let py = screen_y + dy;
+                if px < 0 || px >= w as i32 || py < 0 || py >= h as i32 {
+                    continue;
+                }
+
+                // Phase-based illumination: shadow cutoff across disc
+                let nx = dx as f32 / radius as f32; // -1..1 across disc
+                let lit = if lunar_phase < 0.5 {
+                    // Waxing: right side illuminated. Terminator moves left-to-right.
+                    let cutoff = -1.0 + lunar_phase * 4.0; // -1..1 as phase goes 0..0.5
+                    ((nx - cutoff) * 3.0).clamp(0.0, 1.0)
+                } else {
+                    // Waning: left side illuminated. Terminator moves right-to-left.
+                    let cutoff = 1.0 - (lunar_phase - 0.5) * 4.0; // 1..-1 as phase goes 0.5..1
+                    ((cutoff - nx) * 3.0).clamp(0.0, 1.0)
+                };
+
+                if lit < 0.01 {
+                    continue;
+                }
+
+                // Slight limb darkening: dimmer at edge of disc
+                let center_dist = dist_sq.sqrt() / radius as f32;
+                let limb = 1.0 - center_dist * 0.25;
+                let intensity = moonlight * darkness * lit * limb;
+
+                let idx = py as usize * w + px as usize;
+                let existing = self.color_buf[idx];
+                let er = ((existing >> 16) & 0xFF) as f32 / 255.0;
+                let eg = ((existing >> 8) & 0xFF) as f32 / 255.0;
+                let eb = (existing & 0xFF) as f32 / 255.0;
+                let nr = (er + moon_color[0] * intensity).min(1.0);
+                let ng = (eg + moon_color[1] * intensity).min(1.0);
+                let nb = (eb + moon_color[2] * intensity).min(1.0);
+                self.color_buf[idx] = rgb_f(nr, ng, nb);
+            }
         }
     }
 

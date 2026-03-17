@@ -39,13 +39,13 @@ use camera::{Camera, ZoomLevel};
 use color::{rgb, OverlayMode};
 use hud::{draw_panel, draw_hud};
 use input::InputState;
-use lighting::{sun_direction, sun_color};
+use lighting::{sun_direction, sun_color, generate_stars};
 use particles::ParticleSystem;
 use rasterizer::Rasterizer;
 use selection::Selection;
 use sky::StarField;
 use terrain::{build_terrain_mesh, build_terrain_mesh_overlay};
-use export::{export_snapshot, TimeLapse};
+use export::{export_snapshot, export_json, export_metrics, generate_notebook, TimeLapse};
 use plants::build_plant_meshes;
 use flies::build_fly_meshes;
 use water::build_water_meshes;
@@ -150,6 +150,7 @@ fn main() -> ExitCode {
     let mut sel = Selection::new();
     let mut particle_sys = ParticleSystem::new();
     let star_field = StarField::new(150, seed.wrapping_mul(0x5DEECE66D)); // Deterministic stars from seed
+    let raster_stars = generate_stars(200, seed as u32); // Stars for rasterizer draw_stars method
     let mut paused = false;
     let mut realistic = true;
     let mut frame_idx = 0usize;
@@ -166,6 +167,8 @@ fn main() -> ExitCode {
     let mut prev_zoom = ZoomLevel::Ecosystem;
     let mut sim_ms = 0.0f32;
     let mut render_ms = 0.0f32;
+    let mut presentation_mode = false;
+    let mut presentation_timer = 0u32;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let started = Instant::now();
@@ -202,6 +205,24 @@ fn main() -> ExitCode {
         if window.is_key_pressed(Key::Key6, KeyRepeat::No) { overlay_mode = OverlayMode::Elevation; }
         if window.is_key_pressed(Key::Key7, KeyRepeat::No) { overlay_mode = OverlayMode::SubstrateO2; }
         if window.is_key_pressed(Key::Key8, KeyRepeat::No) { overlay_mode = OverlayMode::SubstrateGlucose; }
+        if window.is_key_pressed(Key::Key9, KeyRepeat::No) { overlay_mode = OverlayMode::SubstrateCO2; }
+        if window.is_key_pressed(Key::Key0, KeyRepeat::No) { overlay_mode = OverlayMode::SubstrateNitrogen; }
+        // Backtick: cycle overlays
+        if window.is_key_pressed(Key::Backquote, KeyRepeat::No) { overlay_mode = overlay_mode.next(); }
+        // G: presentation/auto-demo mode
+        if window.is_key_pressed(Key::G, KeyRepeat::No) {
+            presentation_mode = !presentation_mode;
+            if presentation_mode { auto_orbit = true; presentation_timer = 0; }
+            else { auto_orbit = false; }
+        }
+        // J: JSON scene export
+        if window.is_key_pressed(Key::J, KeyRepeat::No) {
+            let snap = world.snapshot();
+            match export_json(&world, &snap, frame_idx) {
+                Ok(name) => { screenshot_msg = format!("JSON: {}", name); screenshot_timer = 120; }
+                Err(e) => { screenshot_msg = format!("JSON error: {}", e); screenshot_timer = 120; }
+            }
+        }
         // CSV export (E key)
         if window.is_key_pressed(Key::E, KeyRepeat::No) {
             let snapshot = world.snapshot();
@@ -214,6 +235,27 @@ fn main() -> ExitCode {
         if window.is_key_pressed(Key::V, KeyRepeat::No) {
             screenshot_msg = timelapse.toggle();
             screenshot_timer = 120;
+        }
+        // M: Prometheus metrics export
+        if window.is_key_pressed(Key::M, KeyRepeat::No) {
+            let snap = world.snapshot();
+            match export_metrics(&snap, frame_idx) {
+                Ok(name) => { screenshot_msg = format!("Metrics: {}", name); screenshot_timer = 120; }
+                Err(e) => { screenshot_msg = format!("Metrics error: {}", e); screenshot_timer = 120; }
+            }
+        }
+        // N: Generate analysis notebook
+        if window.is_key_pressed(Key::N, KeyRepeat::No) {
+            let snap = world.snapshot();
+            match export_json(&world, &snap, frame_idx) {
+                Ok(json_name) => {
+                    match generate_notebook(&json_name) {
+                        Ok(nb_name) => { screenshot_msg = format!("Notebook: {} + {}", nb_name, json_name); screenshot_timer = 120; }
+                        Err(e) => { screenshot_msg = format!("Notebook error: {}", e); screenshot_timer = 120; }
+                    }
+                }
+                Err(e) => { screenshot_msg = format!("JSON error: {}", e); screenshot_timer = 120; }
+            }
         }
         if window.is_key_pressed(Key::LeftBracket, KeyRepeat::No) { sim_speed = (sim_speed / 2).max(1); }
         if window.is_key_pressed(Key::RightBracket, KeyRepeat::No) { sim_speed = (sim_speed * 2).min(8); }
@@ -277,6 +319,17 @@ fn main() -> ExitCode {
 
         // Auto-orbit: slow rotation for demo mode
         if auto_orbit { cam.yaw += 0.003; }
+
+        // Presentation mode: auto-cycle overlays every 150 frames, gentle zoom oscillation
+        if presentation_mode {
+            presentation_timer += 1;
+            if presentation_timer % 150 == 0 {
+                overlay_mode = overlay_mode.next();
+            }
+            // Gentle zoom oscillation
+            let phase = (presentation_timer as f32 * 0.005).sin();
+            cam.distance = (cam.distance + phase * 0.02).clamp(3.0, 60.0);
+        }
 
         // === SIMULATION SECTION (TIMED) ===
         let sim_start = Instant::now();
@@ -446,6 +499,12 @@ fn main() -> ExitCode {
         }
 
         // Render moon and stars on the rasterizer's color buffer (night sky)
+        let darkness = (1.0 - snapshot.light * 2.0).clamp(0.0, 1.0);
+        if darkness > 0.2 {
+            raster.draw_stars(&raster_stars, darkness, frame_idx as u64);
+            raster.draw_moon(snapshot.lunar_phase, snapshot.moonlight, snapshot.light);
+        }
+        // Additional sky-dome stars and moon via spherical projection (camera-aware)
         sky::render_moon(
             &mut raster.color_buf,
             raster.width,
@@ -487,7 +546,7 @@ fn main() -> ExitCode {
         // Draw panel and HUD
         draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel, &pop_history);
         let msg = if screenshot_timer > 0 { &screenshot_msg } else { "" };
-        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit, &overlay_mode, timelapse.recording, sim_ms, render_ms);
+        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit, &overlay_mode, timelapse.recording, sim_ms, render_ms, presentation_mode);
         if screenshot_timer > 0 { screenshot_timer -= 1; }
 
         // FPS counter
