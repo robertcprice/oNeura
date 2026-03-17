@@ -175,7 +175,6 @@ pub mod resistance_evolution;
 pub mod eco_evolutionary_feedback;
 pub mod nutrient_cycling;
 pub mod population_genetics;
-pub mod population_genetics;
 
 // NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
 // terrarium_render_pipeline are orphaned and depend on missing APIs.
