@@ -43,7 +43,7 @@ impl TerrariumWorld {
             .plants
             .iter()
             .map(|p| {
-                let r = p.physiology.canopy_radius_mm().max(1.0);
+                let r = p.genome.canopy_radius_mm.max(1.0);
                 let leaf = p.physiology.leaf_biomass().max(0.0);
                 let lai = leaf * 200.0 / (std::f32::consts::PI * r * r * 0.01);
                 CanopyDescriptor {
@@ -52,7 +52,7 @@ impl TerrariumWorld {
                     height_mm: p.physiology.height_mm(),
                     canopy_radius_mm: r,
                     lai,
-                    extinction_coeff: p.physiology.extinction_coeff(),
+                    extinction_coeff: (0.45 + p.genome.leaf_efficiency * 0.25),
                 }
             })
             .collect();
@@ -62,8 +62,8 @@ impl TerrariumWorld {
             .map(|p| RootDescriptor {
                 x: p.x as f32,
                 y: p.y as f32,
-                root_depth_mm: p.physiology.root_depth_bias() * p.physiology.height_mm() * 0.4,
-                root_radius_mm: p.physiology.root_radius_mm(),
+                root_depth_mm: p.genome.root_depth_bias * p.physiology.height_mm() * 0.4,
+                root_radius_mm: p.genome.root_radius_mm,
                 root_biomass: p.physiology.root_biomass().max(0.0),
             })
             .collect();
@@ -376,7 +376,7 @@ impl TerrariumWorld {
                 )
             };
 
-            deposit_2d_background_only(
+            deposit_2d(
                 &mut self.root_exudates,
                 self.config.width,
                 self.config.height,
@@ -384,10 +384,8 @@ impl TerrariumWorld {
                 y,
                 root_radius_after.max(1) / 2,
                 report.exudates,
-                &self.explicit_microbe_authority,
-                EXPLICIT_OWNERSHIP_THRESHOLD,
             );
-            deposit_2d_background_only(
+            deposit_2d(
                 &mut self.litter_carbon,
                 self.config.width,
                 self.config.height,
@@ -395,8 +393,6 @@ impl TerrariumWorld {
                 y,
                 root_radius_after.max(1) / 2,
                 report.litter,
-                &self.explicit_microbe_authority,
-                EXPLICIT_OWNERSHIP_THRESHOLD,
             );
             let hotspot_radius = root_radius_after.max(1);
             self.substrate
@@ -410,7 +406,7 @@ impl TerrariumWorld {
                 1.min(depth - 1),
                 report.litter * 4.0,
             );
-            deposit_2d_background_only(
+            deposit_2d(
                 &mut self.organic_matter,
                 self.config.width,
                 self.config.height,
@@ -418,8 +414,6 @@ impl TerrariumWorld {
                 y,
                 hotspot_radius / 2,
                 report.litter * 0.18,
-                &self.explicit_microbe_authority,
-                EXPLICIT_OWNERSHIP_THRESHOLD,
             );
             queued_co2_fluxes.push((
                 x,
@@ -433,7 +427,7 @@ impl TerrariumWorld {
                 y,
                 canopy_z,
                 (canopy_radius.max(2) / 2).max(1),
-                report.o2_flux,
+                (-report.co2_flux * 1.05),
             ));
             queued_humidity_fluxes.push((
                 x,
@@ -466,7 +460,7 @@ impl TerrariumWorld {
                 );
                 let mut child_genome = genome.mutate(&mut self.rng);
                 // Speciation: if trait drift exceeds threshold, assign new species.
-                if genome.trait_distance(&child_genome) > super::PLANT_SPECIATION_THRESHOLD {
+                if genome.trait_distance(&child_genome) > PLANT_SPECIATION_THRESHOLD {
                     child_genome.species_id = self.next_species_id;
                     self.next_species_id += 1;
                 }
@@ -505,7 +499,7 @@ impl TerrariumWorld {
         for idx in dead_plants.into_iter().rev() {
             let plant = self.plants.swap_remove(idx);
             let litter_return = 0.02 + plant.physiology.storage_carbon().max(0.0) * 0.20;
-            deposit_2d_background_only(
+            deposit_2d(
                 &mut self.litter_carbon,
                 self.config.width,
                 self.config.height,
@@ -513,10 +507,8 @@ impl TerrariumWorld {
                 plant.y,
                 plant.root_radius_cells().max(1) / 2,
                 litter_return,
-                &self.explicit_microbe_authority,
-                EXPLICIT_OWNERSHIP_THRESHOLD,
             );
-            deposit_2d_background_only(
+            deposit_2d(
                 &mut self.organic_matter,
                 self.config.width,
                 self.config.height,
@@ -524,8 +516,6 @@ impl TerrariumWorld {
                 plant.y,
                 plant.root_radius_cells().max(1) / 3,
                 litter_return * 0.22,
-                &self.explicit_microbe_authority,
-                EXPLICIT_OWNERSHIP_THRESHOLD,
             );
             self.substrate.add_hotspot(
                 TerrariumSpecies::Glucose,
@@ -614,8 +604,8 @@ impl TerrariumWorld {
                     fruit.source.y.min(self.config.height - 1),
                 );
                 self.microbial_biomass[flat]
-                    + self.nitrifier_biomass[flat] * 0.55
-                    + self.denitrifier_biomass[flat] * 0.70
+                    + self.microbial_biomass[flat] * 0.08
+                    + self.microbial_biomass[flat] * 0.08
             })
             .collect::<Vec<_>>();
         let stepped = step_food_patches(
@@ -641,7 +631,7 @@ impl TerrariumWorld {
                 + stepped.lost_detritus[idx]
                 + stepped.final_detritus[idx];
             if stepped.decay_detritus[idx] > 0.0 {
-                deposit_2d_background_only(
+                deposit_2d(
                     &mut self.litter_carbon,
                     self.config.width,
                     self.config.height,
@@ -649,12 +639,10 @@ impl TerrariumWorld {
                     y,
                     radius,
                     stepped.decay_detritus[idx],
-                    &self.explicit_microbe_authority,
-                    EXPLICIT_OWNERSHIP_THRESHOLD,
-                );
+            );
             }
             if stepped.lost_detritus[idx] > 0.0 {
-                deposit_2d_background_only(
+                deposit_2d(
                     &mut self.litter_carbon,
                     self.config.width,
                     self.config.height,
@@ -662,12 +650,10 @@ impl TerrariumWorld {
                     y,
                     radius,
                     stepped.lost_detritus[idx],
-                    &self.explicit_microbe_authority,
-                    EXPLICIT_OWNERSHIP_THRESHOLD,
-                );
+            );
             }
             if stepped.final_detritus[idx] > 0.0 {
-                deposit_2d_background_only(
+                deposit_2d(
                     &mut self.litter_carbon,
                     self.config.width,
                     self.config.height,
@@ -675,9 +661,7 @@ impl TerrariumWorld {
                     y,
                     radius,
                     stepped.final_detritus[idx],
-                    &self.explicit_microbe_authority,
-                    EXPLICIT_OWNERSHIP_THRESHOLD,
-                );
+            );
             }
             if detritus_total > 0.0 {
                 self.substrate.add_hotspot(
@@ -716,7 +700,9 @@ impl TerrariumWorld {
             fruit.previous_remaining = current;
         }
         for (x, y, z, radius, co2_flux, o2_flux, humidity_flux) in decay_fluxes {
-            self.exchange_atmosphere_flux_bundle(x, y, z, radius, co2_flux, o2_flux, humidity_flux);
+            self.exchange_atmosphere_odorant(ATMOS_CO2_IDX, x, y, z, radius, co2_flux);
+            self.exchange_atmosphere_odorant(ATMOS_O2_IDX, x, y, z, radius, o2_flux);
+            self.exchange_atmosphere_humidity(x, y, z, radius, humidity_flux);
         }
         Ok(())
     }
