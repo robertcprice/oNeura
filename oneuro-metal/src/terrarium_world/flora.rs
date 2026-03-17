@@ -282,15 +282,7 @@ impl TerrariumWorld {
                 canopy_z,
                 (canopy_radius.max(2) / 2).max(1),
             );
-            let local_air_o2 = self.sample_odorant_patch(
-                ATMOS_O2_IDX,
-                x,
-                y,
-                canopy_z,
-                (canopy_radius.max(2) / 2).max(1),
-            );
             let air_co2_factor = clamp(local_air_co2 / ATMOS_CO2_BASELINE, 0.35, 1.8);
-            let air_o2_factor = clamp(local_air_o2 / ATMOS_O2_BASELINE, 0.25, 1.5);
             let stomatal_open = clamp(
                 0.24 + local_light * 0.46 + water_factor * 0.28 + local_humidity * 0.22
                     - water_deficit * 0.32
@@ -337,10 +329,8 @@ impl TerrariumWorld {
                     eco_dt,
                     extraction.water_take,
                     extraction.nutrient_take,
-                    extraction.nutrient_take * 0.067,
                     local_light,
                     temp_factor,
-                    local_temp,
                     root_energy_gate,
                     symbiosis_bonus,
                     water_factor,
@@ -349,7 +339,6 @@ impl TerrariumWorld {
                     root_comp,
                     soil_glucose,
                     air_co2_factor,
-                    air_o2_factor,
                     stomatal_open,
                     cell_feedback.photosynthetic_capacity,
                     cell_feedback.maintenance_cost,
@@ -458,12 +447,7 @@ impl TerrariumWorld {
                     0.03,
                     0.28,
                 );
-                let mut child_genome = genome.mutate(&mut self.rng);
-                // Speciation: if trait drift exceeds threshold, assign new species.
-                if genome.trait_distance(&child_genome) > PLANT_SPECIATION_THRESHOLD {
-                    child_genome.species_id = self.next_species_id;
-                    self.next_species_id += 1;
-                }
+                let child_genome = genome.mutate(&mut self.rng);
                 queued_seeds.push(TerrariumSeed {
                     x: sx as f32,
                     y: sy as f32,
@@ -471,8 +455,6 @@ impl TerrariumWorld {
                     reserve_carbon: reserve,
                     age_s: 0.0,
                     genome: child_genome,
-                    cellular: SeedCellularStateSim::new(seed_mass, reserve, dormancy),
-                    pose: TerrariumSeedPose::default(),
                 });
             }
             if self.plants[idx].physiology.is_dead()
@@ -550,11 +532,6 @@ impl TerrariumWorld {
             let fx = offset_clamped(x, dx, self.config.width);
             let fy = offset_clamped(y, dy, self.config.height);
             self.add_fruit(fx, fy, size, Some(volatile_scale));
-            self.ecology_events.push(super::EcologyTelemetryEvent::FruitProduced {
-                x: fx as f32,
-                y: fy as f32,
-                sugar_content: size,
-            });
         }
         self.seeds.extend(queued_seeds);
         Ok(())
@@ -765,55 +742,19 @@ impl TerrariumWorld {
         for (idx, mut seed) in self.seeds.drain(..).enumerate() {
             seed.age_s = stepped.age_s[idx];
             seed.dormancy_s = stepped.dormancy_s[idx];
-            let feedback = seed.cellular.step(
-                eco_dt,
-                moisture[idx],
-                deep_moisture[idx],
-                nutrients[idx],
-                symbionts[idx],
-                canopy[idx],
-                litter[idx],
-                seed.dormancy_s,
-                seed.reserve_carbon,
-            );
-            seed.reserve_carbon = feedback.reserve_carbon;
-            let coat = seed.cellular.cluster_snapshot(SeedTissue::Coat);
-            let endosperm = seed.cellular.cluster_snapshot(SeedTissue::Endosperm);
-            let radicle = seed.cellular.cluster_snapshot(SeedTissue::Radicle);
-            let cotyledon = seed.cellular.cluster_snapshot(SeedTissue::Cotyledon);
-            let emergent_germination = feedback.ready_to_germinate
-                && self.plants.len() + germinations.len() < self.config.max_plants;
-            if emergent_germination {
-                let (x, y) = positions[idx];
-                let total_cells = coat.cell_count
-                    + endosperm.cell_count
-                    + radicle.cell_count
-                    + cotyledon.cell_count;
-                let scale = clamp(
-                    0.40 + feedback.germination_drive * 0.22
-                        + feedback.vitality * 0.18
-                        + feedback.radicle_extension * 0.14
-                        + total_cells.sqrt() * 0.012,
-                    0.45,
-                    1.15,
-                );
-                germinations.push((x, y, seed.genome, scale));
-            } else if stepped.keep[idx]
-                && feedback.reserve_carbon > 0.002
-                && feedback.vitality > 0.03
+            if stepped.germinate[idx]
+                && self.plants.len() + germinations.len() < self.config.max_plants
             {
+                let (x, y) = positions[idx];
+                let scale = stepped.seedling_scale[idx].max(0.45);
+                germinations.push((x, y, seed.genome, scale));
+            } else if stepped.keep[idx] {
                 next_bank.push(seed);
             }
         }
         self.seeds = next_bank;
         for (x, y, genome, scale) in germinations {
-            let sid = genome.species_id;
             let _ = self.add_plant(x, y, Some(genome), Some(scale));
-            self.ecology_events.push(super::EcologyTelemetryEvent::SeedGerminated {
-                x: x as f32,
-                y: y as f32,
-                species_id: sid,
-            });
         }
         Ok(())
     }
