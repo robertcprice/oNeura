@@ -31,6 +31,10 @@ use crate::terrarium::{BatchedAtomTerrarium, TerrariumSpecies};
 use crate::terrarium_field::TerrariumSensoryField;
 
 // Re-exports from ecosystem submodules for snapshot/explicit_microbe_impl access
+// These items are pub(super) in their source modules, so re-export is only valid
+// within the same module tree. Gated behind terrarium_advanced because only
+// snapshot.rs and explicit_microbe_impl.rs (both gated) use them.
+#[cfg(feature = "terrarium_advanced")]
 pub(crate) use genotype::{
     SHADOW_BANK_IDX, VARIANT_BANK_IDX, NOVEL_BANK_IDX,
     PUBLIC_STRAIN_BANKS, INTERNAL_SECONDARY_GENOTYPE_AXES,
@@ -50,10 +54,12 @@ pub(crate) use genotype::{
     DENITRIFIER_GENE_ANOXIA_RESPIRATION_WEIGHTS, DENITRIFIER_GENE_NITRATE_TRANSPORT_WEIGHTS,
     DENITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS, DENITRIFIER_GENE_REDUCTIVE_FLEXIBILITY_WEIGHTS,
 };
+#[cfg(feature = "terrarium_advanced")]
 pub(crate) use packet::{
     GenotypePacket, GenotypePacketPopulation,
     GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS,
 };
+#[cfg(feature = "terrarium_advanced")]
 pub(crate) use calibrator::{SubstrateKinetics, MolecularRateCalibrator};
 
 
@@ -677,10 +683,11 @@ pub enum EcologyTelemetryEvent {
     FlyFeeding { x: f32, y: f32, sugar_ingested_mg: f32, trehalose_mm: f32 },
     FlyEclosed { x: f32, y: f32 },
     FlyHypoxiaOnset { x: f32, y: f32, ambient_o2: f32, altitude: f32 },
-    ExplicitPromotion { x: usize, y: usize, guild: u8, represented_cells: f32 },
-    ExplicitDemotion { x: usize, y: usize },
-    ExplicitDeath { x: usize, y: usize, reason: String },
-    CellDivision { x: usize, y: usize },
+    ExplicitPromotion { x: usize, y: usize, z: usize, guild: u8, represented_cells: f32 },
+    ExplicitDemotion { x: usize, y: usize, z: usize, represented_cells: f32, atp_mm: f32 },
+    ExplicitDeath { x: usize, y: usize, z: usize, reason: String, represented_cells: f32, atp_mm: f32 },
+    CellDivision { x: usize, y: usize, z: usize, represented_cells: f32 },
+    CellDivisionDaughter { x: usize, y: usize, z: usize, represented_cells: f32, atp_mm: f32 },
     PacketPopulationSeed { x: usize, y: usize },
 }
 
@@ -1006,6 +1013,9 @@ pub enum MaterialPhaseKind {
     Gas,
     Dissolved,
     Colloidal,
+    Aqueous,
+    Interfacial,
+    Amorphous,
 }
 
 
@@ -1015,6 +1025,16 @@ pub enum MaterialPhaseKind {
 pub struct MaterialPhaseSelector {
     pub kind: MaterialPhaseKind,
     pub min_fraction: f32,
+}
+
+#[allow(non_snake_case, dead_code)]
+impl MaterialPhaseSelector {
+    pub fn Exact(kind: MaterialPhaseKind) -> Self {
+        Self { kind, min_fraction: 1.0 }
+    }
+    pub fn Kind(kind: MaterialPhaseKind) -> Self {
+        Self { kind, min_fraction: 0.0 }
+    }
 }
 
 
@@ -1027,6 +1047,13 @@ pub struct MaterialPhaseDescriptor {
     pub conductivity: f32,
 }
 
+#[allow(dead_code)]
+impl MaterialPhaseDescriptor {
+    pub fn ambient() -> Self {
+        Self { kind: MaterialPhaseKind::Gas, fraction: 1.0, conductivity: 0.025 }
+    }
+}
+
 
 /// Stub for molecule graph used in explicit_microbe_impl.rs.
 #[derive(Debug, Clone, Default)]
@@ -1034,6 +1061,20 @@ pub struct MaterialPhaseDescriptor {
 pub struct MoleculeGraph {
     pub nodes: Vec<u32>,
     pub edges: Vec<(u32, u32)>,
+}
+
+#[allow(dead_code)]
+impl MoleculeGraph {
+    pub fn representative_glucose() -> MoleculeDescriptor { MoleculeDescriptor::named("glucose") }
+    pub fn representative_oxygen_gas() -> MoleculeDescriptor { MoleculeDescriptor::named("oxygen_gas") }
+    pub fn representative_amino_acid_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("amino_acid_pool") }
+    pub fn representative_nucleotide_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("nucleotide_pool") }
+    pub fn representative_membrane_precursor_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("membrane_precursor_pool") }
+    pub fn representative_atp() -> MoleculeDescriptor { MoleculeDescriptor::named("atp") }
+    pub fn representative_carbon_dioxide() -> MoleculeDescriptor { MoleculeDescriptor::named("carbon_dioxide") }
+    pub fn representative_proton_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("proton_pool") }
+    pub fn representative_ammonium() -> MoleculeDescriptor { MoleculeDescriptor::named("ammonium") }
+    pub fn representative_nitrate() -> MoleculeDescriptor { MoleculeDescriptor::named("nitrate") }
 }
 
 
@@ -1045,6 +1086,10 @@ pub struct RegionalMaterialInventory {
 }
 
 impl RegionalMaterialInventory {
+    pub fn new() -> Self { Self::default() }
+
+    pub fn total_amount_moles(&self) -> f64 { 0.0 }
+
     pub fn estimate_whole_cell_environment_inputs(
         &self,
         _region_kinds: &[MaterialRegionKind],
@@ -1067,6 +1112,24 @@ impl RegionalMaterialInventory {
         _molecule: &MoleculeDescriptor,
         _amount: f32,
     ) {}
+
+    pub fn set_component_amount(
+        &mut self,
+        _region: MaterialRegionKind,
+        _molecule: &MoleculeDescriptor,
+        _amount: f32,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn remove_component_amount(
+        &mut self,
+        _region: MaterialRegionKind,
+        _molecule: &MoleculeDescriptor,
+        _amount: f32,
+    ) -> Result<f32, String> {
+        Ok(0.0)
+    }
 
     pub fn withdraw_component(
         &mut self,
@@ -1937,6 +2000,23 @@ impl TerrariumWorld {
     }
 
 
+
+    /// Stub for bundled atmosphere flux exchange (used by explicit_microbe_impl.rs).
+    pub fn exchange_atmosphere_flux_bundle(
+        &mut self,
+        x: usize,
+        y: usize,
+        z: usize,
+        radius: usize,
+        co2_flux: f32,
+        o2_flux: f32,
+        humidity_flux: f32,
+    ) {
+        self.exchange_atmosphere_odorant(ATMOS_CO2_IDX, x, y, z, radius, co2_flux);
+        self.exchange_atmosphere_odorant(ATMOS_O2_IDX, x, y, z, radius, o2_flux);
+        self.exchange_atmosphere_humidity(x, y, z, radius, humidity_flux);
+    }
+
     /// Stub for actual odorant exchange used by explicit_microbe_impl.rs.
     pub fn exchange_atmosphere_odorant_actual(
         &mut self,
@@ -2479,14 +2559,23 @@ impl TerrariumWorld {
             represented_cells,
             represented_packets: 0.0,
             identity,
-            whole_cell: Some(Box::new(wcs)),
+            whole_cell: Some(Box::new(wcs.clone())),
+            simulator: wcs,
             last_snapshot: WholeCellSnapshot::default(),
             smoothed_energy: 0.5,
             smoothed_stress: 0.2,
             radius: EXPLICIT_MICROBE_PATCH_RADIUS,
             patch_radius: EXPLICIT_MICROBE_PATCH_RADIUS,
             age_steps: 0,
+            age_s: 0.0,
             idx,
+            material_inventory: RegionalMaterialInventory::new(),
+            cumulative_glucose_draw: 0.0,
+            cumulative_oxygen_draw: 0.0,
+            cumulative_co2_release: 0.0,
+            cumulative_ammonium_draw: 0.0,
+            cumulative_nitrate_draw: 0.0,
+            cumulative_proton_release: 0.0,
         });
         Ok(())
     }
