@@ -85,7 +85,26 @@ oNeura/
 │   │   └── molecular_world.py  # 2D/3D volumetric odorant diffusion, temperature, wind, buoyancy
 │   └── environments/           # Game/navigation environments
 │       └── doom_fps.py         # DDA raycasting FPS engine (278 FPS)
-├── oneuro-metal/               # Rust/Metal backend and native Pong / whole-cell work
+├── oneuro-metal/               # Rust/Metal backend — 148K+ lines, 177 files, 214+ tests
+│   ├── src/
+│   │   ├── bin/
+│   │   │   ├── terrarium_3d/   # 3D rasterizer (18 modules, 2,257 lines)
+│   │   │   ├── terrarium_evolve.rs   # NSGA-II evolution engine
+│   │   │   ├── terrarium_zoom.rs     # Semantic zoom terminal viewer
+│   │   │   ├── terrarium_web.rs      # REST API server (axum)
+│   │   │   ├── drug_optimizer.rs     # Antibiotic protocol optimizer
+│   │   │   ├── gene_circuit.rs       # Gene circuit noise designer
+│   │   │   ├── amr_simulator.rs      # AMR evolution simulator
+│   │   │   ├── evolution_lab.rs      # Eco-evolutionary feedback lab
+│   │   │   └── ...                   # + terrarium_viewer, native, ascii
+│   │   ├── terrarium_world.rs        # Core ecosystem engine (3,085 lines)
+│   │   ├── whole_cell.rs             # Syn3A minimal cell (7,780 lines)
+│   │   ├── ecosystem_integration.rs  # Cross-scale coupling
+│   │   ├── resistance_evolution.rs   # AMR dynamics (1,754 lines)
+│   │   ├── nutrient_cycling.rs       # C/N/P cycling (1,414 lines)
+│   │   └── ...                       # + 12 more ecosystem modules
+│   └── shaders/                # Metal GPU compute shaders
+├── oneuro-3d/                  # Bevy 0.15 3D viewer (alternative rendering)
 ├── demos/
 │   ├── demo_drosophila_ecosystem.py  # Drosophila ecosystem and behavioral assays
 │   ├── demo_dishbrain_pong.py        # DishBrain Pong / arena / scale experiments
@@ -98,13 +117,13 @@ oNeura/
 │   ├── beyond_ann_white_paper.md     # 23 experiments proving dONN capabilities
 │   ├── dishbrain_replication_paper.md # DishBrain replication (draft, A100 data)
 │   └── data/                         # GPU experiment JSON results
+├── docs/                             # 29+ design documents, methods papers
+│   ├── METHODS_MULTISCALE_PAPER.md   # Nature Methods-ready multi-scale biology paper
+│   └── ...
 ├── scripts/
 │   ├── vast_deploy.sh                # Vast.ai GPU deployment & benchmarking
 │   └── *_telemetry.py                # Profiling / telemetry capture helpers
-├── docs/                             # Docs index, repo guide, design notes, backend status
 ├── results/                          # Measured benchmark artifacts and comparisons
-├── doom_videos/                      # Rendered gameplay/video artifacts
-├── tmp_demo_*/                       # Temporary generated demo artifacts
 ├── pyproject.toml
 └── LICENSE                           # CC BY-NC 4.0
 ```
@@ -165,6 +184,101 @@ The main HH simulation runs on GPU via PyTorch sparse tensors, with a native Rus
 | medium | 25K | ~7–8M | Apple Metal / A100 / H200 |
 | large | 139K (full FlyWire) | ~54M | Large-memory NVIDIA GPU |
 
+## Rust/Metal Terrarium Ecosystem
+
+A complete soil-plant-insect ecosystem simulated at molecular resolution in 148,000+ lines of Rust. Every chemical reaction uses literature-grounded kinetics — behaviors emerge from chemistry, not rules.
+
+### 3D Terrarium Viewer
+
+Full software 3D rasterizer with orbit camera, Blinn-Phong lighting, raycasted sunlight shadows, SSAO, and multi-scale semantic zoom (Ecosystem → Organism → Cellular → Molecular). No game engine dependency — pure Rust + minifb.
+
+```bash
+cd oneuro-metal
+cargo build --profile fast --no-default-features --bin terrarium_3d
+./target/fast/terrarium_3d --seed 7 --fps 30
+```
+
+Controls: mouse orbit/pan/zoom, WASD pan, F follow, T auto-orbit, L lighting toggle, [ ] speed 1-8x, Tab cycle, P screenshot, Space pause.
+
+### Biology Subsystems
+
+| Layer | What It Simulates | Physics |
+|-------|-------------------|---------|
+| **Soil Chemistry** | PDE diffusion of 14 species across 3D voxel grid | Moldrup 2001 tortuosity, CFL-stable |
+| **Microbial Populations** | 4 guilds: heterotrophs, nitrifiers, denitrifiers, N-fixers | Monod growth, Arrhenius T-correction |
+| **Plant Physiology** | Farquhar-FvCB photosynthesis, Beer-Lambert canopy, C:N:P | Bernacchi 2001, optimal allocation |
+| **Plant Competition** | Asymmetric vertical shading, root nutrient splitting | Beer-Lambert inter-species |
+| **Soil Fauna** | Earthworm bioturbation + nematode bacterial grazing | Lotka-Volterra, N mineralization |
+| **Drosophila Lifecycle** | Egg to adult, temperature-dependent development | Sharpe-Schoolfield thermal performance |
+| **Fly Metabolism** | 7-pool MM biochemistry: crop to trehalose to ATP | Molecular hunger, O2-dependent yield |
+| **Atmosphere** | 3D odorant diffusion, wind, Rayleigh-Benard convection | Implicit ADI, Chapman-Enskog |
+| **Stochastic Expression** | Gillespie tau-leaping gene noise, telegraph promoter | Fano factor > 1, mRNA bursting |
+
+### Advanced Ecosystem Modules (15,771 lines)
+
+| Module | What It Simulates |
+|--------|-------------------|
+| **resistance_evolution** | AMR mutation, fitness costs, plasmid transfer, antibiotic resistance |
+| **eco_evolutionary_feedback** | Eco-evo dynamics, niche construction, trait-mediated interactions |
+| **metabolic_flux** | FBA-style metabolic network analysis, flux balance |
+| **microbiome_assembly** | Community assembly rules, priority effects, ecological succession |
+| **horizontal_gene_transfer** | Conjugation, transformation, transduction between microbes |
+| **population_genetics** | Wright-Fisher model, Hardy-Weinberg, genetic drift, selection |
+| **biofilm_dynamics** | Biofilm formation, quorum sensing, EPS matrix production |
+| **nutrient_cycling** | Carbon/nitrogen/phosphorus cycling, mineralization |
+| **climate_scenarios** | Temperature/precipitation forcing, seasonal and drought cycles |
+| **ecosystem_integration** | Cross-scale coupling, telemetry aggregation, seasonal events |
+| **phylogenetic_tracker** | Lineage tracking, speciation detection, phylogenetic trees |
+
+### Evolution Engine — NSGA-II Ecosystem Optimization
+
+Evolves optimal terrarium configurations using 18-parameter genomes. Fitness climbs from ~62 to ~85 over 5 generations (verified March 2026). 6 modes: Standard, Pareto (7 objectives), Stress-Test, Coevolution, Bet-Hedging, GRN.
+
+```bash
+cd oneuro-metal
+cargo build --profile fast --no-default-features --bin terrarium_evolve
+./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
+```
+
+### Synbio CLI Tools
+
+```bash
+# Antibiotic protocol optimizer (compare, validate, optimize, scan)
+./target/fast/drug_optimizer --mode compare
+
+# Gene circuit noise designer (telegraph model)
+./target/fast/gene_circuit --target-fano 5.0 --target-mean 100.0
+
+# AMR evolution simulator
+./target/fast/amr_simulator
+
+# Eco-evolutionary feedback lab
+./target/fast/evolution_lab
+```
+
+### Whole-Cell Simulation — Syn3A Minimal Cell
+
+Native Rust simulator for JCVI-Syn3A (493 genes, 7,780 lines). Staged integration: RDME lattice diffusion, CME stochastic expression, ODE metabolic fluxes, Brownian dynamics for chromosome physics, geometry/divisome for cell division, and CASCI quantum chemistry for reaction barriers.
+
+Anchored to: Thornburg et al., *Cell* (2026), DOI `10.1016/j.cell.2026.02.009`.
+
+### Tests
+
+**214+ regression tests** pass across terrarium, biology, evolution, ecosystem, and synbio modules.
+
+```bash
+cd oneuro-metal
+# Quick regression (214 tests)
+cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
+  soil_atmosphere terrarium_evolve drosophila_population plant_competition \
+  soil_fauna fly_metabolism field_coupling seed_cellular terrarium_world \
+  organism_metabolism stochastic cross_scale phenotypic persister bet_hedging \
+  benchmark seasonal drought tropical arid spatial zone plant_noise \
+  microbial_noise multi_species single_drug pulsed combination protocol \
+  ecoli circuit enzyme_ bioremediation probe_coupling probe_snapshot \
+  drug_enzyme soil_enzyme temperature_coupling remediation guild_latent
+```
+
 ## Validated Experiments
 
 ### DishBrain Replication — Working Benchmark Track
@@ -216,43 +330,6 @@ Complete digital fruit fly in a physics-grounded molecular world:
 
 BSP-generated dungeon environments with 8-directional movement, enemies, health pickups, and FEP-driven threat avoidance.
 
-### Terrarium Ecosystem — Molecular Ecology (Rust/Metal)
-
-A complete soil-plant-insect ecosystem where every chemical reaction uses literature-grounded kinetics. Behaviors emerge from chemistry, not rules.
-
-| Layer | What It Simulates | Physics |
-|-------|-------------------|---------|
-| **Soil Chemistry** | PDE diffusion of 14 species across 3D voxel grid | Moldrup 2001 tortuosity, CFL-stable |
-| **Microbial Populations** | 4 guilds: heterotrophs, nitrifiers, denitrifiers, N-fixers | Monod growth, Arrhenius T-correction |
-| **Plant Physiology** | Farquhar-FvCB photosynthesis, Beer-Lambert canopy, C:N:P | Bernacchi 2001, optimal allocation |
-| **Plant Competition** | Asymmetric vertical shading, root nutrient splitting | Beer-Lambert inter-species |
-| **Soil Fauna** | Earthworm bioturbation + nematode bacterial grazing | Lotka-Volterra, N mineralization |
-| **Drosophila Lifecycle** | Egg to adult, temperature-dependent development | Sharpe-Schoolfield thermal performance |
-| **Fly Metabolism** | 7-pool MM biochemistry: crop to trehalose to ATP | Molecular hunger, O2-dependent yield |
-| **Atmosphere** | 3D odorant diffusion, wind, Rayleigh-Benard convection | Implicit ADI, Chapman-Enskog |
-
-### Evolution Engine — NSGA-II Ecosystem Optimization (Rust)
-
-Evolves optimal terrarium configurations using 18-parameter genomes (soil pH, temperature, water, plants, microbes, enzyme kinetics, fly brain parameters). Fitness climbs from ~62 to ~85 over 5 generations (verified March 2026).
-
-```bash
-cd oneuro-metal
-cargo build --profile fast --no-default-features --bin terrarium_evolve
-./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
-```
-
-Modes: Standard, NSGA-II Pareto (7 objectives), Stress-Test (drought+heat), Coevolution (fly brain), **Bet-Hedging** (noise-driven evolution exploiting stochastic gene expression for phenotypic variance).
-
-Includes **persister cell modeling** — simulates antibiotic persistence where stochastically dormant cells survive treatment, with biphasic kill curve detection and treatment protocol simulation (Balaban et al. 2004).
-
-### Whole-Cell Simulation — Syn3A Minimal Cell (Rust)
-
-Native Rust simulator for JCVI-Syn3A (493 genes). Staged integration: RDME lattice diffusion, CME stochastic expression, ODE metabolic fluxes, Brownian dynamics for chromosome physics, geometry/divisome for cell division, and CASCI quantum chemistry for reaction barriers.
-
-Includes a **stochastic gene expression** overlay using Gillespie tau-leaping: telegraph promoter model (ON/OFF states), mRNA bursting with configurable burst sizes, and protein noise with Fano factor > 1. Opt-in per simulation — the default remains deterministic for reproducibility.
-
-Anchored to: Thornburg et al., *Cell* (2026), DOI `10.1016/j.cell.2026.02.009`.
-
 ## Applications
 
 ### Neuroscience Research
@@ -268,6 +345,13 @@ Anchored to: Thornburg et al., *Cell* (2026), DOI `10.1016/j.cell.2026.02.009`.
 - **Safety screening**: Detect neural side effects before animal testing
 - **Insecticide development**: Test neuroactive compounds on digital Drosophila brains
 
+### Synthetic Biology & AMR Research
+- **Antibiotic protocol optimization**: Compare single, pulsed, and combination therapies
+- **Persister cell modeling**: Biphasic kill curves, stochastic dormancy (Balaban et al. 2004)
+- **Gene circuit design**: Target noise profiles for synthetic gene circuits
+- **AMR evolution**: Track resistance mutation, fitness costs, and plasmid transfer dynamics
+- **Biofilm dynamics**: Quorum sensing, EPS production, treatment resistance
+
 ### AI & Robotics
 - **Biologically grounded controllers**: Use dONN motor output to drive robots or game agents
 - **Embodied cognition**: Digital organisms with complete sensorimotor loops (sense → think → act)
@@ -276,8 +360,9 @@ Anchored to: Thornburg et al., *Cell* (2026), DOI `10.1016/j.cell.2026.02.009`.
 
 ### Education
 - **Digital dissection**: Explore brain regions, apply drugs, measure consciousness — no animals harmed
-- **Interactive neuroscience**: Students can interact with live demos and closed-loop tasks, even though the 25K benchmark path is still slower than full biological real time
+- **Interactive neuroscience**: Students can interact with live demos and closed-loop tasks
 - **Comparative neurobiology**: Compare C. elegans (302 neurons) to Drosophila (139K) to cortical tissue
+- **Ecosystem exploration**: 3D terrarium viewer for multi-scale biology education
 
 ## Quick Start
 
@@ -352,32 +437,49 @@ python3 demos/demo_emergent_cuda.py
 # Language learning
 python3 demos/demo_language_learning.py
 
-# Spatial Arena (Doom-style navigation)
-python3 demos/demo_doom_arena.py
-
 # GPU scale with JSON output and multi-seed
 python3 demos/demo_dishbrain_pong.py --scale medium --device cuda --runs 5 --json results.json
 
 # Vast.ai GPU deployment
 bash scripts/vast_deploy.sh search          # find cheap A100s
 bash scripts/vast_deploy.sh all <id> medium # run everything
+```
 
-# Rust/Metal terrarium ecosystem + evolution engine
+### Rust/Metal Terrarium & Tools
+
+```bash
 cd oneuro-metal
-cargo build --profile fast --no-default-features --bin terrarium_evolve --bin terrarium_native --bin terrarium_ascii
+
+# Build all binaries
+cargo build --profile fast --no-default-features
+
+# 3D terrarium viewer (orbit camera, shadows, multi-scale zoom)
+./target/fast/terrarium_3d --seed 7 --fps 30
+
+# Evolution engine (NSGA-II, 6 modes)
 ./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
 
-# 3D ASCII terrarium renderer (isometric, top-down, or split view)
-./target/fast/terrarium_ascii --mode iso --fps 15
-./target/fast/terrarium_ascii --mode split --fps 12 --frames 200
+# Pareto multi-objective + stress resilience
+./target/fast/terrarium_evolve --pareto --stress-test --population 8 --generations 5 --frames 50 --lite
 
-# Run 136-test regression suite (includes env engine, spatial zones, drug optimizer, gene circuit)
-CARGO_BUILD_JOBS=4 cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
-  soil_atmosphere terrarium_evolve drosophila_population plant_competition soil_fauna \
-  fly_metabolism field_coupling seed_cellular terrarium_world organism_metabolism \
-  stochastic phenotypic persister bet_hedging benchmark seasonal drought tropical \
-  arid spatial zone plant_noise microbial_noise multi_species single_drug pulsed \
-  combination protocol ecoli circuit
+# Semantic zoom terminal viewer (4 zoom levels)
+./target/fast/terrarium_zoom --mode iso --fps 15
+
+# Drug protocol optimizer
+./target/fast/drug_optimizer --mode compare
+
+# Gene circuit noise designer
+./target/fast/gene_circuit --target-fano 5.0 --target-mean 100.0
+
+# Run 214-test regression suite
+cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
+  soil_atmosphere terrarium_evolve drosophila_population plant_competition \
+  soil_fauna fly_metabolism field_coupling seed_cellular terrarium_world \
+  organism_metabolism stochastic cross_scale phenotypic persister bet_hedging \
+  benchmark seasonal drought tropical arid spatial zone plant_noise \
+  microbial_noise multi_species single_drug pulsed combination protocol \
+  ecoli circuit enzyme_ bioremediation probe_coupling probe_snapshot \
+  drug_enzyme soil_enzyme temperature_coupling remediation guild_latent
 ```
 
 ## How dONNs Differ from ANNs
@@ -393,6 +495,7 @@ CARGO_BUILD_JOBS=4 cargo test --no-default-features --lib -- substrate_stays_bou
 | **Consciousness metrics** | Not applicable | IIT Phi, PCI, criticality, Global Workspace |
 | **Circadian rhythms** | Not modeled | TTFL clock, circadian drug efficacy variation |
 | **Gene expression** | None | Full DNA→RNA→Protein pipeline |
+| **Ecosystem simulation** | Not applicable | Soil-plant-insect ecology at molecular resolution |
 
 ## Papers
 
@@ -400,6 +503,7 @@ CARGO_BUILD_JOBS=4 cargo test --no-default-features --lib -- substrate_stays_bou
 |-------|--------|-------------|------|
 | **Beyond ANN** | Complete | 23/23 PASS | `papers/beyond_ann_white_paper.md` |
 | **DishBrain Replication** | Working draft + live benchmark artifacts | 5/5 PASS baseline, actively optimized | `papers/dishbrain_replication_paper.md` |
+| **Multi-Scale Methods** | Complete | 7 scales, 24 references | `docs/METHODS_MULTISCALE_PAPER.md` |
 
 ## Basal Ganglia Learning Benchmark
 
@@ -423,48 +527,15 @@ A validated Go/No-Go benchmark testing dopamine-dependent reinforcement learning
 | **anti_correlated** | 88.0% | 71.2% | -16.8% | [-21%, -13%] |
 | **no_dopamine** | 86.5% | 50.0% | -36.5% | [-40%, -33%] |
 
-### Key Findings
-- **Dopamine learning works**: Networks improve accuracy by ~10%
-- **NMDA critical**: Blocking NMDA receptors impairs learning by ~24%
-- **Contingency proven**: Inverted rewards cause learning of wrong associations
-- **Ablation robust**: Removing dopamine causes 33-37% accuracy decline
-
-### Run Benchmark
-
 ```bash
-# 30-seed confirmatory
 PYTHONPATH=src python3 experiments/go_no_go_benchmark.py \
     --conditions full_learning no_dopamine \
-    --n-seeds 30 \
-    --scale standard \
-    --workers 2
-
-# 4 conditions
-PYTHONPATH=src python3 experiments/go_no_go_benchmark.py \
-    --conditions full_learning no_dopamine nmda_block anti_correlated \
-    --n-seeds 20 \
-    --scale standard
+    --n-seeds 30 --scale standard --workers 2
 ```
-
-### Generate Figures
-
-```bash
-python3 experiments/generate_figures.py results.json figures/
-```
-
-### Benchmark Files
-
-| File | Purpose |
-|------|---------|
-| `experiments/go_no_go_benchmark.py` | Main benchmark script |
-| `experiments/generate_figures.py` | Publication figure generator |
-| `experiments/results/*.json` | Raw results |
-| `experiments/figures/*.png` | Publication figures |
-| `docs/benchmarks/RESULTS_SUMMARY.md` | Full results documentation |
 
 ## Commercial & Enterprise
 
-oNeura includes commercial-grade modules for drug discovery and protein engineering, built on the same molecular physics engine:
+oNeura includes commercial-grade modules for drug discovery, protein engineering, and synthetic biology:
 
 | Module | Capability | Use Case |
 |--------|-----------|----------|
@@ -473,6 +544,8 @@ oNeura includes commercial-grade modules for drug discovery and protein engineer
 | **Drug Protocol Optimizer** | Single/pulsed/combination therapy comparison | Clinical dosing strategy |
 | **Gene Circuit Designer** | Target noise profiles via evolutionary optimization | Synthetic biology |
 | **Persister Cell Modeling** | Antibiotic persistence simulation (Balaban et al. 2004) | AMR research |
+| **AMR Simulator** | Resistance evolution, fitness costs, HGT dynamics | Antimicrobial stewardship |
+| **Eco-Evolutionary Lab** | Niche construction, trait-mediated interactions | Ecology research |
 
 For commercial licensing and enterprise support: [hello@oneura.ai](mailto:hello@oneura.ai)
 
@@ -483,6 +556,7 @@ Visit [oneura.ai](https://oneura.ai) for documentation and pricing.
 - Python 3.11+
 - NumPy >= 1.24
 - PyTorch >= 2.0 (for CUDA/MPS GPU backend)
+- Rust 1.70+ (for Rust/Metal backend)
 - Optional: [nQPU](https://github.com/robertcprice/nqpu-metal) for quantum chemistry
 
 ## Citation
