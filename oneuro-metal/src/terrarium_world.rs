@@ -703,7 +703,6 @@ impl Default for TerrariumExplicitMicrobeIdentity {
 }
 
 /// An explicit microbe in the terrarium with whole-cell simulation.
-#[derive(Debug)]
 pub struct TerrariumExplicitMicrobe {
     pub x: usize,
     pub y: usize,
@@ -956,6 +955,69 @@ pub struct TerrariumWorld {
     ownership: Vec<SoilOwnershipCell>,
     /// Cached ownership diagnostics, refreshed on `rebuild_ownership()`.
     ownership_diagnostics: OwnershipDiagnostics,
+    // ── Microbial guild fields (decomposers) ──
+    nitrifier_biomass: Vec<f32>,
+    microbial_cells: Vec<f32>,
+    microbial_packets: Vec<f32>,
+    microbial_copiotroph_fraction: Vec<f32>,
+    microbial_copiotroph_packets: Vec<f32>,
+    microbial_dormancy: Vec<f32>,
+    microbial_vitality: Vec<f32>,
+    microbial_reserve: Vec<f32>,
+    microbial_strain_yield: Vec<f32>,
+    microbial_strain_stress_tolerance: Vec<f32>,
+    microbial_packet_mutation_flux: Vec<f32>,
+    microbial_latent_packets: Vec<Vec<f32>>,
+    microbial_latent_strain_yield: Vec<Vec<f32>>,
+    microbial_latent_strain_stress_tolerance: Vec<Vec<f32>>,
+    microbial_secondary: SoilBroadSecondaryBanks,
+    // ── Nitrifier guild fields ──
+    nitrifier_cells: Vec<f32>,
+    nitrifier_packets: Vec<f32>,
+    nitrifier_aerobic_fraction: Vec<f32>,
+    nitrifier_aerobic_packets: Vec<f32>,
+    nitrifier_dormancy: Vec<f32>,
+    nitrifier_vitality: Vec<f32>,
+    nitrifier_reserve: Vec<f32>,
+    nitrifier_strain_oxygen_affinity: Vec<f32>,
+    nitrifier_strain_ammonium_affinity: Vec<f32>,
+    nitrifier_packet_mutation_flux: Vec<f32>,
+    nitrifier_latent_packets: Vec<Vec<f32>>,
+    nitrifier_latent_strain_oxygen_affinity: Vec<Vec<f32>>,
+    nitrifier_latent_strain_ammonium_affinity: Vec<Vec<f32>>,
+    nitrifier_secondary: SoilBroadSecondaryBanks,
+    // ── Denitrifier guild fields ──
+    denitrifier_biomass: Vec<f32>,
+    denitrifier_cells: Vec<f32>,
+    denitrifier_packets: Vec<f32>,
+    denitrifier_anoxic_fraction: Vec<f32>,
+    denitrifier_anoxic_packets: Vec<f32>,
+    denitrifier_dormancy: Vec<f32>,
+    denitrifier_vitality: Vec<f32>,
+    denitrifier_reserve: Vec<f32>,
+    denitrifier_strain_anoxia_affinity: Vec<f32>,
+    denitrifier_strain_nitrate_affinity: Vec<f32>,
+    denitrifier_packet_mutation_flux: Vec<f32>,
+    denitrifier_latent_packets: Vec<Vec<f32>>,
+    denitrifier_latent_strain_anoxia_affinity: Vec<Vec<f32>>,
+    denitrifier_latent_strain_nitrate_affinity: Vec<Vec<f32>>,
+    denitrifier_secondary: SoilBroadSecondaryBanks,
+    // ── Soil potential fields ──
+    nitrification_potential: Vec<f32>,
+    denitrification_potential: Vec<f32>,
+    // ── Explicit microbe fields ──
+    pub explicit_microbes: Vec<TerrariumExplicitMicrobe>,
+    explicit_microbe_authority: Vec<f32>,
+    explicit_microbe_activity: Vec<f32>,
+    next_microbe_idx: usize,
+    next_species_id: u32,
+    // ── Atmosphere physics ──
+    air_pressure_kpa: Vec<f32>,
+    air_density: Vec<f32>,
+    // ── Packet populations ──
+    packet_populations: Vec<()>,
+    // ── MD calibrator ──
+    md_calibrator: Option<()>,
 }
 
 impl TerrariumWorld {
@@ -2402,8 +2464,10 @@ mod packet;
 mod calibrator;
 mod flora;
 mod soil;
+#[cfg(feature = "terrarium_advanced")]
 mod snapshot;
 mod biomechanics;
+#[cfg(feature = "terrarium_advanced")]
 mod explicit_microbe_impl;
 
 // Rendering modules — need crate::terrarium_render, terrarium_scene_query,
