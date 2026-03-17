@@ -26,6 +26,9 @@ mod screenshot;
 mod zoom;
 mod export;
 mod sky;
+mod scenarios;
+mod charts;
+mod narration;
 
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 use oneuro_metal::TerrariumWorld;
@@ -46,6 +49,9 @@ use selection::Selection;
 use sky::StarField;
 use terrain::{build_terrain_mesh, build_terrain_mesh_overlay};
 use export::{export_snapshot, export_json, export_metrics, generate_notebook, TimeLapse};
+use scenarios::{Scenario, apply_scenario};
+use charts::ChartPanel;
+use narration::Narration;
 use plants::build_plant_meshes;
 use flies::build_fly_meshes;
 use water::build_water_meshes;
@@ -78,6 +84,7 @@ fn print_usage() {
     eprintln!("  --fps <N>         Target framerate (default: 30)");
     eprintln!("  --frames <N>      Quit after N frames");
     eprintln!("  --cpu-substrate   Use CPU substrate backend");
+    eprintln!("  --scenario <S>    Preset scenario (drought, competition, nutrients, boom, night, stress, microbes)");
 }
 
 fn find_nearest_entity(world: &TerrariumWorld, target: [f32; 3], cell_size: f32) -> mesh::EntityTag {
@@ -100,8 +107,9 @@ fn find_nearest_entity(world: &TerrariumWorld, target: [f32; 3], cell_size: f32)
 }
 
 fn main() -> ExitCode {
-    let (seed, fps, frames, cpu_sub) = {
+    let (seed, fps, frames, cpu_sub, initial_scenario) = {
         let mut seed = 7u64; let mut fps = 30u64; let mut frames: Option<usize> = None; let mut cpu = false;
+        let mut scenario = Scenario::Default;
         let mut args = env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -109,11 +117,23 @@ fn main() -> ExitCode {
                 "--fps" => fps = args.next().unwrap_or_default().parse().unwrap_or(30),
                 "--frames" => frames = args.next().and_then(|s| s.parse().ok()),
                 "--cpu-substrate" => cpu = true,
+                "--scenario" => {
+                    scenario = match args.next().unwrap_or_default().to_lowercase().as_str() {
+                        "drought" => Scenario::DroughtSurvival,
+                        "competition" | "compete" => Scenario::CompetitiveExclusion,
+                        "nutrients" | "nutrient" => Scenario::NutrientCycling,
+                        "boom" | "population" => Scenario::PopulationBoom,
+                        "night" | "nocturnal" => Scenario::NightEcology,
+                        "stress" => Scenario::StressResilience,
+                        "microbes" | "microbial" => Scenario::MicrobialWorld,
+                        _ => Scenario::Default,
+                    };
+                }
                 "--help" | "-h" => { print_usage(); std::process::exit(0); }
                 o => { eprintln!("unknown arg: {o}"); print_usage(); return ExitCode::FAILURE; }
             }
         }
-        (seed, fps, frames, cpu)
+        (seed, fps, frames, cpu, scenario)
     };
 
     let mut world = match TerrariumWorld::demo(seed, !cpu_sub) {
@@ -121,18 +141,8 @@ fn main() -> ExitCode {
         Err(e) => { eprintln!("failed to build terrarium: {e}"); return ExitCode::FAILURE; }
     };
 
-    // Add more visible entities for better demo
-    for i in 0..20 {
-        let x = (i * 7 + 3) % (world.config.width - 2);
-        let y = (i * 11 + 2) % (world.config.height - 2);
-        let _ = world.add_plant(x, y, None, None);
-    }
-    for i in 0..12 {
-        use oneuro_metal::drosophila::DrosophilaScale;
-        let x = 3.0 + (i as f32 * 3.1) % (world.config.width as f32 - 6.0);
-        let y = 3.0 + (i as f32 * 2.3) % (world.config.height as f32 - 6.0);
-        world.add_fly(DrosophilaScale::Tiny, x, y, seed + i as u64);
-    }
+    // Apply scenario configuration (entity placement, moisture, etc.)
+    apply_scenario(&mut world, initial_scenario, seed);
 
     let terrain_seed = world.config.width as u64 * 31 + world.config.height as u64;
 
@@ -169,6 +179,11 @@ fn main() -> ExitCode {
     let mut render_ms = 0.0f32;
     let mut presentation_mode = false;
     let mut presentation_timer = 0u32;
+    let mut scenario = initial_scenario;
+    let mut chart_panel = ChartPanel::new();
+    let mut narration = Narration::new();
+    let mut prev_snapshot: Option<TerrariumWorldSnapshot> = None;
+    let mut scenario_frame = 0usize;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let started = Instant::now();
@@ -256,6 +271,22 @@ fn main() -> ExitCode {
                 }
                 Err(e) => { screenshot_msg = format!("JSON error: {}", e); screenshot_timer = 120; }
             }
+        }
+        // H: cycle scenario (resets world)
+        if window.is_key_pressed(Key::H, KeyRepeat::No) {
+            scenario = scenario.next();
+            world = match TerrariumWorld::demo(seed, !cpu_sub) {
+                Ok(w) => w,
+                Err(e) => { eprintln!("failed to rebuild world: {e}"); return ExitCode::FAILURE; }
+            };
+            apply_scenario(&mut world, scenario, seed);
+            frame_idx = 0;
+            scenario_frame = 0;
+            pop_history.clear();
+            chart_panel = ChartPanel::new();
+            prev_snapshot = None;
+            screenshot_msg = format!("Scenario: {}", scenario.label());
+            screenshot_timer = 120;
         }
         if window.is_key_pressed(Key::LeftBracket, KeyRepeat::No) { sim_speed = (sim_speed / 2).max(1); }
         if window.is_key_pressed(Key::RightBracket, KeyRepeat::No) { sim_speed = (sim_speed * 2).min(8); }
@@ -395,6 +426,14 @@ fn main() -> ExitCode {
             let snap = world.snapshot();
             pop_history.push_back((snap.plants, snap.flies));
             if pop_history.len() > 120 { pop_history.pop_front(); }
+
+            // Record metrics for chart panel
+            chart_panel.record(&snap);
+
+            // Update narration
+            narration.update(scenario, scenario_frame, &zoom, &snap, &prev_snapshot, sel.tag);
+            prev_snapshot = Some(snap);
+            scenario_frame += 1;
         }
         sim_ms = sim_start.elapsed().as_secs_f32() * 1000.0;
 
@@ -544,9 +583,13 @@ fn main() -> ExitCode {
         }
 
         // Draw panel and HUD
-        draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel, &pop_history);
+        draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel, &pop_history, &chart_panel);
         let msg = if screenshot_timer > 0 { &screenshot_msg } else { "" };
-        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit, &overlay_mode, timelapse.recording, sim_ms, render_ms, presentation_mode);
+        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit, &overlay_mode, timelapse.recording, sim_ms, render_ms, presentation_mode, &scenario);
+
+        // Narration overlay (bottom of viewport)
+        narration.draw(&mut buffer);
+
         if screenshot_timer > 0 { screenshot_timer -= 1; }
 
         // FPS counter

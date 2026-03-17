@@ -1,6 +1,10 @@
 //! HTTP and WebSocket handlers for the terrarium web server.
 
+use crate::ecosystem_integration::{
+    self, EcosystemConfig, IntegratedEcosystem,
+};
 use crate::terrarium_web_annotations::all_annotations;
+use crate::terrarium_web_analysis::{start_sensitivity, start_stress};
 use crate::terrarium_web_evolution::{start_evolution, stop_evolution};
 use crate::terrarium_web_protocol::{
     parse_view, ClientMsg, FrameData, ServerMsg, SnapshotData,
@@ -172,6 +176,117 @@ pub async fn auth_token(
     let mut auth = state.auth.lock().await;
     let response = auth.generate_token();
     axum::Json(response)
+}
+
+// ---------------------------------------------------------------------------
+// Ecosystem integration endpoints
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct EcosystemStartQuery {
+    #[serde(default = "default_scenario")]
+    scenario: String,
+    #[serde(default = "default_eco_seed")]
+    seed: u64,
+}
+fn default_scenario() -> String { "climate".into() }
+fn default_eco_seed() -> u64 { 42 }
+
+/// GET /api/ecosystem/snapshot — return the current ecosystem snapshot.
+pub async fn ecosystem_snapshot_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let eco = state.ecosystem.lock().await;
+    match eco.as_ref() {
+        Some(ecosystem) => {
+            let snapshot = serde_json::json!({
+                "active": true,
+                "time_days": ecosystem.time(),
+                "config": ecosystem.config,
+            });
+            axum::Json(snapshot).into_response()
+        }
+        None => axum::Json(serde_json::json!({"active": false})).into_response(),
+    }
+}
+
+/// POST /api/ecosystem/start — start an integrated ecosystem scenario.
+pub async fn ecosystem_start_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<EcosystemStartQuery>,
+) -> impl IntoResponse {
+    let ecosystem = match query.scenario.as_str() {
+        "climate" | "climate_impact" => ecosystem_integration::climate_impact_scenario(query.seed),
+        "amr" | "amr_emergence" => ecosystem_integration::amr_emergence_scenario(query.seed),
+        "soil" | "soil_health" => ecosystem_integration::soil_health_scenario(query.seed),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(serde_json::json!({"error": format!("Unknown scenario: {}. Use: climate, amr, soil", query.scenario)})),
+            ).into_response();
+        }
+    };
+
+    let config_json = serde_json::json!(ecosystem.config);
+    let mut eco = state.ecosystem.lock().await;
+    *eco = Some(ecosystem);
+
+    axum::Json(serde_json::json!({
+        "status": "started",
+        "scenario": query.scenario,
+        "seed": query.seed,
+        "config": config_json,
+    })).into_response()
+}
+
+/// POST /api/ecosystem/step — advance the ecosystem by one time step.
+pub async fn ecosystem_step_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let mut eco = state.ecosystem.lock().await;
+    match eco.as_mut() {
+        Some(ecosystem) => {
+            let snapshot = ecosystem.step();
+            axum::Json(serde_json::json!({
+                "status": "stepped",
+                "snapshot": snapshot,
+            })).into_response()
+        }
+        None => (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({"error": "No ecosystem active. POST /api/ecosystem/start first."})),
+        ).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct EcosystemRunQuery {
+    #[serde(default = "default_run_days")]
+    days: f64,
+}
+fn default_run_days() -> f64 { 30.0 }
+
+/// POST /api/ecosystem/run — run ecosystem for N days, return full time series.
+pub async fn ecosystem_run_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<EcosystemRunQuery>,
+) -> impl IntoResponse {
+    let mut eco = state.ecosystem.lock().await;
+    match eco.as_mut() {
+        Some(ecosystem) => {
+            let timeseries = ecosystem.run(query.days);
+            axum::Json(serde_json::json!({
+                "status": "completed",
+                "days": query.days,
+                "snapshots": timeseries.snapshots.len(),
+                "timeseries": timeseries,
+            })).into_response()
+        }
+        None => (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({"error": "No ecosystem active. POST /api/ecosystem/start first."})),
+        ).into_response(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +541,35 @@ async fn handle_command(cmd: ClientMsg, state: &Arc<AppState>) {
                         message: format!("Failed to apply genome: {}", e),
                     });
                 }
+            }
+        }
+        ClientMsg::SensitivityStart { config } => {
+            start_sensitivity(state.clone(), config).await;
+        }
+        ClientMsg::StressStart { config } => {
+            start_stress(state.clone(), config).await;
+        }
+        ClientMsg::EcosystemStart { scenario, seed } => {
+            let ecosystem = match scenario.as_str() {
+                "amr" | "amr_emergence" => ecosystem_integration::amr_emergence_scenario(seed),
+                "soil" | "soil_health" => ecosystem_integration::soil_health_scenario(seed),
+                _ => ecosystem_integration::climate_impact_scenario(seed),
+            };
+            let mut eco = state.ecosystem.lock().await;
+            *eco = Some(ecosystem);
+        }
+        ClientMsg::EcosystemStep => {
+            let mut eco = state.ecosystem.lock().await;
+            if let Some(ecosystem) = eco.as_mut() {
+                let snapshot = ecosystem.step();
+                let _ = state.tx.send(ServerMsg::EcosystemSnapshot(snapshot));
+            }
+        }
+        ClientMsg::EcosystemRun { days } => {
+            let mut eco = state.ecosystem.lock().await;
+            if let Some(ecosystem) = eco.as_mut() {
+                let timeseries = ecosystem.run(days);
+                let _ = state.tx.send(ServerMsg::EcosystemTimeSeries(timeseries));
             }
         }
     }

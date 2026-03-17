@@ -6,6 +6,7 @@ use super::camera::Camera;
 use super::color::{rgb, OverlayMode};
 use super::mesh::EntityTag;
 use super::selection::Selection;
+use super::scenarios::Scenario;
 use super::{VIEWPORT_W, PANEL_W, TOTAL_W, TOTAL_H, CELL_SIZE};
 
 /// ASCII art representation of the current moon phase.
@@ -63,6 +64,7 @@ pub fn draw_panel(
     buffer: &mut [u32], world: &TerrariumWorld, snapshot: &TerrariumWorldSnapshot,
     paused: bool, realistic: bool, actual_fps: f32, cam: &Camera, selection: &Selection,
     pop_history: &std::collections::VecDeque<(usize, usize)>,
+    charts: &super::charts::ChartPanel,
 ) {
     let px = VIEWPORT_W;
     draw_rect(buffer, TOTAL_W, TOTAL_H, px, 0, PANEL_W, TOTAL_H, rgb(20, 22, 26));
@@ -197,6 +199,10 @@ pub fn draw_panel(
     draw_minimap(buffer, world, x, y);
     y += 82;
 
+    // Sparkline charts (only if enough data)
+    y = charts.draw(buffer, y);
+    y += 4;
+
     // Camera info
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "CAMERA", rgb(210, 214, 220)); y += 10;
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &format!("yaw {:.1} pitch {:.1}", cam.yaw.to_degrees(), cam.pitch.to_degrees()), rgb(160, 166, 174)); y += 12;
@@ -209,7 +215,7 @@ pub fn draw_panel(
         "Tab     cycle", "WASD    pan", "L       lighting", "F       follow",
         "T       orbit", "[/]     speed", "1-0     overlay", "`       cycle ovl",
         "E       export CSV", "J       export JSON", "M       metrics",
-        "N       notebook", "V       record", "G       present",
+        "N       notebook", "V       record", "G       present", "H       scenario",
         "space   pause", "F12     screenshot", "R       reset cam",
         "esc     quit",
     ].iter().enumerate() {
@@ -326,7 +332,7 @@ fn draw_minimap(buffer: &mut [u32], world: &TerrariumWorld, x: usize, y: usize) 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y + map_h + 2, "MINIMAP", rgb(130, 136, 144));
 }
 
-pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool, overlay: &OverlayMode, recording: bool, sim_ms: f32, render_ms: f32, presentation: bool) {
+pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool, overlay: &OverlayMode, recording: bool, sim_ms: f32, render_ms: f32, presentation: bool, scenario: &Scenario) {
     let label = if realistic { "3D REALISTIC" } else { "3D FLAT" };
     draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 4, label.len() * 8 + 8, 14, rgb(10, 12, 16));
     draw_text(buffer, TOTAL_W, TOTAL_H, 8, 7, label, if realistic { rgb(230, 200, 88) } else { rgb(160, 160, 170) });
@@ -383,6 +389,13 @@ pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_ms
         let pw = pmsg.len() * 8 + 8;
         draw_rect(buffer, TOTAL_W, TOTAL_H, ix, 40, pw, 14, rgb(10, 30, 60));
         draw_text(buffer, TOTAL_W, TOTAL_H, ix + 4, 43, pmsg, rgb(100, 180, 255));
+        ix += pw + 4;
+    }
+    if *scenario != Scenario::Default {
+        let slabel = scenario.label();
+        let sw = slabel.len() * 8 + 8;
+        draw_rect(buffer, TOTAL_W, TOTAL_H, ix, 40, sw, 14, rgb(40, 20, 50));
+        draw_text(buffer, TOTAL_W, TOTAL_H, ix + 4, 43, slabel, rgb(220, 160, 255));
     }
     if paused {
         let msg = "PAUSED";

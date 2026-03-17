@@ -270,8 +270,11 @@ impl TerrariumWorld {
             let local_temp = self.sample_temperature_at(x, y, 1.min(depth - 1));
             let temp_factor = temp_response(local_temp, 24.0, 10.0);
             let local_humidity = self.sample_humidity_at(x, y, canopy_z);
+            // Moonlight adds ~0.1% of daylight (enough for photoperiodism signaling).
+            // Full moon nighttime light ≈ 0.001 relative daylight equivalent.
+            let moonlight_contribution = (1.0 - daylight).max(0.0) * self.moonlight() * 0.001;
             let local_light = clamp(
-                daylight * (1.0 - canopy_comp * (1.18 - genome.shade_tolerance).max(0.16)),
+                (daylight + moonlight_contribution) * (1.0 - canopy_comp * (1.18 - genome.shade_tolerance).max(0.16)),
                 0.03,
                 1.15,
             );

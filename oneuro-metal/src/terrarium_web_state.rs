@@ -1,5 +1,6 @@
 //! Shared application state for the terrarium web server.
 
+use crate::ecosystem_integration::IntegratedEcosystem;
 use crate::terrarium_web_auth::AuthState;
 use crate::terrarium_web_protocol::{
     EcologyEventData, EvolveGenerationData, EntityData, EntityPos, FlyEntity, ServerMsg,
@@ -47,6 +48,8 @@ pub struct AppState {
     pub tournament: Arc<Mutex<TournamentState>>,
     /// Authentication state.
     pub auth: Mutex<AuthState>,
+    /// Integrated ecosystem simulation (11-module orchestrator).
+    pub ecosystem: Mutex<Option<IntegratedEcosystem>>,
 }
 
 impl AppState {
@@ -116,6 +119,7 @@ impl AppState {
             last_telemetry: Mutex::new(None),
             tournament: Arc::new(Mutex::new(TournamentState::new())),
             auth: Mutex::new(AuthState::new(require_auth)),
+            ecosystem: Mutex::new(None),
         }))
     }
 
@@ -197,6 +201,34 @@ impl AppState {
                 EcologyTelemetryEvent::FlyHypoxiaOnset { x, y, ambient_o2, altitude } => EcologyEventData {
                     event_type: "hypoxia".into(), x: *x, y: *y,
                     detail: format!("O2={:.1}% alt={:.1}", ambient_o2 * 100.0, altitude),
+                },
+                EcologyTelemetryEvent::ExplicitPromotion { x, y, guild, represented_cells, .. } => EcologyEventData {
+                    event_type: "promotion".into(), x: *x as f32, y: *y as f32,
+                    detail: format!("guild={} cells={:.1}", guild, represented_cells),
+                },
+                EcologyTelemetryEvent::ExplicitDemotion { x, y, represented_cells, atp_mm, .. } => EcologyEventData {
+                    event_type: "demotion".into(), x: *x as f32, y: *y as f32,
+                    detail: format!("cells={:.1} ATP={:.2}mM", represented_cells, atp_mm),
+                },
+                EcologyTelemetryEvent::ExplicitDeath { x, y, reason, represented_cells, .. } => EcologyEventData {
+                    event_type: "death".into(), x: *x as f32, y: *y as f32,
+                    detail: format!("{} cells={:.1}", reason, represented_cells),
+                },
+                EcologyTelemetryEvent::CellDivision { x, y, parent_represented_cells, daughter_represented_cells, .. } => EcologyEventData {
+                    event_type: "division".into(), x: *x as f32, y: *y as f32,
+                    detail: format!("parent={:.1}→daughter={:.1}", parent_represented_cells, daughter_represented_cells),
+                },
+                EcologyTelemetryEvent::CellDivisionDaughter { x, y, represented_cells, .. } => EcologyEventData {
+                    event_type: "division_daughter".into(), x: *x as f32, y: *y as f32,
+                    detail: format!("cells={:.1}", represented_cells),
+                },
+                EcologyTelemetryEvent::PacketPopulationSeed { x, y } => EcologyEventData {
+                    event_type: "packet_seed".into(), x: *x as f32, y: *y as f32,
+                    detail: "Packet seeded".into(),
+                },
+                EcologyTelemetryEvent::PacketPromotion { x, y, activity, represented_cells, .. } => EcologyEventData {
+                    event_type: "packet_promotion".into(), x: *x as f32, y: *y as f32,
+                    detail: format!("activity={:.2} cells={:.1}", activity, represented_cells),
                 },
             })
             .collect();

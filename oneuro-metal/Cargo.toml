@@ -45,22 +45,12 @@ gif = "0.13"
 metal = "0.29"
 objc = "0.2"
 
+# Only terrarium_web needs explicit config (required-features).
+# All other binaries in src/bin/ are auto-discovered by Cargo.
 [[bin]]
 name = "terrarium_web"
 path = "src/bin/terrarium_web.rs"
 required-features = ["web"]
-
-[[bin]]
-name = "evolution_lab"
-path = "src/bin/evolution_lab.rs"
-
-[[bin]]
-name = "amr_simulator"
-path = "src/bin/amr_simulator.rs"
-
-[[bin]]
-name = "soil_nutrient_demo"
-path = "src/bin/soil_nutrient_demo.rs"
 
 [build-dependencies]
 pyo3-build-config = "0.28"

@@ -10,6 +10,7 @@
 use oneuro_metal::{
     WorldGenome, TerrariumWorld, TerrariumFruitPatch, FruitSourceState,
 };
+use rayon::prelude::*;
 use std::env;
 use std::fs;
 use std::time::Instant;
@@ -81,6 +82,7 @@ struct Args {
     seed: u64,
     output: Option<String>,
     lite: bool,
+    sequential: bool,
 }
 
 impl Default for Args {
@@ -91,6 +93,7 @@ impl Default for Args {
             seed: 42,
             output: None,
             lite: true,
+            sequential: false,
         }
     }
 }
@@ -118,6 +121,7 @@ fn parse_args() -> Args {
             "--output" | "-o" => { args.output = argv.get(i + 1).cloned(); i += 1; }
             "--lite" => args.lite = true,
             "--no-lite" => args.lite = false,
+            "--sequential" | "--seq" => args.sequential = true,
             "--help" | "-h" => { print_help(); std::process::exit(0); }
             other => { eprintln!("Unknown argument: {}", other); print_help(); std::process::exit(1); }
         }
@@ -142,6 +146,7 @@ fn print_help() {
     println!("  --output <PATH>    Write results to JSON file");
     println!("  --lite             Use lite worlds (default: true)");
     println!("  --no-lite          Use full-size worlds");
+    println!("  --sequential       Run scenarios sequentially (default: parallel via rayon)");
     println!("  --help, -h         Show this help");
     println!();
     println!("Scenarios:");
@@ -317,21 +322,45 @@ fn main() {
     let args = parse_args();
     let start = Instant::now();
 
+    let parallel = !args.sequential && args.scenarios.len() > 1;
     eprintln!("=== Terrarium Ecosystem Stress Benchmark Suite ===");
-    eprintln!("Frames: {}  Seed: {}  Lite: {}  Scenarios: {}", args.frames, args.seed, args.lite, args.scenarios.len());
+    eprintln!("Frames: {}  Seed: {}  Lite: {}  Scenarios: {}  Parallel: {}",
+        args.frames, args.seed, args.lite, args.scenarios.len(), parallel);
     eprintln!();
 
-    let mut results: Vec<StressResult> = Vec::new();
+    let results: Vec<StressResult> = if parallel {
+        // Run all scenarios in parallel using rayon
+        let frames = args.frames;
+        let seed = args.seed;
+        let lite = args.lite;
+        args.scenarios.par_iter().map(|scenario| {
+            run_scenario(scenario, frames, seed, lite)
+        }).collect()
+    } else {
+        // Sequential execution
+        let mut results = Vec::new();
+        for scenario in &args.scenarios {
+            eprint!("  Running {:25}... ", scenario.name());
+            let r = run_scenario(scenario, args.frames, args.seed, args.lite);
+            eprintln!(
+                "baseline={:.2}  min={:.2} (f{})  final={:.2}  recovery={:.1}%  ({:.0}ms)",
+                r.baseline_biomass, r.min_biomass, r.min_biomass_frame,
+                r.final_biomass, r.recovery_ratio * 100.0, r.elapsed_ms
+            );
+            results.push(r);
+        }
+        results
+    };
 
-    for scenario in &args.scenarios {
-        eprint!("  Running {:25}... ", scenario.name());
-        let r = run_scenario(scenario, args.frames, args.seed, args.lite);
-        eprintln!(
-            "baseline={:.2}  min={:.2} (f{})  final={:.2}  recovery={:.1}%  ({:.0}ms)",
-            r.baseline_biomass, r.min_biomass, r.min_biomass_frame,
-            r.final_biomass, r.recovery_ratio * 100.0, r.elapsed_ms
-        );
-        results.push(r);
+    // Print results (for parallel mode, print after all complete)
+    if parallel {
+        for r in &results {
+            eprintln!(
+                "  {:25} baseline={:.2}  min={:.2} (f{})  final={:.2}  recovery={:.1}%  ({:.0}ms)",
+                r.scenario, r.baseline_biomass, r.min_biomass, r.min_biomass_frame,
+                r.final_biomass, r.recovery_ratio * 100.0, r.elapsed_ms
+            );
+        }
     }
 
     // Summary table
@@ -359,7 +388,8 @@ fn main() {
 
     let total_elapsed = start.elapsed();
     eprintln!();
-    eprintln!("Total time: {:.2}s", total_elapsed.as_secs_f64());
+    let speedup = if parallel { " (parallel)" } else { "" };
+    eprintln!("Total time: {:.2}s{}", total_elapsed.as_secs_f64(), speedup);
 
     // Output
     if let Some(ref path) = args.output {

@@ -52,10 +52,30 @@ pub enum ClientMsg {
     EvolveApplyGenome {
         genome: WorldGenome,
     },
+    SensitivityStart {
+        config: SensitivityWebConfig,
+    },
+    StressStart {
+        config: StressWebConfig,
+    },
+    EcosystemStart {
+        scenario: String,
+        #[serde(default = "default_seed")]
+        seed: u64,
+    },
+    EcosystemStep,
+    EcosystemRun {
+        #[serde(default = "default_eco_days")]
+        days: f64,
+    },
 }
 
 fn default_seed() -> u64 {
     42
+}
+
+fn default_eco_days() -> f64 {
+    30.0
 }
 
 /// Simplified evolution config from the browser (maps to EvolutionConfig).
@@ -98,6 +118,37 @@ fn default_fitness_str() -> String {
 }
 fn default_mutation_rate() -> f32 {
     0.15
+}
+
+/// Config for a sensitivity sweep from the browser.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SensitivityWebConfig {
+    /// Sweep a single param (default: all 10 continuous).
+    #[serde(default)]
+    pub param: Option<String>,
+    /// Resolution (sweep points per param). Default 5, max 20.
+    #[serde(default)]
+    pub resolution: Option<usize>,
+    /// Frames per evaluation. Default 30.
+    #[serde(default)]
+    pub frames: Option<usize>,
+    /// Random seed.
+    #[serde(default)]
+    pub seed: Option<u64>,
+}
+
+/// Config for a stress benchmark from the browser.
+#[derive(Debug, Clone, Deserialize)]
+pub struct StressWebConfig {
+    /// Which scenarios to run (default: all 6).
+    #[serde(default)]
+    pub scenarios: Vec<String>,
+    /// Total frames per scenario. Default 60.
+    #[serde(default)]
+    pub frames: Option<usize>,
+    /// Random seed.
+    #[serde(default)]
+    pub seed: Option<u64>,
 }
 
 impl EvolveWebConfig {
@@ -156,6 +207,12 @@ pub enum ServerMsg {
     EvolveGeneration(EvolveGenerationData),
     EvolveComplete(EvolveCompleteData),
     TournamentUpdate(crate::terrarium_web_tournament::TournamentUpdateData),
+    SensitivityProgress(SensitivityProgressData),
+    SensitivityComplete(SensitivityCompleteData),
+    StressProgress(StressProgressData),
+    StressComplete(StressCompleteData),
+    EcosystemSnapshot(crate::ecosystem_integration::EcosystemSnapshot),
+    EcosystemTimeSeries(crate::ecosystem_integration::EcosystemTimeSeries),
     Error {
         message: String,
     },
@@ -269,6 +326,50 @@ pub struct EvolveCompleteData {
     pub best_fitness: f32,
     pub total_worlds: usize,
     pub total_time_ms: f32,
+}
+
+// ---------------------------------------------------------------------------
+// Sensitivity / Stress data structs
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SensitivityProgressData {
+    pub parameter: String,
+    pub sensitivity_index: f32,
+    pub min_fitness: f32,
+    pub max_fitness: f32,
+    pub mean_fitness: f32,
+    pub sweep_values: Vec<f32>,
+    pub fitness_values: Vec<f32>,
+    pub param_index: usize,
+    pub total_params: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SensitivityCompleteData {
+    pub total_params: usize,
+    pub elapsed_ms: f64,
+    pub rankings: Vec<(String, f32)>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StressProgressData {
+    pub scenario: String,
+    pub description: String,
+    pub baseline_biomass: f32,
+    pub min_biomass: f32,
+    pub final_biomass: f32,
+    pub recovery_ratio: f32,
+    pub frames_to_min: usize,
+    pub elapsed_ms: f64,
+    pub scenario_index: usize,
+    pub total_scenarios: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StressCompleteData {
+    pub total_scenarios: usize,
+    pub elapsed_ms: f64,
 }
 
 /// Parse a view mode string into a TerrariumTopdownView.

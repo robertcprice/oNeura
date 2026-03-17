@@ -73,6 +73,8 @@ pub mod terrarium_web_tournament;
 pub mod terrarium_web_annotations;
 #[cfg(feature = "web")]
 pub mod terrarium_web_auth;
+#[cfg(feature = "web")]
+pub mod terrarium_web_analysis;
 pub mod whole_cell;
 pub mod whole_cell_data;
 pub mod whole_cell_submodels;

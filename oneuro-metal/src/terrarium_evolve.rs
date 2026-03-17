@@ -1234,7 +1234,9 @@ fn dominates(a: &MultiObjectiveFitness, b: &MultiObjectiveFitness) -> bool {
         && a.carbon >= b.carbon
         && a.fruit >= b.fruit
         && a.microbial >= b.microbial
-        && a.fly_metabolism >= b.fly_metabolism;
+        && a.fly_metabolism >= b.fly_metabolism
+        && a.enzyme_efficacy >= b.enzyme_efficacy
+        && a.ecosystem_integrity >= b.ecosystem_integrity;
 
     let strictly_better = a.biomass > b.biomass
         || a.biodiversity > b.biodiversity
@@ -1242,7 +1244,9 @@ fn dominates(a: &MultiObjectiveFitness, b: &MultiObjectiveFitness) -> bool {
         || a.carbon > b.carbon
         || a.fruit > b.fruit
         || a.microbial > b.microbial
-        || a.fly_metabolism > b.fly_metabolism;
+        || a.fly_metabolism > b.fly_metabolism
+        || a.enzyme_efficacy > b.enzyme_efficacy
+        || a.ecosystem_integrity > b.ecosystem_integrity;
 
     better_or_equal && strictly_better
 }
@@ -3732,6 +3736,22 @@ pub fn ecosystem_dashboard(snapshots: &[TerrariumWorldSnapshot], width: usize) -
     out.push_str(&format!("{:-<w$}\n", "- Energy ", w = w));
     out.push_str(&format!("{}\n", dashboard_line("FlyEnergy", latest.avg_fly_energy, &fly_energy, w)));
 
+    // Lunar cycle
+    let moon_name = match () {
+        _ if latest.lunar_phase < 0.0625  => "New Moon",
+        _ if latest.lunar_phase < 0.1875  => "Waxing Crescent",
+        _ if latest.lunar_phase < 0.3125  => "First Quarter",
+        _ if latest.lunar_phase < 0.4375  => "Waxing Gibbous",
+        _ if latest.lunar_phase < 0.5625  => "Full Moon",
+        _ if latest.lunar_phase < 0.6875  => "Waning Gibbous",
+        _ if latest.lunar_phase < 0.8125  => "Last Quarter",
+        _ if latest.lunar_phase < 0.9375  => "Waning Crescent",
+        _                                  => "New Moon",
+    };
+    out.push_str(&format!("{:-<w$}\n", "- Lunar ", w = w));
+    out.push_str(&format!("  Phase: {:.2} ({})  Moonlight: {:.2}  Tide: {:.2}\n",
+        latest.lunar_phase, moon_name, latest.moonlight, latest.tidal_moisture_factor));
+
     // Health assessment
     if snapshots.len() >= 3 {
         let health = assess_ecosystem_health(snapshots);
@@ -4153,7 +4173,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(1),
                 objectives: MultiObjectiveFitness {
                     biomass: 10.0, biodiversity: 5.0, stability: 8.0,
-                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.5, enzyme_efficacy: 0.0,
+                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.5, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0,
                 },
                 rank: 0,
                 crowding_distance: 1.0,
@@ -4181,11 +4201,11 @@ mod tests {
     fn pareto_dominance_works() {
         let a = MultiObjectiveFitness {
             biomass: 10.0, biodiversity: 5.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0,
         };
         let b = MultiObjectiveFitness {
             biomass: 8.0, biodiversity: 5.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0,
         };
         // a dominates b (better in biomass, equal in others)
         assert!(dominates(&a, &b));
@@ -4194,7 +4214,7 @@ mod tests {
         // Non-dominated case
         let c = MultiObjectiveFitness {
             biomass: 12.0, biodiversity: 3.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0,
         };
         assert!(!dominates(&a, &c));
         assert!(!dominates(&c, &a));
@@ -4205,17 +4225,17 @@ mod tests {
         let mut results = vec![
             ParetoResult {
                 genome: WorldGenome::default_with_seed(1),
-                objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0 },
+                objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
             ParetoResult {
                 genome: WorldGenome::default_with_seed(2),
-                objectives: MultiObjectiveFitness { biomass: 8.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0 },
+                objectives: MultiObjectiveFitness { biomass: 8.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
             ParetoResult {
                 genome: WorldGenome::default_with_seed(3),
-                objectives: MultiObjectiveFitness { biomass: 12.0, biodiversity: 6.0, stability: 9.0, carbon: 4.0, fruit: 3.0, microbial: 5.0, fly_metabolism: 4.0, enzyme_efficacy: 0.0 },
+                objectives: MultiObjectiveFitness { biomass: 12.0, biodiversity: 6.0, stability: 9.0, carbon: 4.0, fruit: 3.0, microbial: 5.0, fly_metabolism: 4.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
         ];
@@ -4235,7 +4255,7 @@ mod tests {
             pareto_front: vec![
                 ParetoResult {
                     genome: WorldGenome::default_with_seed(1),
-                    objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0 },
+                    objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0 },
                     rank: 0, crowding_distance: 1.0, wall_time_ms: 100.0,
                 },
             ],
@@ -4498,7 +4518,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(1),
                 objectives: MultiObjectiveFitness {
                     biomass: 10.0, biodiversity: 5.0, stability: 8.0,
-                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.0, enzyme_efficacy: 0.0,
+                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0,
                 },
                 rank: 0, crowding_distance: 1.0, wall_time_ms: 10.0,
             },
@@ -4506,7 +4526,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(2),
                 objectives: MultiObjectiveFitness {
                     biomass: 8.0, biodiversity: 7.0, stability: 6.0,
-                    carbon: 5.0, fruit: 4.0, microbial: 3.0, fly_metabolism: 2.0, enzyme_efficacy: 0.0,
+                    carbon: 5.0, fruit: 4.0, microbial: 3.0, fly_metabolism: 2.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0,
                 },
                 rank: 0, crowding_distance: 0.5, wall_time_ms: 12.0,
             },
@@ -4514,7 +4534,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(3),
                 objectives: MultiObjectiveFitness {
                     biomass: 6.0, biodiversity: 9.0, stability: 4.0,
-                    carbon: 7.0, fruit: 1.0, microbial: 5.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
+                    carbon: 7.0, fruit: 1.0, microbial: 5.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0, ecosystem_integrity: 0.0,
                 },
                 rank: 1, crowding_distance: 0.8, wall_time_ms: 11.0,
             },
@@ -4889,11 +4909,13 @@ mod tests {
     #[test]
     fn coevolution_competitive_splits_resources() {
         let mut rng = StdRng::seed_from_u64(42);
-        let a = SpeciesGenome { resource_efficiency: 0.9, ..SpeciesGenome::random(&mut rng) };
-        let b = SpeciesGenome { resource_efficiency: 0.1, ..SpeciesGenome::random(&mut rng) };
+        // Use same world genome for both so fitness difference comes only from resource share
+        let base = SpeciesGenome::random(&mut rng);
+        let a = SpeciesGenome { resource_efficiency: 0.9, ..base.clone() };
+        let b = SpeciesGenome { resource_efficiency: 0.1, ..base };
         let result = evaluate_coevolution_pair(&a, &b, CoevolutionMode::Competitive, 20, true).unwrap();
-        // More efficient species should get larger share
-        assert!(result.species_a_fitness > result.species_b_fitness * 0.5,
+        // With identical worlds, the 9x more efficient species should get 9x share
+        assert!(result.species_a_fitness > result.species_b_fitness,
             "Efficient species should outcompete: a={:.2} b={:.2}", result.species_a_fitness, result.species_b_fitness);
     }
 
@@ -5074,6 +5096,89 @@ mod tests {
 
 
 
+
+    #[test]
+    fn csv_export_has_header_and_rows() {
+        let records = vec![
+            GenerationTelemetry {
+                generation: 0,
+                best_fitness: 1.5,
+                mean_fitness: 1.0,
+                worst_fitness: 0.5,
+                population_diversity: 0.3,
+                best_genome_params: vec![0.1; GENOME_PARAM_NAMES.len()],
+                elapsed_ms: 42.0,
+                mode: Some("standard".into()),
+                multi_objective_fitness: None,
+                stress_metrics: None,
+            },
+            GenerationTelemetry {
+                generation: 1,
+                best_fitness: 2.0,
+                mean_fitness: 1.5,
+                worst_fitness: 1.0,
+                population_diversity: 0.25,
+                best_genome_params: vec![0.2; GENOME_PARAM_NAMES.len()],
+                elapsed_ms: 50.0,
+                mode: Some("standard".into()),
+                multi_objective_fitness: None,
+                stress_metrics: None,
+            },
+        ];
+        let csv = telemetry_to_csv(&records);
+        let lines: Vec<&str> = csv.lines().collect();
+        // Header + 2 data rows
+        assert_eq!(lines.len(), 3);
+        // Header contains expected columns
+        assert!(lines[0].starts_with("generation,best_fitness,mean_fitness"));
+        for name in GENOME_PARAM_NAMES {
+            assert!(lines[0].contains(name), "Header missing param: {}", name);
+        }
+        // First data row starts with generation 0
+        assert!(lines[1].starts_with("0,"));
+        assert!(lines[1].contains("1.500000"));
+        // Second data row
+        assert!(lines[2].starts_with("1,"));
+    }
+
+    #[test]
+    fn prometheus_export_has_metrics() {
+        let records = vec![
+            GenerationTelemetry {
+                generation: 0,
+                best_fitness: 3.14,
+                mean_fitness: 2.0,
+                worst_fitness: 1.0,
+                population_diversity: 0.5,
+                best_genome_params: vec![],
+                elapsed_ms: 100.0,
+                mode: None,
+                multi_objective_fitness: None,
+                stress_metrics: None,
+            },
+        ];
+        let prom = telemetry_to_prometheus(&records, "test_job");
+        // Must have TYPE declarations
+        assert!(prom.contains("# TYPE terrarium_best_fitness gauge"));
+        assert!(prom.contains("# TYPE terrarium_mean_fitness gauge"));
+        assert!(prom.contains("# TYPE terrarium_worst_fitness gauge"));
+        assert!(prom.contains("# TYPE terrarium_population_diversity gauge"));
+        assert!(prom.contains("# TYPE terrarium_elapsed_ms gauge"));
+        // Must have actual metric lines with job label
+        assert!(prom.contains("terrarium_best_fitness{job=\"test_job\",generation=\"0\"} 3.14"));
+        assert!(prom.contains("terrarium_mean_fitness{job=\"test_job\",generation=\"0\"} 2.0"));
+        // Must have HELP comments
+        assert!(prom.contains("# HELP terrarium_best_fitness"));
+    }
+
+    #[test]
+    fn csv_export_empty_records() {
+        let csv = telemetry_to_csv(&[]);
+        let lines: Vec<&str> = csv.lines().collect();
+        // Header only, no data rows
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].starts_with("generation,"));
+    }
 
     #[test]
     fn landscape_scan_produces_grid() {

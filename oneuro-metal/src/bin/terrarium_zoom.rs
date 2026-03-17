@@ -279,6 +279,18 @@ impl ScreenBuffer {
     fn new(w: usize, h: usize) -> Self { Self { width: w, height: h, cells: vec![Cell::default(); w * h] } }
     fn clear(&mut self) { for c in &mut self.cells { *c = Cell::default(); } }
 
+    /// Clear with sky color based on daylight + moonlight (night sky gets blue tint from moon).
+    fn clear_with_sky(&mut self, light: f32, moonlight: f32) {
+        let day = light.clamp(0.0, 1.0);
+        let night = (1.0 - day * 2.0).clamp(0.0, 1.0);
+        // Day: warm gray (15,15,25), night: dark blue-black, moon: slight blue tint
+        let r = (15.0 + day * 10.0 + moonlight * night * 5.0) as u8;
+        let g = (15.0 + day * 12.0 + moonlight * night * 8.0) as u8;
+        let b = (25.0 + day * 5.0 + moonlight * night * 20.0) as u8;
+        let bg = (r, g, b);
+        for c in &mut self.cells { *c = Cell { ch: ' ', fg: (200, 200, 200), bg }; }
+    }
+
     fn set(&mut self, x: usize, y: usize, ch: char, fg_c: (u8, u8, u8), bg_c: (u8, u8, u8)) {
         if x < self.width && y < self.height {
             self.cells[y * self.width + x] = Cell { ch, fg: fg_c, bg: bg_c };
@@ -543,7 +555,7 @@ fn draw_help_overlay(buf: &mut ScreenBuffer) {
 // ---------------------------------------------------------------------------
 
 fn render_isometric(buf: &mut ScreenBuffer, world: &TerrariumWorld, snap: &TerrariumWorldSnapshot, fi: usize, vs: &ViewState) {
-    buf.clear();
+    buf.clear_with_sky(snap.light, snap.moonlight);
     let gw = world.config.width;
     let gh = world.config.height;
     let moisture = world.moisture_field();
@@ -553,12 +565,30 @@ fn render_isometric(buf: &mut ScreenBuffer, world: &TerrariumWorld, snap: &Terra
     let ox = (buf.width as isize) / 2 + vs.camera_x * cw;
     let oy = 3 + vs.camera_y;
 
-    let header = format!(" oNeura Terrarium 3D | F:{} | {} | {:.0}C | P:{} Fl:{} Fr:{}", fi, world.time_label(), snap.temperature, snap.plants, snap.flies, snap.fruits);
+    let moon_ascii = match () {
+        _ if snap.lunar_phase < 0.0625  => "(  )",
+        _ if snap.lunar_phase < 0.1875  => "( |)",
+        _ if snap.lunar_phase < 0.3125  => "( ))",
+        _ if snap.lunar_phase < 0.4375  => "(|))",
+        _ if snap.lunar_phase < 0.5625  => "(())",
+        _ if snap.lunar_phase < 0.6875  => "((|)",
+        _ if snap.lunar_phase < 0.8125  => "(( )",
+        _ if snap.lunar_phase < 0.9375  => "(| )",
+        _                                => "(  )",
+    };
+    let header = format!(" oNeura Terrarium 3D | F:{} | {} {} | {:.0}C | P:{} Fl:{} Fr:{}", fi, world.time_label(), moon_ascii, snap.temperature, snap.plants, snap.flies, snap.fruits);
     buf.write_str(0, 0, &header[..header.len().min(buf.width)], (0, 220, 255), (20, 20, 40));
-    let sub = format!(" moisture:{:.2} microbes:{:.3} CO2:{:.4} O2:{:.2} cells:{:.0} zoom:{:.1}x [{}]",
-        snap.mean_soil_moisture, snap.mean_microbes, snap.mean_atmospheric_co2, snap.mean_atmospheric_o2, snap.total_plant_cells, vs.zoom, vs.zoom_level().label());
+    let sub = format!(" moisture:{:.2} microbes:{:.3} CO2:{:.4} O2:{:.2} tide:{:.2} zoom:{:.1}x [{}]",
+        snap.mean_soil_moisture, snap.mean_microbes, snap.mean_atmospheric_co2, snap.mean_atmospheric_o2, snap.tidal_moisture_factor, vs.zoom, vs.zoom_level().label());
     buf.write_str(0, 1, &sub[..sub.len().min(buf.width)], (180, 180, 200), (20, 20, 40));
-    if vs.paused { let ps = " PAUSED "; buf.write_str((buf.width.saturating_sub(ps.len()))/2, 2, ps, (255,80,80), (60,20,20)); }
+    // Energy budget line: photosynthesis vs respiration
+    let photo = snap.mean_atmospheric_o2 * snap.light;
+    let resp = snap.mean_atmospheric_co2 * (1.0 + snap.flies as f32 * 0.01);
+    let net = photo - resp;
+    let (net_label, net_color) = if net >= 0.0 { ("+", (80, 220, 80)) } else { ("", (220, 80, 80)) };
+    let energy_line = format!(" Energy: photo={:.3} resp={:.3} net={}{:.3}", photo, resp, net_label, net);
+    buf.write_str(0, 2, &energy_line[..energy_line.len().min(buf.width)], net_color, (20, 20, 40));
+    if vs.paused { let ps = " PAUSED "; buf.write_str((buf.width.saturating_sub(ps.len()))/2, 3, ps, (255,80,80), (60,20,20)); }
 
     for gy in 0..gh { for gx in 0..gw {
         let ix = (gx as isize - gy as isize) * cw + ox;
@@ -639,8 +669,19 @@ fn render_isometric(buf: &mut ScreenBuffer, world: &TerrariumWorld, snap: &Terra
 fn render_topdown_region(buf: &mut ScreenBuffer, world: &TerrariumWorld, snap: &TerrariumWorldSnapshot, fi: usize, vs: &ViewState, rx: usize, rw: usize) {
     let gw = world.config.width; let gh = world.config.height;
     let moisture = world.moisture_field();
-    let header = format!(" Terrarium | F:{} | {} | {:.0}C | P:{} Fl:{} zoom:{:.1}x [{}]",
-        fi, world.time_label(), snap.temperature, snap.plants, snap.flies, vs.zoom, vs.zoom_level().label());
+    let td_moon = match () {
+        _ if snap.lunar_phase < 0.0625  => "(  )",
+        _ if snap.lunar_phase < 0.1875  => "( |)",
+        _ if snap.lunar_phase < 0.3125  => "( ))",
+        _ if snap.lunar_phase < 0.4375  => "(|))",
+        _ if snap.lunar_phase < 0.5625  => "(())",
+        _ if snap.lunar_phase < 0.6875  => "((|)",
+        _ if snap.lunar_phase < 0.8125  => "(( )",
+        _ if snap.lunar_phase < 0.9375  => "(| )",
+        _                                => "(  )",
+    };
+    let header = format!(" Terrarium | F:{} | {} {} | {:.0}C | P:{} Fl:{} tide:{:.2} zoom:{:.1}x [{}]",
+        fi, world.time_label(), td_moon, snap.temperature, snap.plants, snap.flies, snap.tidal_moisture_factor, vs.zoom, vs.zoom_level().label());
     buf.write_str(rx, 0, &header[..header.len().min(rw)], (0, 220, 255), (20, 20, 40));
 
     let scale = (2.0 * vs.zoom).round().max(1.0).min(6.0) as usize;

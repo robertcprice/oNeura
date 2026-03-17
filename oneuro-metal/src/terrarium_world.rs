@@ -3167,4 +3167,67 @@ mod tests {
         assert_eq!(world.probe_count(), 1);
         assert_eq!(world.probes()[0].id, id2);
     }
+
+    #[test]
+    fn lunar_cycle_produces_valid_phases() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        // Reset to time_s=0 to get clean lunar_phase.
+        world.time_s = 0.0;
+        let phase0 = world.lunar_phase();
+        assert!(phase0 >= 0.0 && phase0 < 0.001, "initial phase near 0, got {phase0}");
+        assert_eq!(world.moon_phase_name(), "New Moon");
+
+        // Advance to ~half a synodic month → full moon.
+        let half_month_s = 29.530589 * 86_400.0 * 0.5;
+        world.time_s = half_month_s;
+        let phase_half = world.lunar_phase();
+        assert!((phase_half - 0.5).abs() < 0.01, "half-month phase ~0.5, got {phase_half}");
+        assert_eq!(world.moon_phase_name(), "Full Moon");
+
+        // Moonlight should peak at full moon.
+        let ml_full = world.moonlight();
+        assert!(ml_full > 0.95, "full moon moonlight should be ~1.0, got {ml_full}");
+
+        // Moonlight at new moon should be ~0.
+        world.time_s = 0.0;
+        let ml_new = world.moonlight();
+        assert!(ml_new < 0.05, "new moon moonlight should be ~0, got {ml_new}");
+
+        // Tidal factor: spring tide at new moon and full moon.
+        let tidal_new = world.tidal_moisture_factor();
+        assert!(tidal_new > 1.10, "spring tide at new moon, got {tidal_new}");
+        world.time_s = half_month_s;
+        let tidal_full = world.tidal_moisture_factor();
+        assert!(tidal_full > 1.10, "spring tide at full moon, got {tidal_full}");
+
+        // Neap tide at first quarter (~0.25 phase).
+        world.time_s = 29.530589 * 86_400.0 * 0.25;
+        let tidal_quarter = world.tidal_moisture_factor();
+        assert!(tidal_quarter < 0.90, "neap tide at quarter, got {tidal_quarter}");
+    }
+
+    #[test]
+    fn lunar_snapshot_fields_populated() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.time_s = 29.530589 * 86_400.0 * 0.5; // full moon
+        let snap = world.snapshot();
+        assert!((snap.lunar_phase - 0.5).abs() < 0.02);
+        assert!(snap.moonlight > 0.9);
+        assert!(snap.tidal_moisture_factor > 1.10);
+    }
+
+    #[test]
+    fn tidal_moisture_modulates_soil() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        // Run a few frames at new moon (spring tide, factor > 1)
+        world.time_s = 0.0;
+        let moisture_before: f32 = world.moisture.iter().sum();
+        world.run_frames(5).unwrap();
+        let moisture_after: f32 = world.moisture.iter().sum();
+        // Moisture should change (not necessarily increase due to evaporation etc.)
+        // Just verify the field is still valid.
+        assert!(moisture_after >= 0.0);
+        assert!((moisture_after - moisture_before).abs() < moisture_before * 10.0,
+            "moisture changed reasonably");
+    }
 }

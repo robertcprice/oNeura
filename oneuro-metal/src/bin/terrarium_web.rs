@@ -15,9 +15,10 @@
 //!   - Optional bearer-token authentication
 
 use oneuro_metal::terrarium_web_handlers::{
-    annotations_handler, auth_token, export_bundle, frame_loop, index_handler,
-    snapshot_handler, tournament_delete, tournament_genome, tournament_leaderboard,
-    tournament_submit, ws_handler,
+    annotations_handler, auth_token, ecosystem_run_handler, ecosystem_snapshot_handler,
+    ecosystem_start_handler, ecosystem_step_handler, export_bundle, frame_loop,
+    index_handler, snapshot_handler, tournament_delete, tournament_genome,
+    tournament_leaderboard, tournament_submit, ws_handler,
 };
 use oneuro_metal::terrarium_web_state::AppState;
 
@@ -94,6 +95,10 @@ async fn main() {
         .route("/api/annotations", axum::routing::get(annotations_handler))
         .route("/api/export/bundle", axum::routing::get(export_bundle))
         .route("/api/auth/token", axum::routing::get(auth_token))
+        .route("/api/ecosystem/snapshot", axum::routing::get(ecosystem_snapshot_handler))
+        .route("/api/ecosystem/start", axum::routing::post(ecosystem_start_handler))
+        .route("/api/ecosystem/step", axum::routing::post(ecosystem_step_handler))
+        .route("/api/ecosystem/run", axum::routing::post(ecosystem_run_handler))
         .with_state(state);
 
     let addr = format!("0.0.0.0:{}", port);

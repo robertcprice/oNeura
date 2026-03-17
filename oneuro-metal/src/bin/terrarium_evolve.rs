@@ -4,13 +4,18 @@
 //!   terrarium_evolve --population 10 --generations 5 --frames 100 --fitness biomass --lite
 //!   terrarium_evolve --stress-test --population 8 --generations 3 --frames 50
 //!   terrarium_evolve --telemetry telemetry.json --output-genome best_genome.json
+//!   terrarium_evolve --telemetry out.csv --export-csv
+//!   terrarium_evolve --telemetry out.prom --export-prometheus
+//!   terrarium_evolve --scan --x-param temperature_c --y-param moisture_scale --resolution 15 --output landscape.csv
 
 use oneuro_metal::{
     evolve, evolve_stress_test, evolve_with_environment, evolve_coevolution,
     telemetry_from_result, evaluate_stress_metrics_for_best,
+    telemetry_to_csv, telemetry_to_prometheus,
     EvolutionConfig, FitnessObjective, GenomeConstraints, FitnessConfig,
     SearchStrategy, EnvironmentalSchedule, CoevolutionMode,
     evolve_pareto_stressed,
+    scan_fitness_landscape, LandscapeAxis, WorldGenome, GENOME_PARAM_NAMES,
 };
 use std::env;
 use std::fs;
@@ -116,6 +121,29 @@ fn parse_args() -> Args {
                 };
                 i += 1;
             }
+            "--scan" => args.scan = true,
+            "--x-param" => {
+                args.x_param = env::args().nth(i + 1).unwrap_or_else(|| args.x_param.clone());
+                i += 1;
+            }
+            "--y-param" => {
+                args.y_param = env::args().nth(i + 1).unwrap_or_else(|| args.y_param.clone());
+                i += 1;
+            }
+            "--resolution" => {
+                args.resolution = env::args().nth(i + 1).and_then(|s| s.parse().ok()).unwrap_or(args.resolution);
+                i += 1;
+            }
+            "--output" => {
+                args.output = env::args().nth(i + 1).map(PathBuf::from);
+                i += 1;
+            }
+            "--export-csv" => args.export_csv = true,
+            "--export-prometheus" => args.export_prometheus = true,
+            "--prometheus-job" => {
+                args.prometheus_job = env::args().nth(i + 1).unwrap_or_else(|| "terrarium".into());
+                i += 1;
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -154,12 +182,25 @@ fn print_help() {
     println!("  --no-flies             Disable flies");
     println!("  --max-flies <N>        Maximum fly count");
     println!("  --max-microbes <N>     Maximum microbe cohort count");
-    println!("  --telemetry <PATH>     Output telemetry to JSON file");
+    println!("  --telemetry <PATH>     Output telemetry to file");
     println!("  --output-genome <PATH> Output best genome to JSON file");
     println!("  --snapshot-interval <N> Snapshot interval (default: 10)");
     println!("  --environment <ENV>    Environmental schedule: temperate, tropical, arid");
     println!("  --coevolve <MODE>      Coevolution mode: redqueen, mutualistic, competitive");
+    println!("  --scan                 Scan 2D fitness landscape (use with --x-param, --y-param)");
+    println!("  --x-param <NAME>       X axis parameter name (default: temperature_c)");
+    println!("  --y-param <NAME>       Y axis parameter name (default: moisture_scale)");
+    println!("  --resolution <N>       Grid resolution for landscape scan (default: 10)");
+    println!("  --output <PATH>        Output CSV file for landscape scan");
+    println!("  --export-csv           Export telemetry as CSV (use with --telemetry)");
+    println!("  --export-prometheus    Export telemetry as Prometheus text format (use with --telemetry)");
+    println!("  --prometheus-job <STR> Prometheus job label (default: terrarium)");
     println!("  --help, -h             Show this help message");
+    println!();
+    println!("Scan mode parameters:");
+    for (i, name) in GENOME_PARAM_NAMES.iter().enumerate() {
+        println!("  {:2}: {}", i, name);
+    }
 }
 
 struct Args {
@@ -183,6 +224,14 @@ struct Args {
     snapshot_interval: usize,
     environment: Option<EnvironmentalSchedule>,
     coevolve: Option<CoevolutionMode>,
+    scan: bool,
+    x_param: String,
+    y_param: String,
+    resolution: usize,
+    output: Option<PathBuf>,
+    export_csv: bool,
+    export_prometheus: bool,
+    prometheus_job: String,
 }
 
 impl Default for Args {
@@ -208,7 +257,39 @@ impl Default for Args {
             snapshot_interval: 10,
             environment: None,
             coevolve: None,
+            scan: false,
+            x_param: "temperature_c".into(),
+            y_param: "moisture_scale".into(),
+            resolution: 10,
+            output: None,
+            export_csv: false,
+            export_prometheus: false,
+            prometheus_job: "terrarium".into(),
         }
+    }
+}
+
+/// Write telemetry in the appropriate format (JSON, CSV, or Prometheus).
+fn write_telemetry(
+    path: &std::path::Path,
+    telemetry: &[oneuro_metal::GenerationTelemetry],
+    export_csv: bool,
+    export_prometheus: bool,
+    prometheus_job: &str,
+) {
+    let content = if export_csv {
+        telemetry_to_csv(telemetry)
+    } else if export_prometheus {
+        telemetry_to_prometheus(telemetry, prometheus_job)
+    } else {
+        serde_json::to_string_pretty(&telemetry).unwrap_or_default()
+    };
+
+    let format_name = if export_csv { "CSV" } else if export_prometheus { "Prometheus" } else { "JSON" };
+    if let Err(e) = fs::write(path, &content) {
+        eprintln!("Error writing telemetry: {}", e);
+    } else {
+        eprintln!("Telemetry ({}) written to: {}", format_name, path.display());
     }
 }
 
@@ -245,7 +326,9 @@ fn main() {
     eprintln!("Population: {}", config.population_size);
     eprintln!("Generations: {}", config.generations);
     eprintln!("Frames/world: {}", config.frames_per_world);
-    let mode_str = if args.coevolve.is_some() {
+    let mode_str = if args.scan {
+        "scan"
+    } else if args.coevolve.is_some() {
         "coevolution"
     } else if args.environment.is_some() {
         "environmental"
@@ -260,7 +343,68 @@ fn main() {
     };
     eprintln!("Mode: {}", mode_str);
     eprintln!("Lite: {}", config.lite);
+    if args.export_csv { eprintln!("Export: CSV"); }
+    if args.export_prometheus { eprintln!("Export: Prometheus (job={})", args.prometheus_job); }
     eprintln!("");
+
+    // Scan mode — 2D fitness landscape
+    if args.scan {
+        let x_idx = GENOME_PARAM_NAMES.iter().position(|&n| n == args.x_param);
+        let y_idx = GENOME_PARAM_NAMES.iter().position(|&n| n == args.y_param);
+
+        let x_idx = match x_idx {
+            Some(i) => i,
+            None => {
+                eprintln!("Unknown x-param '{}'. Available:", args.x_param);
+                for (i, name) in GENOME_PARAM_NAMES.iter().enumerate() {
+                    eprintln!("  {:2}: {}", i, name);
+                }
+                std::process::exit(1);
+            }
+        };
+        let y_idx = match y_idx {
+            Some(i) => i,
+            None => {
+                eprintln!("Unknown y-param '{}'. Available:", args.y_param);
+                for (i, name) in GENOME_PARAM_NAMES.iter().enumerate() {
+                    eprintln!("  {:2}: {}", i, name);
+                }
+                std::process::exit(1);
+            }
+        };
+
+        let x_axis = LandscapeAxis::new(x_idx);
+        let y_axis = LandscapeAxis::new(y_idx);
+        let base = WorldGenome::default_with_seed(args.seed);
+
+        eprintln!("Scanning {} vs {} ({}x{} grid, {} frames)...",
+            args.x_param, args.y_param, args.resolution, args.resolution, args.frames);
+
+        let landscape = scan_fitness_landscape(
+            &base, x_axis, y_axis, args.fitness, args.resolution, args.frames,
+        );
+
+        // Print ASCII heatmap
+        println!("{}", landscape.to_ascii(args.resolution.min(60)));
+
+        // Print peak
+        eprintln!("Peak: {}={:.4}, {}={:.4} -> fitness={:.6}",
+            landscape.x_param, landscape.peak.0,
+            landscape.y_param, landscape.peak.1,
+            landscape.peak.2);
+
+        // Write CSV if requested
+        if let Some(ref path) = args.output {
+            let csv = landscape.to_csv();
+            if let Err(e) = fs::write(path, &csv) {
+                eprintln!("Error writing CSV: {}", e);
+            } else {
+                eprintln!("Landscape CSV written to: {}", path.display());
+            }
+        }
+
+        return;
+    }
 
     // Coevolution mode
     if let Some(coevo_mode) = args.coevolve {
@@ -296,8 +440,7 @@ fn main() {
 
                 if let Some(ref path) = args.telemetry {
                     let telemetry = telemetry_from_result(&result, Some("environmental"));
-                    let json = serde_json::to_string_pretty(&telemetry).unwrap_or_default();
-                    if let Err(e) = fs::write(path, json) { eprintln!("Error writing telemetry: {}", e); }
+                    write_telemetry(path, &telemetry, args.export_csv, args.export_prometheus, &args.prometheus_job);
                 }
                 if let Some(ref path) = args.output_genome {
                     let json = serde_json::to_string_pretty(&result.global_best_genome).unwrap_or_default();
@@ -330,12 +473,7 @@ fn main() {
                 // Output telemetry
                 if let Some(ref path) = args.telemetry {
                     let telemetry = oneuro_metal::telemetry_from_pareto_result(&pareto_result);
-                    let json = serde_json::to_string_pretty(&vec![telemetry]).unwrap_or_default();
-                    if let Err(e) = fs::write(path, json) {
-                        eprintln!("Error writing telemetry: {}", e);
-                    } else {
-                        eprintln!("Telemetry written to: {}", path.display());
-                    }
+                    write_telemetry(path, &[telemetry], args.export_csv, args.export_prometheus, &args.prometheus_job);
                 }
 
                 // Output best genomes from Pareto front
@@ -391,12 +529,7 @@ fn main() {
                         }
                     }
 
-                    let json = serde_json::to_string_pretty(&telemetry).unwrap_or_default();
-                    if let Err(e) = fs::write(path, json) {
-                        eprintln!("Error writing telemetry: {}", e);
-                    } else {
-                        eprintln!("Telemetry written to: {}", path.display());
-                    }
+                    write_telemetry(path, &telemetry, args.export_csv, args.export_prometheus, &args.prometheus_job);
                 }
 
                 // Output best genome

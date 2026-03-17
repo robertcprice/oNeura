@@ -61,7 +61,7 @@ jobs:
             multi_species single_drug pulsed combination protocol ecoli \
             circuit enzyme_ bioremediation probe_coupling probe_snapshot \
             drug_enzyme soil_enzyme temperature_coupling remediation \
-            guild_latent
+            guild_latent landscape_
 
   build:
     name: Build Binaries
@@ -87,4 +87,46 @@ jobs:
             --bin terrarium_evolve \
             --bin drug_optimizer \
             --bin gene_circuit \
-            --bin terrarium_zoom
+            --bin terrarium_zoom \
+            --bin terrarium_sensitivity \
+            --bin terrarium_stress_suite \
+            --bin terrarium_profile
+
+  benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    needs: build
+    defaults:
+      run:
+        working-directory: oneuro-metal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: oneuro-metal -> target
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev
+      - name: Build benchmark binaries
+        run: |
+          cargo build --profile fast --no-default-features \
+            --bin terrarium_profile \
+            --bin terrarium_sensitivity \
+            --bin terrarium_stress_suite
+      - name: Run performance profiler (tiny + small scales)
+        run: |
+          ./target/fast/terrarium_profile --scales tiny,small --frames 20 --csv --output profile_ci.csv
+          cat profile_ci.csv
+      - name: Run sensitivity smoke test (3 params, low resolution)
+        run: |
+          ./target/fast/terrarium_sensitivity --param temperature_c --resolution 3 --frames 20
+      - name: Run stress suite smoke test (2 scenarios)
+        run: |
+          ./target/fast/terrarium_stress_suite --scenario drought --scenario heat --frames 30 --lite
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: oneuro-metal/profile_ci.csv
+          retention-days: 30
