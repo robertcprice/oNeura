@@ -27,30 +27,30 @@ impl super::TerrariumWorld {
         let avg_fly_hunger = if self.flies.is_empty() {
             0.0
         } else {
-            self.flies.iter().map(|f| f.metabolism.hunger()).sum::<f32>() / n_flies
+            { use crate::organism_metabolism::OrganismMetabolism; self.fly_metabolisms.iter().map(|m| m.hunger()).sum::<f32>() / n_flies }
         };
         let avg_fly_energy_charge = if self.flies.is_empty() {
             0.0
         } else {
             use crate::organism_metabolism::OrganismMetabolism;
-            self.flies.iter().map(|f| f.metabolism.energy_charge()).sum::<f32>() / n_flies
+            self.fly_metabolisms.iter().map(|m| m.energy_charge()).sum::<f32>() / n_flies
         };
         let avg_fly_trehalose_mm = if self.flies.is_empty() {
             0.0
         } else {
-            self.flies.iter().map(|f| f.metabolism.hemolymph_trehalose_mm).sum::<f32>() / n_flies
+            self.fly_metabolisms.iter().map(|m| m.hemolymph_trehalose_mm).sum::<f32>() / n_flies
         };
         let avg_fly_atp_mm = if self.flies.is_empty() {
             0.0
         } else {
-            self.flies.iter().map(|f| f.metabolism.muscle_atp_mm).sum::<f32>() / n_flies
+            self.fly_metabolisms.iter().map(|m| m.muscle_atp_mm).sum::<f32>() / n_flies
         };
         let avg_altitude = if self.flies.is_empty() {
             0.0
         } else {
             self.flies.iter().map(|fly| fly.body_state().z).sum::<f32>() / self.flies.len() as f32
         };
-        let fly_census = self.fly_population.stage_census();
+        let fly_census = self.fly_pop.stage_census();
         let total_plant_cells = self
             .plants
             .iter()
