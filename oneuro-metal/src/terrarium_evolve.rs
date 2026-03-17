@@ -3933,17 +3933,17 @@ mod tests {
         let mut results = vec![
             ParetoResult {
                 genome: WorldGenome::default_with_seed(1),
-                objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0 },
+                objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
             ParetoResult {
                 genome: WorldGenome::default_with_seed(2),
-                objectives: MultiObjectiveFitness { biomass: 8.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0 },
+                objectives: MultiObjectiveFitness { biomass: 8.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
             ParetoResult {
                 genome: WorldGenome::default_with_seed(3),
-                objectives: MultiObjectiveFitness { biomass: 12.0, biodiversity: 6.0, stability: 9.0, carbon: 4.0, fruit: 3.0, microbial: 5.0, fly_metabolism: 4.0 },
+                objectives: MultiObjectiveFitness { biomass: 12.0, biodiversity: 6.0, stability: 9.0, carbon: 4.0, fruit: 3.0, microbial: 5.0, fly_metabolism: 4.0, enzyme_efficacy: 0.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
         ];
@@ -3963,7 +3963,7 @@ mod tests {
             pareto_front: vec![
                 ParetoResult {
                     genome: WorldGenome::default_with_seed(1),
-                    objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0 },
+                    objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0 },
                     rank: 0, crowding_distance: 1.0, wall_time_ms: 100.0,
                 },
             ],
