@@ -2122,11 +2122,9 @@ mod calibrator;
 mod flora;
 #[cfg(feature = "terrarium_advanced")]
 mod soil;
-#[cfg(feature = "terrarium_advanced")]
 mod snapshot;
 #[cfg(feature = "terrarium_advanced")]
 mod biomechanics;
-#[cfg(feature = "terrarium_advanced")]
 mod explicit_microbe_impl;
 
 // Rendering modules — need crate::terrarium_render, terrarium_scene_query,
@@ -2142,7 +2140,6 @@ mod render_stateful;
 
 // Integration tests spanning both advanced + render features.
 // Uses path attribute to avoid conflict with the inline `mod tests` block below.
-#[cfg(all(feature = "terrarium_advanced", feature = "terrarium_render"))]
 #[cfg(test)]
 #[path = "terrarium_world/tests.rs"]
 mod advanced_tests;
