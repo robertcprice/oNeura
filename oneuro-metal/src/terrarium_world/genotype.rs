@@ -9,15 +9,15 @@ use crate::constants::clamp;
 // ── Self-contained type definitions ──
 // Defined locally to avoid dependency on volatile soil_broad.rs.
 
-pub(super) const INTERNAL_SECONDARY_GENOTYPE_AXES: usize = 6;
-pub(super) const PUBLIC_STRAIN_BANKS: usize = 3;
+pub(crate) const INTERNAL_SECONDARY_GENOTYPE_AXES: usize = 6;
+pub(crate) const PUBLIC_STRAIN_BANKS: usize = 3;
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct SecondaryGenotypeRecord {
-    pub(super) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
-    pub(super) genotype_divergence: f32,
-    pub(super) generation: f32,
-    pub(super) novelty: f32,
+pub(crate) struct SecondaryGenotypeRecord {
+    pub(crate) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
+    pub(crate) genotype_divergence: f32,
+    pub(crate) generation: f32,
+    pub(crate) novelty: f32,
 }
 
 impl Default for SecondaryGenotypeRecord {
@@ -27,76 +27,76 @@ impl Default for SecondaryGenotypeRecord {
 }
 
 impl SecondaryGenotypeRecord {
-    pub(super) fn default_genes() -> [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] {
+    pub(crate) fn default_genes() -> [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] {
         [0.5; INTERNAL_SECONDARY_GENOTYPE_AXES]
     }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct SecondaryGenotypeCatalogRecord {
-    pub(super) catalog_id: u32,
-    pub(super) parent_catalog_id: u32,
-    pub(super) catalog_divergence: f32,
-    pub(super) generation: f32,
-    pub(super) novelty: f32,
-    pub(super) local_bank_id: u32,
-    pub(super) local_bank_share: f32,
+pub(crate) struct SecondaryGenotypeCatalogRecord {
+    pub(crate) catalog_id: u32,
+    pub(crate) parent_catalog_id: u32,
+    pub(crate) catalog_divergence: f32,
+    pub(crate) generation: f32,
+    pub(crate) novelty: f32,
+    pub(crate) local_bank_id: u32,
+    pub(crate) local_bank_share: f32,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct SecondaryCatalogBankEntryRecord {
-    pub(super) genotype_id: u32,
-    pub(super) lineage_id: u32,
+pub(crate) struct SecondaryCatalogBankEntryRecord {
+    pub(crate) genotype_id: u32,
+    pub(crate) lineage_id: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct SecondaryCatalogBankEntry {
-    pub(super) occupancy: u32,
-    pub(super) packet_mass: f32,
-    pub(super) record: SecondaryGenotypeRecord,
-    pub(super) catalog: SecondaryGenotypeCatalogRecord,
-    pub(super) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
+pub(crate) struct SecondaryCatalogBankEntry {
+    pub(crate) occupancy: u32,
+    pub(crate) packet_mass: f32,
+    pub(crate) record: SecondaryGenotypeRecord,
+    pub(crate) catalog: SecondaryGenotypeCatalogRecord,
+    pub(crate) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
 }
 
 impl SecondaryCatalogBankEntry {
-    pub(super) fn empty() -> Self { Self::default() }
+    pub(crate) fn empty() -> Self { Self::default() }
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SecondaryGenotypeEntry {
-    pub(super) catalog_slot: u32,
-    pub(super) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
-    pub(super) record: SecondaryGenotypeRecord,
-    pub(super) catalog: SecondaryGenotypeCatalogRecord,
+pub(crate) struct SecondaryGenotypeEntry {
+    pub(crate) catalog_slot: u32,
+    pub(crate) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
+    pub(crate) record: SecondaryGenotypeRecord,
+    pub(crate) catalog: SecondaryGenotypeCatalogRecord,
 }
 
-pub(super) struct GroupedSecondaryBankRefs<'a> {
-    pub(super) packets: [&'a [f32]; PUBLIC_STRAIN_BANKS],
-    pub(super) trait_a: [&'a [f32]; PUBLIC_STRAIN_BANKS],
-    pub(super) trait_b: [&'a [f32]; PUBLIC_STRAIN_BANKS],
-    pub(super) catalog_slots: [&'a [u32]; PUBLIC_STRAIN_BANKS],
-    pub(super) catalog_entries: [&'a [SecondaryCatalogBankEntry]; PUBLIC_STRAIN_BANKS],
+pub(crate) struct GroupedSecondaryBankRefs<'a> {
+    pub(crate) packets: [&'a [f32]; PUBLIC_STRAIN_BANKS],
+    pub(crate) trait_a: [&'a [f32]; PUBLIC_STRAIN_BANKS],
+    pub(crate) trait_b: [&'a [f32]; PUBLIC_STRAIN_BANKS],
+    pub(crate) catalog_slots: [&'a [u32]; PUBLIC_STRAIN_BANKS],
+    pub(crate) catalog_entries: [&'a [SecondaryCatalogBankEntry]; PUBLIC_STRAIN_BANKS],
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SoilBroadSecondaryBanks {
-    pub(super) bank_packets: Vec<Vec<f32>>,
-    pub(super) bank_trait_a: Vec<Vec<f32>>,
-    pub(super) bank_trait_b: Vec<Vec<f32>>,
-    pub(super) bank_catalog_entries: Vec<Vec<SecondaryCatalogBankEntry>>,
-    pub(super) bank_catalog_slots: Vec<Vec<u32>>,
+pub(crate) struct SoilBroadSecondaryBanks {
+    pub(crate) bank_packets: Vec<Vec<f32>>,
+    pub(crate) bank_trait_a: Vec<Vec<f32>>,
+    pub(crate) bank_trait_b: Vec<Vec<f32>>,
+    pub(crate) bank_catalog_entries: Vec<Vec<SecondaryCatalogBankEntry>>,
+    pub(crate) bank_catalog_slots: Vec<Vec<u32>>,
 }
 
 impl SoilBroadSecondaryBanks {
-    pub(super) fn len(&self) -> usize { self.bank_packets.len() }
-    pub(super) fn bank_packets(&self, idx: usize) -> &[f32] { &self.bank_packets[idx] }
-    pub(super) fn bank_trait_a(&self, idx: usize) -> &[f32] { &self.bank_trait_a[idx] }
-    pub(super) fn bank_trait_b(&self, idx: usize) -> &[f32] { &self.bank_trait_b[idx] }
-    pub(super) fn bank_catalog_entries(&self, idx: usize) -> &[SecondaryCatalogBankEntry] { &self.bank_catalog_entries[idx] }
-    pub(super) fn bank_catalog_slots(&self, idx: usize) -> &[u32] { &self.bank_catalog_slots[idx] }
+    pub(crate) fn len(&self) -> usize { self.bank_packets.len() }
+    pub(crate) fn bank_packets(&self, idx: usize) -> &[f32] { &self.bank_packets[idx] }
+    pub(crate) fn bank_trait_a(&self, idx: usize) -> &[f32] { &self.bank_trait_a[idx] }
+    pub(crate) fn bank_trait_b(&self, idx: usize) -> &[f32] { &self.bank_trait_b[idx] }
+    pub(crate) fn bank_catalog_entries(&self, idx: usize) -> &[SecondaryCatalogBankEntry] { &self.bank_catalog_entries[idx] }
+    pub(crate) fn bank_catalog_slots(&self, idx: usize) -> &[u32] { &self.bank_catalog_slots[idx] }
 }
 
-pub(super) fn refresh_secondary_local_catalog_identity(
+pub(crate) fn refresh_secondary_local_catalog_identity(
     _packets: &[f32],
     entries: &mut [SecondaryGenotypeEntry],
 ) -> Vec<SecondaryCatalogBankEntry> {
@@ -105,47 +105,47 @@ pub(super) fn refresh_secondary_local_catalog_identity(
 
 // ── Bank index constants ──
 
-pub(super) const SHADOW_BANK_IDX: usize = 0;
-pub(super) const VARIANT_BANK_IDX: usize = 1;
-pub(super) const NOVEL_BANK_IDX: usize = 2;
+pub(crate) const SHADOW_BANK_IDX: usize = 0;
+pub(crate) const VARIANT_BANK_IDX: usize = 1;
+pub(crate) const NOVEL_BANK_IDX: usize = 2;
 
 // ── Gene weight constants ──
 
-pub(super) const MICROBIAL_GENE_CATABOLIC_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const MICROBIAL_GENE_CATABOLIC_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.60, -0.08, 0.18, -0.04, 0.16, -0.03];
-pub(super) const MICROBIAL_GENE_STRESS_RESPONSE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const MICROBIAL_GENE_STRESS_RESPONSE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [-0.06, 0.56, 0.08, 0.24, -0.04, 0.16];
-pub(super) const MICROBIAL_GENE_DORMANCY_MAINTENANCE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const MICROBIAL_GENE_DORMANCY_MAINTENANCE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [-0.10, 0.12, 0.34, 0.28, 0.10, 0.18];
-pub(super) const MICROBIAL_GENE_EXTRACELLULAR_SCAVENGING_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const MICROBIAL_GENE_EXTRACELLULAR_SCAVENGING_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.14, 0.04, 0.10, 0.06, 0.40, 0.22];
-pub(super) const NITRIFIER_GENE_OXYGEN_RESPIRATION_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const NITRIFIER_GENE_OXYGEN_RESPIRATION_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.62, -0.06, 0.16, -0.02, 0.18, -0.02];
-pub(super) const NITRIFIER_GENE_AMMONIUM_TRANSPORT_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const NITRIFIER_GENE_AMMONIUM_TRANSPORT_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [-0.04, 0.56, 0.10, 0.14, 0.08, 0.12];
-pub(super) const NITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const NITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.02, 0.14, 0.32, 0.28, 0.12, 0.18];
-pub(super) const NITRIFIER_GENE_REDOX_EFFICIENCY_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const NITRIFIER_GENE_REDOX_EFFICIENCY_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.24, 0.10, 0.12, 0.06, 0.38, 0.18];
-pub(super) const DENITRIFIER_GENE_ANOXIA_RESPIRATION_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const DENITRIFIER_GENE_ANOXIA_RESPIRATION_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.60, -0.06, 0.10, 0.18, 0.16, -0.02];
-pub(super) const DENITRIFIER_GENE_NITRATE_TRANSPORT_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const DENITRIFIER_GENE_NITRATE_TRANSPORT_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [-0.02, 0.58, 0.08, 0.16, 0.08, 0.10];
-pub(super) const DENITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const DENITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.04, 0.14, 0.30, 0.30, 0.10, 0.20];
-pub(super) const DENITRIFIER_GENE_REDUCTIVE_FLEXIBILITY_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
+pub(crate) const DENITRIFIER_GENE_REDUCTIVE_FLEXIBILITY_WEIGHTS: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] =
     [0.18, 0.16, 0.16, 0.18, 0.34, 0.20];
 
 // ── Pure helper functions ──
 
-pub(super) fn secondary_gene_axis_center(axis_idx: usize) -> f32 {
+pub(crate) fn secondary_gene_axis_center(axis_idx: usize) -> f32 {
     match axis_idx {
         0 | 1 => 0.0,
         _ => 0.5,
     }
 }
 
-pub(super) fn decode_secondary_gene_module(
+pub(crate) fn decode_secondary_gene_module(
     genes: &[f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
     weights: &[f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
 ) -> f32 {
@@ -157,29 +157,29 @@ pub(super) fn decode_secondary_gene_module(
     clamp(value, 0.0, 1.0)
 }
 
-pub(super) fn offset_clamped(value: usize, delta: isize, upper_exclusive: usize) -> usize {
+pub(crate) fn offset_clamped(value: usize, delta: isize, upper_exclusive: usize) -> usize {
     let shifted = value as isize + delta;
     shifted.clamp(0, upper_exclusive.saturating_sub(1) as isize) as usize
 }
 
-pub(super) fn temp_response(temp_c: f32, optimum: f32, width: f32) -> f32 {
+pub(crate) fn temp_response(temp_c: f32, optimum: f32, width: f32) -> f32 {
     let delta = (temp_c - optimum) / width.max(1e-6);
     (-delta * delta).exp()
 }
 
-pub(super) fn packet_load(cells: f32, packets: f32) -> f32 {
+pub(crate) fn packet_load(cells: f32, packets: f32) -> f32 {
     cells.max(0.0) / packets.max(0.05)
 }
 
-pub(super) fn packet_surface_factor(cells: f32, packets: f32, target_cells: f32) -> f32 {
+pub(crate) fn packet_surface_factor(cells: f32, packets: f32, target_cells: f32) -> f32 {
     (0.78 + (target_cells / packet_load(cells, packets).max(0.25)).sqrt() * 0.26).clamp(0.62, 1.35)
 }
 
-pub(super) fn trait_match(current: f32, target: f32) -> f32 {
+pub(crate) fn trait_match(current: f32, target: f32) -> f32 {
     (1.12 - (current - target).abs() * 0.85).clamp(0.55, 1.25)
 }
 
-pub(super) fn bank_primary_packets(total_packets: f32, secondary_packets: &[f32]) -> f32 {
+pub(crate) fn bank_primary_packets(total_packets: f32, secondary_packets: &[f32]) -> f32 {
     let secondary_total = secondary_packets
         .iter()
         .copied()
@@ -188,7 +188,7 @@ pub(super) fn bank_primary_packets(total_packets: f32, secondary_packets: &[f32]
     (total_packets.max(0.05) - secondary_total).max(0.0)
 }
 
-pub(super) fn bank_simpson_diversity(total_packets: f32, secondary_packets: &[f32]) -> f32 {
+pub(crate) fn bank_simpson_diversity(total_packets: f32, secondary_packets: &[f32]) -> f32 {
     let total_packets = total_packets.max(0.05);
     let primary_packets = bank_primary_packets(total_packets, secondary_packets);
     let combined_packets = (primary_packets
@@ -209,7 +209,7 @@ pub(super) fn bank_simpson_diversity(total_packets: f32, secondary_packets: &[f3
     )
 }
 
-pub(super) fn bank_weighted_trait_mean(
+pub(crate) fn bank_weighted_trait_mean(
     total_packets: f32,
     primary_trait: f32,
     secondary_packets: &[f32],
@@ -230,7 +230,7 @@ pub(super) fn bank_weighted_trait_mean(
     weighted.clamp(0.0, 1.0)
 }
 
-pub(super) fn secondary_bank_catalog_signature(
+pub(crate) fn secondary_bank_catalog_signature(
     bank_idx: usize,
     genes: &[f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
 ) -> u32 {
@@ -247,7 +247,7 @@ pub(super) fn secondary_bank_catalog_signature(
     }
 }
 
-pub(super) fn secondary_bank_catalog_divergence(genes: &[f32; INTERNAL_SECONDARY_GENOTYPE_AXES]) -> f32 {
+pub(crate) fn secondary_bank_catalog_divergence(genes: &[f32; INTERNAL_SECONDARY_GENOTYPE_AXES]) -> f32 {
     let coarse_dispersion = genes
         .iter()
         .enumerate()
@@ -265,21 +265,21 @@ pub(super) fn secondary_bank_catalog_divergence(genes: &[f32; INTERNAL_SECONDARY
 // ── Types ──
 
 #[derive(Debug, Clone)]
-pub(super) struct PublicSecondaryBankEntry {
-    pub(super) packets: Vec<f32>,
-    pub(super) trait_a: Vec<f32>,
-    pub(super) trait_b: Vec<f32>,
-    pub(super) catalog_bank: Vec<SecondaryCatalogBankEntry>,
-    pub(super) catalog_slots: Vec<u32>,
+pub(crate) struct PublicSecondaryBankEntry {
+    pub(crate) packets: Vec<f32>,
+    pub(crate) trait_a: Vec<f32>,
+    pub(crate) trait_b: Vec<f32>,
+    pub(crate) catalog_bank: Vec<SecondaryCatalogBankEntry>,
+    pub(crate) catalog_slots: Vec<u32>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct PublicSecondaryBanks {
-    pub(super) banks: Vec<PublicSecondaryBankEntry>,
+pub(crate) struct PublicSecondaryBanks {
+    pub(crate) banks: Vec<PublicSecondaryBankEntry>,
 }
 
 impl PublicSecondaryBanks {
-    pub(super) fn seed_internal_genotype_axes(
+    pub(crate) fn seed_internal_genotype_axes(
         trait_a: &[f32],
         trait_b: &[f32],
         gene_a: &[f32],
@@ -347,7 +347,7 @@ impl PublicSecondaryBanks {
         axes
     }
 
-    pub(super) fn new(total: usize) -> Self {
+    pub(crate) fn new(total: usize) -> Self {
         let empty_bank = || PublicSecondaryBankEntry {
             packets: vec![0.0; total],
             trait_a: vec![0.5; total],
@@ -360,7 +360,7 @@ impl PublicSecondaryBanks {
         }
     }
 
-        pub(super) fn from_compat_parts(
+        pub(crate) fn from_compat_parts(
         packets: [Vec<f32>; PUBLIC_STRAIN_BANKS],
         trait_a: [Vec<f32>; PUBLIC_STRAIN_BANKS],
         trait_b: [Vec<f32>; PUBLIC_STRAIN_BANKS],
@@ -418,7 +418,7 @@ impl PublicSecondaryBanks {
         }
     }
 
-    pub(super) fn grouped_refs(&self) -> GroupedSecondaryBankRefs<'_> {
+    pub(crate) fn grouped_refs(&self) -> GroupedSecondaryBankRefs<'_> {
         GroupedSecondaryBankRefs {
             packets: std::array::from_fn(|bank_idx| self.banks[bank_idx].packets.as_slice()),
             trait_a: std::array::from_fn(|bank_idx| self.banks[bank_idx].trait_a.as_slice()),
@@ -432,27 +432,27 @@ impl PublicSecondaryBanks {
         }
     }
 
-    pub(super) fn packets_banks(&self) -> [&[f32]; PUBLIC_STRAIN_BANKS] {
+    pub(crate) fn packets_banks(&self) -> [&[f32]; PUBLIC_STRAIN_BANKS] {
         std::array::from_fn(|bank_idx| self.banks[bank_idx].packets.as_slice())
     }
 
-    pub(super) fn trait_a_banks(&self) -> [&[f32]; PUBLIC_STRAIN_BANKS] {
+    pub(crate) fn trait_a_banks(&self) -> [&[f32]; PUBLIC_STRAIN_BANKS] {
         std::array::from_fn(|bank_idx| self.banks[bank_idx].trait_a.as_slice())
     }
 
-    pub(super) fn trait_b_banks(&self) -> [&[f32]; PUBLIC_STRAIN_BANKS] {
+    pub(crate) fn trait_b_banks(&self) -> [&[f32]; PUBLIC_STRAIN_BANKS] {
         std::array::from_fn(|bank_idx| self.banks[bank_idx].trait_b.as_slice())
     }
 
-    pub(super) fn catalog_slot_banks(&self) -> [&[u32]; PUBLIC_STRAIN_BANKS] {
+    pub(crate) fn catalog_slot_banks(&self) -> [&[u32]; PUBLIC_STRAIN_BANKS] {
         std::array::from_fn(|bank_idx| self.banks[bank_idx].catalog_slots.as_slice())
     }
 
-    pub(super) fn catalog_bank_entries(&self) -> [&[SecondaryCatalogBankEntry]; PUBLIC_STRAIN_BANKS] {
+    pub(crate) fn catalog_bank_entries(&self) -> [&[SecondaryCatalogBankEntry]; PUBLIC_STRAIN_BANKS] {
         std::array::from_fn(|bank_idx| self.banks[bank_idx].catalog_bank.as_slice())
     }
 
-    pub(super) fn dominant_catalog_entry_at(
+    pub(crate) fn dominant_catalog_entry_at(
         &self,
         idx: usize,
     ) -> Option<(usize, f32, SecondaryCatalogBankEntry)> {
@@ -490,7 +490,7 @@ impl PublicSecondaryBanks {
 
     /// Return all catalog bank entries active at a given cell index,
     /// one per strain bank. Used by Phase 4 packet seeding.
-    pub(super) fn catalog_entries_at(&self, idx: usize) -> Vec<SecondaryCatalogBankEntry> {
+    pub(crate) fn catalog_entries_at(&self, idx: usize) -> Vec<SecondaryCatalogBankEntry> {
         let mut entries = Vec::with_capacity(PUBLIC_STRAIN_BANKS);
         for bank_idx in 0..self.banks.len().min(PUBLIC_STRAIN_BANKS) {
             let packets = self.banks[bank_idx]
@@ -513,7 +513,7 @@ impl PublicSecondaryBanks {
         entries
     }
 
-    pub(super) fn from_grouped(grouped: SoilBroadSecondaryBanks) -> Self {
+    pub(crate) fn from_grouped(grouped: SoilBroadSecondaryBanks) -> Self {
         Self {
             banks: (0..grouped.len())
                 .map(|bank_idx| PublicSecondaryBankEntry {
@@ -527,14 +527,14 @@ impl PublicSecondaryBanks {
         }
     }
 
-    pub(super) fn apply_grouped(&mut self, grouped: SoilBroadSecondaryBanks) {
+    pub(crate) fn apply_grouped(&mut self, grouped: SoilBroadSecondaryBanks) {
         *self = Self::from_grouped(grouped);
     }
 }
 
 // ── Target functions ──
 
-pub(super) fn microbial_copiotroph_target(
+pub(crate) fn microbial_copiotroph_target(
     substrate_gate: f32,
     moisture_factor: f32,
     oxygen_factor: f32,
@@ -548,7 +548,7 @@ pub(super) fn microbial_copiotroph_target(
     )
 }
 
-pub(super) fn nitrifier_aerobic_target(oxygen_factor: f32, aeration_factor: f32, anoxia_factor: f32) -> f32 {
+pub(crate) fn nitrifier_aerobic_target(oxygen_factor: f32, aeration_factor: f32, anoxia_factor: f32) -> f32 {
     clamp(
         0.18 + oxygen_factor * 0.56 + aeration_factor * 0.18 - anoxia_factor * 0.22,
         0.05,
@@ -556,7 +556,7 @@ pub(super) fn nitrifier_aerobic_target(oxygen_factor: f32, aeration_factor: f32,
     )
 }
 
-pub(super) fn denitrifier_anoxic_target(anoxia_factor: f32, deep_moisture: f32, oxygen_factor: f32) -> f32 {
+pub(crate) fn denitrifier_anoxic_target(anoxia_factor: f32, deep_moisture: f32, oxygen_factor: f32) -> f32 {
     clamp(
         0.16 + anoxia_factor * 0.60 + deep_moisture * 0.10 - oxygen_factor * 0.20,
         0.05,
