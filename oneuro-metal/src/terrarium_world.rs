@@ -31,6 +31,7 @@ use crate::terrarium::{BatchedAtomTerrarium, TerrariumSpecies};
 use crate::terrarium_field::TerrariumSensoryField;
 
 // Re-exports from ecosystem submodules for snapshot/explicit_microbe_impl access
+#[allow(unused_imports)]
 pub(crate) use genotype::{
     SHADOW_BANK_IDX, VARIANT_BANK_IDX, NOVEL_BANK_IDX,
     PUBLIC_STRAIN_BANKS, INTERNAL_SECONDARY_GENOTYPE_AXES,
@@ -50,7 +51,9 @@ pub(crate) use genotype::{
     DENITRIFIER_GENE_ANOXIA_RESPIRATION_WEIGHTS, DENITRIFIER_GENE_NITRATE_TRANSPORT_WEIGHTS,
     DENITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS, DENITRIFIER_GENE_REDUCTIVE_FLEXIBILITY_WEIGHTS,
 };
+#[allow(unused_imports)]
 pub(crate) use packet::{GenotypePacket, GenotypePacketPopulation, GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS};
+#[allow(unused_imports)]
 pub(crate) use calibrator::{SubstrateKinetics, MolecularRateCalibrator};
 
 
