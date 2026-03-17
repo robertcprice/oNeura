@@ -2422,8 +2422,8 @@ impl TerrariumWorld {
 
 
     pub(crate) fn add_explicit_microbe(&mut self, x: usize, y: usize, z: usize, represented_cells: f32) -> Result<(), String> {
-        let flat = idx2(self.config.width, x, y);
-        let identity = self.explicit_microbe_identity_at(flat);
+        let _flat = idx2(self.config.width, x, y);
+        let identity = TerrariumExplicitMicrobeIdentity::default();
         let wcs = crate::whole_cell::WholeCellSimulator::new_default();
         let idx = self.next_microbe_idx;
         self.next_microbe_idx += 1;
@@ -2491,9 +2491,12 @@ mod calibrator;
 mod flora;
 #[cfg(feature = "terrarium_advanced")]
 #[cfg(feature = "terrarium_advanced")]
+#[cfg(feature = "terrarium_advanced")]
 mod soil;
 mod snapshot;
+#[cfg(feature = "terrarium_advanced")]
 mod biomechanics;
+#[cfg(feature = "terrarium_advanced")]
 mod explicit_microbe_impl;
 
 // Rendering modules — need crate::terrarium_render, terrarium_scene_query,

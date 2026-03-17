@@ -185,6 +185,7 @@ pub(crate) mod terrarium_render_compat;
 pub(crate) mod terrarium_render_pipeline;
 #[allow(dead_code)]
 pub(crate) mod terrarium_scene_query;
+#[cfg(feature = "terrarium_advanced")]
 #[allow(dead_code)]
 pub(crate) mod terrarium_contact;
 
