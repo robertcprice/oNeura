@@ -87,6 +87,96 @@ fn heatmap_color(value: f32) -> (u8, u8, u8) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Scenario Presets
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ScenarioPreset { Normal, Drought, Heat, Competition, Dormancy, Feast }
+
+impl ScenarioPreset {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Normal => "Normal",
+            Self::Drought => "DROUGHT",
+            Self::Heat => "HEAT WAVE",
+            Self::Competition => "COMPETITION",
+            Self::Dormancy => "DORMANCY STRESS",
+            Self::Feast => "FEAST",
+        }
+    }
+    fn color(&self) -> (u8, u8, u8) {
+        match self {
+            Self::Normal => (180, 180, 180),
+            Self::Drought => (220, 160, 40),
+            Self::Heat => (255, 60, 30),
+            Self::Competition => (40, 200, 40),
+            Self::Dormancy => (120, 80, 200),
+            Self::Feast => (60, 200, 255),
+        }
+    }
+}
+
+/// Apply initial scenario conditions to the world (called once after creation).
+fn apply_scenario(world: &mut TerrariumWorld, preset: ScenarioPreset) {
+    match preset {
+        ScenarioPreset::Normal => {},
+        ScenarioPreset::Drought => {
+            for v in world.moisture_field_mut().iter_mut() { *v *= 0.3; }
+            if world.waters.len() > 1 { world.waters.truncate(1); }
+        },
+        ScenarioPreset::Heat => {
+            for v in world.temperature_field_mut().iter_mut() { *v += 15.0; }
+        },
+        ScenarioPreset::Competition => {
+            // Double plant density by cloning with slight offsets
+            let existing: Vec<_> = world.plants.clone();
+            for p in &existing {
+                let mut p2 = p.clone();
+                p2.x = (p2.x + 1).min(world.config.width.saturating_sub(1));
+                p2.y = (p2.y + 1).min(world.config.height.saturating_sub(1));
+                world.plants.push(p2);
+            }
+        },
+        ScenarioPreset::Dormancy => {
+            for v in world.moisture_field_mut().iter_mut() { *v *= 0.2; }
+            for v in world.temperature_field_mut().iter_mut() { *v += 8.0; }
+            world.fruits.clear();
+        },
+        ScenarioPreset::Feast => {
+            for v in world.moisture_field_mut().iter_mut() { *v = (*v * 2.0).min(1.0); }
+            // Double fruit patches by cloning existing ones with larger radius
+            let existing: Vec<_> = world.fruits.clone();
+            for mut fp in existing {
+                fp.radius *= 1.5;
+                world.fruits.push(fp);
+            }
+        },
+    }
+}
+
+/// Per-frame progressive scenario stress (called each step).
+fn apply_scenario_step(world: &mut TerrariumWorld, preset: ScenarioPreset, frame: usize) {
+    match preset {
+        ScenarioPreset::Normal | ScenarioPreset::Competition | ScenarioPreset::Feast => {},
+        ScenarioPreset::Drought => {
+            if frame % 10 == 0 {
+                for v in world.moisture_field_mut().iter_mut() { *v = (*v - 0.005).max(0.0); }
+            }
+        },
+        ScenarioPreset::Heat => {
+            if frame % 20 == 0 {
+                for v in world.temperature_field_mut().iter_mut() { *v += 0.1; }
+            }
+        },
+        ScenarioPreset::Dormancy => {
+            if frame % 15 == 0 {
+                for v in world.moisture_field_mut().iter_mut() { *v = (*v - 0.003).max(0.0); }
+            }
+        },
+    }
+}
+
 fn terminal_size() -> (usize, usize) {
     if let Ok(output) = std::process::Command::new("stty")
         .arg("size").stdin(std::process::Stdio::inherit()).output()
@@ -1022,10 +1112,10 @@ fn render_scene(buf: &mut ScreenBuffer, world: &TerrariumWorld, snap: &Terrarium
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-struct Cli { seed: u64, fps: u64, frames: Option<usize>, mode: ViewMode, use_color: bool, cpu_substrate: bool, show_minimap: bool }
+struct Cli { seed: u64, fps: u64, frames: Option<usize>, mode: ViewMode, use_color: bool, cpu_substrate: bool, show_minimap: bool, scenario: ScenarioPreset }
 
 impl Default for Cli {
-    fn default() -> Self { Self { seed: 7, fps: 15, frames: None, mode: ViewMode::Isometric, use_color: true, cpu_substrate: false, show_minimap: false } }
+    fn default() -> Self { Self { seed: 7, fps: 15, frames: None, mode: ViewMode::Isometric, use_color: true, cpu_substrate: false, show_minimap: false, scenario: ScenarioPreset::Normal } }
 }
 
 fn print_usage() {
@@ -1038,8 +1128,10 @@ fn print_usage() {
     eprintln!("  --mode <MODE>    iso/top/split/heat/dash (default: iso)");
     eprintln!("  --minimap        Show minimap");
     eprintln!("  --no-color       Disable ANSI colors");
+    eprintln!("  --scenario <S>   Scenario preset: normal/drought/heat/competition/dormancy/feast");
     eprintln!("  --cpu-substrate  Use CPU substrate\n");
     eprintln!("Semantic Zoom: 0.4-1.5x Ecosystem | 1.5-2.5x Organism | 2.5-3.5x Cellular | 3.5x+ Molecular");
+    eprintln!("Scenario keys: D=drought H=heat N=normal C=competition F=feast");
 }
 
 fn parse_args() -> Result<Cli, String> {
@@ -1054,6 +1146,12 @@ fn parse_args() -> Result<Cli, String> {
                 "iso"|"isometric" => ViewMode::Isometric, "top"|"topdown" => ViewMode::TopDown,
                 "split" => ViewMode::Split, "heat"|"heatmap" => ViewMode::Heatmap,
                 "dash"|"dashboard" => ViewMode::Dashboard, o => return Err(format!("unknown mode: {o}")),
+            },
+            "--scenario" => cli.scenario = match args.next().ok_or("missing --scenario")?.as_str() {
+                "normal" => ScenarioPreset::Normal, "drought" => ScenarioPreset::Drought,
+                "heat" => ScenarioPreset::Heat, "competition" => ScenarioPreset::Competition,
+                "dormancy" => ScenarioPreset::Dormancy, "feast" => ScenarioPreset::Feast,
+                o => return Err(format!("unknown scenario: {o}")),
             },
             "--minimap" => cli.show_minimap = true,
             "--no-color" => cli.use_color = false,
@@ -1074,6 +1172,8 @@ fn main() -> ExitCode {
     let mut world = match TerrariumWorld::demo(cli.seed, !cli.cpu_substrate) {
         Ok(w) => w, Err(e) => { eprintln!("failed: {e}"); return ExitCode::FAILURE; }
     };
+    let mut scenario = cli.scenario;
+    if scenario != ScenarioPreset::Normal { apply_scenario(&mut world, scenario); }
     let (tw, th) = terminal_size();
     let mut buf = ScreenBuffer::new(tw, th);
     let budget = if cli.fps > 0 { Some(Duration::from_secs_f64(1.0 / cli.fps as f64)) } else { None };
@@ -1116,6 +1216,12 @@ fn main() -> ExitCode {
                 KeyInput::Char('3') => vs.mode = ViewMode::Heatmap,
                 KeyInput::Char('4') => vs.mode = ViewMode::Dashboard,
                 KeyInput::Char('5') => vs.mode = ViewMode::Split,
+                // Scenario shortcuts (uppercase = Shift)
+                KeyInput::Char('D') => { scenario = ScenarioPreset::Drought; apply_scenario(&mut world, scenario); }
+                KeyInput::Char('H') => { scenario = ScenarioPreset::Heat; apply_scenario(&mut world, scenario); }
+                KeyInput::Char('N') => { scenario = ScenarioPreset::Normal; }
+                KeyInput::Char('C') => { scenario = ScenarioPreset::Competition; apply_scenario(&mut world, scenario); }
+                KeyInput::Char('F') => { scenario = ScenarioPreset::Feast; apply_scenario(&mut world, scenario); }
                 _ => {}
             }
         }}
@@ -1130,6 +1236,7 @@ fn main() -> ExitCode {
 
         if !vs.paused {
             if let Err(e) = world.step_frame() { eprintln!("\x1b[?25h\x1b[0m\nstep failed: {e}"); restore_terminal(); return ExitCode::FAILURE; }
+            apply_scenario_step(&mut world, scenario, fi);
             fi += 1;
             let snap = world.snapshot();
             if history.len() >= 200 { history.remove(0); }
@@ -1143,6 +1250,10 @@ fn main() -> ExitCode {
 
         let fps_str = format!(" FPS: {last_fps:.1} ");
         buf.write_str(buf.width.saturating_sub(fps_str.len()+1), 0, &fps_str, (255,255,100), (20,20,40));
+        if scenario != ScenarioPreset::Normal {
+            let sc_str = format!(" {} ", scenario.label());
+            buf.write_str(buf.width.saturating_sub(sc_str.len()+1), 1, &sc_str, scenario.color(), (40,20,20));
+        }
         if vs.show_legend { draw_legend_bar(&mut buf, &vs); }
         if vs.show_help { draw_help_overlay(&mut buf); }
 
