@@ -1349,6 +1349,47 @@ impl TerrariumWorld {
 
     fn step_broad_soil(&mut self, eco_dt: f32) -> Result<(), String> {
         self.rebuild_water_mask();
+
+        // Snapshot pre-step state for owned cells so we can suppress coarse
+        // dynamics proportional to ownership strength.
+        let has_ownership = self.ownership_diagnostics.owned_fraction > 0.0;
+        let pre_moisture;
+        let pre_deep_moisture;
+        let pre_nutrients;
+        let pre_nitrogen;
+        let pre_shallow;
+        let pre_deep_minerals;
+        let pre_organic;
+        let pre_litter;
+        let pre_microbes;
+        let pre_symbionts;
+        let pre_exudates;
+        if has_ownership {
+            pre_moisture = self.moisture.clone();
+            pre_deep_moisture = self.deep_moisture.clone();
+            pre_nutrients = self.dissolved_nutrients.clone();
+            pre_nitrogen = self.mineral_nitrogen.clone();
+            pre_shallow = self.shallow_nutrients.clone();
+            pre_deep_minerals = self.deep_minerals.clone();
+            pre_organic = self.organic_matter.clone();
+            pre_litter = self.litter_carbon.clone();
+            pre_microbes = self.microbial_biomass.clone();
+            pre_symbionts = self.symbiont_biomass.clone();
+            pre_exudates = self.root_exudates.clone();
+        } else {
+            pre_moisture = Vec::new();
+            pre_deep_moisture = Vec::new();
+            pre_nutrients = Vec::new();
+            pre_nitrogen = Vec::new();
+            pre_shallow = Vec::new();
+            pre_deep_minerals = Vec::new();
+            pre_organic = Vec::new();
+            pre_litter = Vec::new();
+            pre_microbes = Vec::new();
+            pre_symbionts = Vec::new();
+            pre_exudates = Vec::new();
+        }
+
         let result = step_soil_broad_pools(
             self.config.width,
             self.config.height,
@@ -1386,6 +1427,35 @@ impl TerrariumWorld {
         self.microbial_biomass = result.microbial_biomass;
         self.symbiont_biomass = result.symbiont_biomass;
         self.root_exudates = result.root_exudates;
+
+        // Authority suppression: for explicitly-owned cells, blend the broad-soil
+        // result back toward the pre-step value. If strength=1.0, the cell gets
+        // zero coarse dynamics (fully owned). If strength=0.5, it gets half.
+        if has_ownership {
+            for (i, cell) in self.ownership.iter().enumerate() {
+                if cell.owner.is_background() {
+                    continue;
+                }
+                let s = cell.strength;
+                macro_rules! suppress {
+                    ($field:expr, $pre:expr) => {
+                        $field[i] = $field[i] * (1.0 - s) + $pre[i] * s;
+                    };
+                }
+                suppress!(self.moisture, pre_moisture);
+                suppress!(self.deep_moisture, pre_deep_moisture);
+                suppress!(self.dissolved_nutrients, pre_nutrients);
+                suppress!(self.mineral_nitrogen, pre_nitrogen);
+                suppress!(self.shallow_nutrients, pre_shallow);
+                suppress!(self.deep_minerals, pre_deep_minerals);
+                suppress!(self.organic_matter, pre_organic);
+                suppress!(self.litter_carbon, pre_litter);
+                suppress!(self.microbial_biomass, pre_microbes);
+                suppress!(self.symbiont_biomass, pre_symbionts);
+                suppress!(self.root_exudates, pre_exudates);
+            }
+        }
+
         Ok(())
     }
 
@@ -2236,6 +2306,16 @@ impl TerrariumWorld {
         }
     }
 
+    /// Get molecular energy_charge values for all flies (0.0-1.0).
+    pub fn fly_energy_charges(&self) -> Vec<f32> {
+        self.fly_metabolisms.iter().map(|m| m.energy_charge()).collect()
+    }
+
+    /// Get ecology telemetry events from the current step batch.
+    pub fn recent_ecology_events(&self) -> &[EcologyTelemetryEvent] {
+        &self.ecology_events
+    }
+
     pub fn step_frame(&mut self) -> Result<(), String> {
         self.ecology_events.clear();
         let eco_dt = self.config.world_dt_s * self.config.time_warp;
@@ -2546,5 +2626,117 @@ mod tests {
         let snap = world.snapshot();
         // owned_fraction should be non-negative.
         assert!(snap.owned_fraction >= 0.0);
+    }
+    // ===== Phase 6: metabolism integration tests =====
+
+    #[test]
+    fn spatial_o2_modulates_metabolism() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.add_fly(crate::drosophila::DrosophilaScale::Tiny, 5.0, 5.0, 42);
+        assert!(!world.flies.is_empty());
+        assert!(!world.fly_metabolisms.is_empty());
+        let idx_0 = 5 * world.config.width + 5;
+        world.odorants[super::ATMOS_O2_IDX][idx_0] = 0.30;
+        let _ = world.step_flies();
+        let ambient = world.fly_metabolisms[0].ambient_o2_fraction;
+        assert!(ambient > 0.20, "Fly near enriched O2 should see >0.20, got {ambient:.4}");
+    }
+
+    #[test]
+    fn altitude_reduces_o2() {
+        use crate::drosophila::DrosophilaScale;
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.add_fly(DrosophilaScale::Tiny, 5.0, 5.0, 1);
+        world.add_fly(DrosophilaScale::Tiny, 5.0, 5.0, 2);
+        world.flies[1].set_body_state(5.0, 5.0, 0.0, Some(20.0), None, None, None, None, None, None);
+        let _ = world.step_flies();
+        let o2_ground = world.fly_metabolisms[0].ambient_o2_fraction;
+        let o2_high = world.fly_metabolisms[1].ambient_o2_fraction;
+        assert!(o2_high < o2_ground, "Altitude fly O2 ({o2_high:.4}) should be < ground fly ({o2_ground:.4})");
+    }
+
+    #[test]
+    fn feeding_reward_scales_with_hunger() {
+        use crate::fly_metabolism::FlyMetabolism;
+        let sated = FlyMetabolism::default();
+        let mut starved = FlyMetabolism::default();
+        starved.hemolymph_trehalose_mm = 2.0;
+        let sated_scale = 0.5 + sated.hunger() * 0.5;
+        let starved_scale = 0.5 + starved.hunger() * 0.5;
+        assert!(starved_scale > sated_scale);
+        assert!(starved_scale > 0.85);
+        assert!(sated_scale < 0.6);
+    }
+
+    #[test]
+    fn eclosion_spawns_drosophila() {
+        use crate::drosophila_population::{Fly, FlySex, FlyLifeStage};
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        let initial_flies = world.flies.len();
+        let mut pupa = Fly::new_adult(999, FlySex::Female, (5.0, 5.0, 0.0));
+        pupa.stage = FlyLifeStage::Pupa { age_hours: 95.0 };
+        world.fly_pop.add_fly(pupa);
+        world.step_fly_population(7200.0);
+        assert!(world.flies.len() > initial_flies, "Eclosion should spawn fly");
+        assert_eq!(world.fly_metabolisms.len(), world.flies.len());
+        let n = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyEclosed { .. })).count();
+        assert!(n > 0, "Should emit FlyEclosed event");
+    }
+
+    #[test]
+    fn telemetry_events_on_starvation() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.add_fly(crate::drosophila::DrosophilaScale::Tiny, 5.0, 5.0, 99);
+        world.ecology_events.clear();
+        world.fly_metabolisms[0].hemolymph_trehalose_mm = 5.5;
+        world.fly_metabolisms[0].fat_body_glycogen_mg = 0.0;
+        world.fly_metabolisms[0].fat_body_lipid_mg = 0.0;
+        world.step_fly_metabolism(10.0);
+        let n = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyStarvationOnset { .. })).count();
+        assert!(n > 0, "Should emit FlyStarvationOnset");
+        let pre = world.fly_metabolisms[0].hemolymph_trehalose_mm;
+        world.ecology_events.clear();
+        world.step_fly_metabolism(1.0);
+        if pre < 5.0 {
+            let r = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyStarvationOnset { .. })).count();
+            assert_eq!(r, 0, "Should NOT re-emit starvation");
+        }
+    }
+
+    #[test]
+    fn authority_suppresses_broad_soil_in_owned_cells() {
+        use super::SoilOwnershipClass;
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.run_frames(5).unwrap();
+
+        // Claim cell (3,3) with full ownership.
+        let claimed = world.claim_ownership(
+            3, 3,
+            SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 42 },
+            1.0,
+        );
+        assert!(claimed);
+        world.rebuild_ownership_diagnostics();
+
+        // Record pre-step values at the owned cell and a neighbor.
+        let w = world.config.width;
+        let owned_idx = 3 * w + 3;
+        let free_idx = 4 * w + 4;
+        let pre_owned_microbes = world.microbial_biomass[owned_idx];
+        let pre_free_microbes = world.microbial_biomass[free_idx];
+
+        // Step one frame.
+        world.run_frames(1).unwrap();
+
+        // The owned cell should see zero coarse change (strength=1.0).
+        let post_owned_microbes = world.microbial_biomass[owned_idx];
+        let post_free_microbes = world.microbial_biomass[free_idx];
+        let owned_delta = (post_owned_microbes - pre_owned_microbes).abs();
+        let free_delta = (post_free_microbes - pre_free_microbes).abs();
+
+        assert!(
+            owned_delta < 1e-6 || owned_delta <= free_delta + 1e-6,
+            "owned cell changed more than free cell: owned_delta={owned_delta}, free_delta={free_delta}",
+        );
     }
 }

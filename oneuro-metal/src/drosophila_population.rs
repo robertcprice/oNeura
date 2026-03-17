@@ -265,7 +265,7 @@ pub struct FlyPopulation {
     /// RNG for stochastic processes.
     rng: StdRng,
     /// Positions of flies that eclosed (pupa → adult) this step.
-    eclosed_positions: Vec<(f32, f32, f32)>,
+    pub(crate) eclosed_positions: Vec<(f32, f32, f32)>,
 }
 
 impl FlyPopulation {
