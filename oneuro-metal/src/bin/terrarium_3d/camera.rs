@@ -28,11 +28,12 @@ pub struct Camera {
     pub yaw: f32,
     pub pitch: f32,
     pub distance: f32,
+    pub following: bool,
 }
 
 impl Camera {
     pub fn new() -> Self {
-        Self { target: v3(11.0, 0.0, 8.0), yaw: -0.4, pitch: 0.7, distance: 30.0 }
+        Self { target: v3(11.0, 0.0, 8.0), yaw: -0.4, pitch: 0.7, distance: 30.0, following: false }
     }
 
     pub fn eye(&self) -> V3 {

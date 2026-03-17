@@ -45,6 +45,7 @@ fn draw_bar(buffer: &mut [u32], bw: usize, bh: usize, x: usize, y: usize, w: usi
 pub fn draw_panel(
     buffer: &mut [u32], world: &TerrariumWorld, snapshot: &TerrariumWorldSnapshot,
     paused: bool, realistic: bool, actual_fps: f32, cam: &Camera, selection: &Selection,
+    pop_history: &std::collections::VecDeque<(usize, usize)>,
 ) {
     let px = VIEWPORT_W;
     draw_rect(buffer, TOTAL_W, TOTAL_H, px, 0, PANEL_W, TOTAL_H, rgb(20, 22, 26));
@@ -94,6 +95,41 @@ pub fn draw_panel(
     }
     y += 4;
 
+    // Population sparkline
+    if pop_history.len() > 2 {
+        draw_rect(buffer, TOTAL_W, TOTAL_H, px + 4, y, PANEL_W - 8, 1, rgb(40, 46, 54));
+        y += 4;
+        draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "POPULATION", rgb(210, 214, 220)); y += 10;
+        let graph_w = (PANEL_W - 28).min(200);
+        let graph_h: usize = 32;
+        draw_rect(buffer, TOTAL_W, TOTAL_H, x, y, graph_w, graph_h, rgb(16, 18, 22));
+        // Draw border
+        draw_rect(buffer, TOTAL_W, TOTAL_H, x, y, graph_w, 1, rgb(40, 46, 54));
+        draw_rect(buffer, TOTAL_W, TOTAL_H, x, y + graph_h - 1, graph_w, 1, rgb(40, 46, 54));
+
+        let max_pop = pop_history.iter().map(|(p, f)| (*p).max(*f)).max().unwrap_or(1).max(1);
+        let n = pop_history.len();
+        for (i, (plants, flies)) in pop_history.iter().enumerate() {
+            let gx = x + (i * graph_w / n).min(graph_w - 1);
+            // Plant bar (green, from bottom)
+            let ph = (*plants * (graph_h - 2) / max_pop).min(graph_h - 2);
+            for dy in 0..ph {
+                let py = y + graph_h - 2 - dy;
+                if gx < TOTAL_W && py < TOTAL_H { buffer[py * TOTAL_W + gx] = rgb(40, 180, 60); }
+            }
+            // Fly bar (yellow, drawn on top)
+            let fh = (*flies * (graph_h - 2) / max_pop).min(graph_h - 2);
+            for dy in 0..fh {
+                let py = y + graph_h - 2 - dy;
+                if gx < TOTAL_W && py < TOTAL_H { buffer[py * TOTAL_W + gx] = rgb(230, 210, 40); }
+            }
+        }
+        y += graph_h + 2;
+        draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "plants", rgb(40, 180, 60));
+        draw_text(buffer, TOTAL_W, TOTAL_H, x + 56, y, "flies", rgb(230, 210, 40));
+        y += 12;
+    }
+
     // Minimap
     draw_minimap(buffer, world, x, y);
     y += 82;
@@ -107,8 +143,8 @@ pub fn draw_panel(
     let cy = TOTAL_H.saturating_sub(110);
     for (i, line) in [
         "L-drag  rotate", "R-drag  pan", "scroll  zoom", "click   select",
-        "Tab     cycle", "WASD    pan", "L       lighting", "space   pause",
-        "F12     screenshot", "R       reset cam", "esc     quit",
+        "Tab     cycle", "WASD    pan", "L       lighting", "F       follow",
+        "space   pause", "F12     screenshot", "R       reset cam", "esc     quit",
     ].iter().enumerate() {
         draw_text(buffer, TOTAL_W, TOTAL_H, x, cy + i * 10, line, rgb(128, 134, 142));
     }
@@ -223,7 +259,7 @@ fn draw_minimap(buffer: &mut [u32], world: &TerrariumWorld, x: usize, y: usize) 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y + map_h + 2, "MINIMAP", rgb(130, 136, 144));
 }
 
-pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel) {
+pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool) {
     let label = if realistic { "3D REALISTIC" } else { "3D FLAT" };
     draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 4, label.len() * 8 + 8, 14, rgb(10, 12, 16));
     draw_text(buffer, TOTAL_W, TOTAL_H, 8, 7, label, if realistic { rgb(230, 200, 88) } else { rgb(160, 160, 170) });
@@ -238,6 +274,13 @@ pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_ms
     let zw = zoom_label.len() * 8 + 8;
     draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 22, zw, 14, rgb(10, 12, 16));
     draw_text(buffer, TOTAL_W, TOTAL_H, 8, 25, zoom_label, zoom_color);
+    // Follow mode indicator
+    if following {
+        let fmsg = "FOLLOW";
+        let fw = fmsg.len() * 8 + 8;
+        draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 40, fw, 14, rgb(10, 40, 60));
+        draw_text(buffer, TOTAL_W, TOTAL_H, 8, 43, fmsg, rgb(80, 200, 255));
+    }
     if paused {
         let msg = "PAUSED";
         let mx = (VIEWPORT_W - msg.len() * 8) / 2;

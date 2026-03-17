@@ -31,6 +31,7 @@ use std::env;
 use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, Instant};
+use std::collections::VecDeque;
 
 use camera::{Camera, ZoomLevel};
 use color::rgb;
@@ -118,6 +119,7 @@ fn main() -> ExitCode {
     let mut fps_frames = 0usize;
     let mut screenshot_msg = String::new();
     let mut screenshot_timer = 0u32;
+    let mut pop_history: VecDeque<(usize, usize)> = VecDeque::with_capacity(120);
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let started = Instant::now();
@@ -125,7 +127,10 @@ fn main() -> ExitCode {
         // Toggle keys
         if window.is_key_pressed(Key::Space, KeyRepeat::No) { paused = !paused; }
         if window.is_key_pressed(Key::L, KeyRepeat::No) { realistic = !realistic; }
-        if window.is_key_pressed(Key::R, KeyRepeat::No) { cam.reset(); }
+        if window.is_key_pressed(Key::R, KeyRepeat::No) { cam.reset(); cam.following = false; }
+        if window.is_key_pressed(Key::F, KeyRepeat::No) {
+            if sel.is_selected() { cam.following = !cam.following; } else { cam.following = false; }
+        }
 
         // Tab: cycle entity selection
         if window.is_key_pressed(Key::Tab, KeyRepeat::No) {
@@ -210,7 +215,26 @@ fn main() -> ExitCode {
                     particle_sys.spawn_fruit_sparkle(gx as f32 * CELL_SIZE, base_y + 0.1, gy as f32 * CELL_SIZE, frame_idx, i);
                 }
             }
+            // Fly trail particles for flying flies
+            for (i, fly) in world.flies.iter().enumerate() {
+                let b = fly.body_state();
+                if b.is_flying {
+                    let gx = b.x.clamp(0.0, (gw - 1) as f32) as usize;
+                    let gy = b.y.clamp(0.0, (gh - 1) as f32) as usize;
+                    let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
+                    particle_sys.spawn_fly_trail(
+                        b.x * CELL_SIZE, base_y + b.z * 0.4 + 0.05, b.y * CELL_SIZE,
+                        b.heading, b.speed, frame_idx, i,
+                    );
+                }
+            }
+
             particle_sys.update(1.0 / fps.max(1) as f32);
+
+            // Population history (ring buffer of last 120 frames)
+            let snap = world.snapshot();
+            pop_history.push_back((snap.plants, snap.flies));
+            if pop_history.len() > 120 { pop_history.pop_front(); }
         }
 
         // Build scene geometry (varies by zoom level)
@@ -218,6 +242,43 @@ fn main() -> ExitCode {
         let gw = world.config.width;
         let gh = world.config.height;
         let moisture = world.moisture_field();
+
+        // Camera follow mode — smoothly track selected entity
+        if cam.following && sel.is_selected() {
+            let follow_pos = match sel.tag {
+                mesh::EntityTag::Plant(i) => {
+                    world.plants.get(i).map(|p| {
+                        let gx = p.x.min(gw - 1);
+                        let gy = p.y.min(gh - 1);
+                        let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
+                        math::v3(gx as f32 * CELL_SIZE, base_y, gy as f32 * CELL_SIZE)
+                    })
+                }
+                mesh::EntityTag::Fly(i) => {
+                    world.flies.get(i).map(|f| {
+                        let b = f.body_state();
+                        let gx = b.x.clamp(0.0, (gw - 1) as f32) as usize;
+                        let gy = b.y.clamp(0.0, (gh - 1) as f32) as usize;
+                        let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
+                        math::v3(b.x * CELL_SIZE, base_y + b.z * 0.4, b.y * CELL_SIZE)
+                    })
+                }
+                mesh::EntityTag::Water(i) => {
+                    world.waters.get(i).map(|w| {
+                        let gx = w.x.min(gw - 1);
+                        let gy = w.y.min(gh - 1);
+                        let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
+                        math::v3(gx as f32 * CELL_SIZE, base_y + 0.02, gy as f32 * CELL_SIZE)
+                    })
+                }
+                _ => None,
+            };
+            if let Some(target) = follow_pos {
+                cam.target = math::lerp3(cam.target, target, 0.12);
+            } else {
+                cam.following = false;
+            }
+        }
 
         let mut terrain_tris = Vec::new();
         let mut entity_tris = Vec::new();
@@ -289,9 +350,9 @@ fn main() -> ExitCode {
         }
 
         // Draw panel and HUD
-        draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel);
+        draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel, &pop_history);
         let msg = if screenshot_timer > 0 { &screenshot_msg } else { "" };
-        draw_hud(&mut buffer, paused, realistic, msg, &zoom);
+        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following);
         if screenshot_timer > 0 { screenshot_timer -= 1; }
 
         // FPS counter

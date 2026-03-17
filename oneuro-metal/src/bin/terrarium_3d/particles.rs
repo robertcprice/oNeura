@@ -77,6 +77,23 @@ impl ParticleSystem {
         }
     }
 
+    /// Spawn fly trail particles — glowing streaks behind flying flies.
+    pub fn spawn_fly_trail(&mut self, wx: f32, wy: f32, wz: f32, heading: f32, speed: f32, frame: usize, idx: usize) {
+        let seed = frame.wrapping_mul(1664525) ^ idx.wrapping_mul(1013904223);
+        let hash = (seed & 0xFFFF) as f32 / 65535.0;
+        if hash < 0.15 && speed > 0.5 {
+            let trail_vx = -heading.cos() * speed * 0.05 + (hash - 0.5) * 0.08;
+            let trail_vz = -heading.sin() * speed * 0.05 + (hash * 3.1 % 1.0 - 0.5) * 0.08;
+            let brightness = (speed / 3.0).clamp(0.3, 1.0);
+            self.spawn(
+                [wx, wy, wz],
+                [trail_vx, -0.02, trail_vz],
+                [0.95 * brightness, 0.85 * brightness, 0.30 * brightness],
+                0.6 + hash * 0.4,
+            );
+        }
+    }
+
     /// Render particles as 2x2 alpha-blended dots to the viewport buffer.
     pub fn render(&self, buffer: &mut [u32], bw: usize, bh: usize, mvp: &M4) {
         for p in &self.particles {
