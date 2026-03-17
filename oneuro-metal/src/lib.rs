@@ -161,6 +161,9 @@ pub mod cross_scale_coupling;
 pub mod drug_discovery;
 pub mod enzyme_engineering;
 pub mod enzyme_probes;
+pub mod probe_coupling;
+pub mod enzyme_evolution;
+pub mod bioremediation;
 
 // NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
 // terrarium_render_pipeline are orphaned and depend on missing APIs.
@@ -215,6 +218,9 @@ pub use soil_broad::{step_soil_broad_pools, SoilBroadStepResult};
 pub use soil_uptake::{extract_root_resources_with_layers, SoilResourceExtraction};
 pub use drug_discovery::{DrugCandidate, BindingSite, DockingResult, ADMETProfile, screen_drug_candidates, predict_admet, optimize_lead};
 pub use enzyme_engineering::{EnzymeVariant, MutationLibrary, directed_evolution, saturation_mutagenesis, recombination};
+pub use probe_coupling::{step_temperature_coupling, compute_probe_snapshot_stats, drug_enzyme_pareto_score, ProbeSnapshotStats};
+pub use enzyme_evolution::{evolve_soil_enzyme, evolve_enzyme_cocktail, SoilEnzymeVariant, SoilEnzymeEvolutionConfig, SoilEvolutionResult, cellulase_parent, urease_parent, phosphatase_parent};
+pub use bioremediation::{SoilContaminationProfile, RemediationPlan, RemediationScore, remediation_plan, evaluate_remediation, optimize_remediation};
 pub use enzyme_probes::{build_tripeptide_gag, build_cellulase_fragment, build_urease_fragment, build_phosphatase_fragment, score_enzyme_drug_properties, apply_probe_catalytic_feedback, compute_enzyme_efficacy};
 pub use substrate_ir::{
     evaluate_patch_assembly, execute_patch_reaction, localize_patch, AssemblyComponent,

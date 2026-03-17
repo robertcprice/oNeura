@@ -30,6 +30,33 @@ use crate::soil_uptake::extract_root_resources_with_layers;
 use crate::terrarium::{BatchedAtomTerrarium, TerrariumSpecies};
 use crate::terrarium_field::TerrariumSensoryField;
 
+// Re-exports from ecosystem submodules for snapshot/explicit_microbe_impl access
+pub(crate) use genotype::{
+    SHADOW_BANK_IDX, VARIANT_BANK_IDX, NOVEL_BANK_IDX,
+    PUBLIC_STRAIN_BANKS, INTERNAL_SECONDARY_GENOTYPE_AXES,
+    bank_simpson_diversity, bank_weighted_trait_mean, packet_load,
+    decode_secondary_gene_module, offset_clamped as genotype_offset_clamped,
+    temp_response as genotype_temp_response, packet_surface_factor,
+    trait_match, bank_primary_packets,
+    secondary_bank_catalog_signature, secondary_bank_catalog_divergence,
+    SecondaryCatalogBankEntry, SecondaryGenotypeRecord, SecondaryGenotypeCatalogRecord,
+    SecondaryGenotypeEntry, PublicSecondaryBanks, PublicSecondaryBankEntry,
+    GroupedSecondaryBankRefs, SoilBroadSecondaryBanks,
+    refresh_secondary_local_catalog_identity,
+    MICROBIAL_GENE_CATABOLIC_WEIGHTS, MICROBIAL_GENE_STRESS_RESPONSE_WEIGHTS,
+    MICROBIAL_GENE_DORMANCY_MAINTENANCE_WEIGHTS, MICROBIAL_GENE_EXTRACELLULAR_SCAVENGING_WEIGHTS,
+    NITRIFIER_GENE_OXYGEN_RESPIRATION_WEIGHTS, NITRIFIER_GENE_AMMONIUM_TRANSPORT_WEIGHTS,
+    NITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS, NITRIFIER_GENE_REDOX_EFFICIENCY_WEIGHTS,
+    DENITRIFIER_GENE_ANOXIA_RESPIRATION_WEIGHTS, DENITRIFIER_GENE_NITRATE_TRANSPORT_WEIGHTS,
+    DENITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS, DENITRIFIER_GENE_REDUCTIVE_FLEXIBILITY_WEIGHTS,
+};
+pub(crate) use packet::{
+    GenotypePacket, GenotypePacketPopulation,
+    GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS,
+};
+pub(crate) use calibrator::{SubstrateKinetics, MolecularRateCalibrator};
+
+
 // ===== Microdomain Ownership Infrastructure =====
 
 /// Identifies the authority class that owns a soil cell's biology.
@@ -237,6 +264,35 @@ const PLANT_SPECIATION_THRESHOLD: f32 = 0.15;
 #[allow(dead_code)]
 const EXPLICIT_OWNERSHIP_THRESHOLD: f32 = 0.5;
 
+// Explicit microbe and stoichiometry constants
+pub const EXPLICIT_MICROBE_COHORT_CELLS: f32 = 1000.0;
+pub const EXPLICIT_MICROBE_MIN_REPRESENTED_CELLS: f32 = 100.0;
+pub const EXPLICIT_MICROBE_MAX_REPRESENTED_CELLS: f32 = 50000.0;
+pub const EXPLICIT_MICROBE_PATCH_RADIUS: usize = 2;
+pub const EXPLICIT_MICROBE_TIME_COMPRESSION: f32 = 10.0;
+pub const EXPLICIT_MICROBE_MIN_STEPS: u64 = 5;
+pub const EXPLICIT_MICROBE_MAX_STEPS: u64 = 200;
+pub const EXPLICIT_MICROBE_GROWTH_RATE: f32 = 0.002;
+pub const EXPLICIT_MICROBE_DECAY_RATE: f32 = 0.001;
+pub const EXPLICIT_MICROBE_RADIUS_EXPAND_1_CELLS: f32 = 2000.0;
+pub const EXPLICIT_MICROBE_RADIUS_EXPAND_1_ENERGY: f32 = 0.6;
+pub const EXPLICIT_MICROBE_RADIUS_EXPAND_2_CELLS: f32 = 5000.0;
+pub const EXPLICIT_MICROBE_RADIUS_EXPAND_2_ENERGY: f32 = 0.8;
+pub const EXPLICIT_MICROBE_RECRUITMENT_MIN_SCORE: f32 = 0.3;
+pub const EXPLICIT_MICROBE_RECRUITMENT_SPACING: usize = 3;
+pub const INTERACTIVE_MICROBES_PER_FRAME: usize = 4;
+pub const MICROBIAL_PACKET_TARGET_CELLS: f32 = 500.0;
+pub const STOICH_RESPIRATION_CO2_PER_GLUCOSE: f32 = 6.0;
+pub const STOICH_FERMENTATION_CO2_PER_GLUCOSE: f32 = 2.0;
+pub const STOICH_NITRIFICATION_PROTON_YIELD: f32 = 2.0;
+pub const O2_GAS_PHASE_FRACTION: f32 = 0.2095;
+pub const CO2_GAS_PHASE_FRACTION: f32 = 0.0004;
+pub const CO2_PROTON_FRACTION_AT_SOIL_PH: f32 = 0.035;
+pub const CRITICAL_OXYGEN_FOR_STRESS: f32 = 0.02;
+pub const CRITICAL_GLUCOSE_FOR_STRESS: f32 = 0.01;
+pub const FICK_SURFACE_CONDUCTANCE: f32 = 0.015;
+
+
 fn idx2(width: usize, x: usize, y: usize) -> usize {
     y * width + x
 }
@@ -399,6 +455,7 @@ pub struct TerrariumWorldConfig {
     pub max_plants: usize,
     pub max_fruits: usize,
     pub max_seeds: usize,
+    pub max_explicit_microbes: usize,
 }
 
 impl Default for TerrariumWorldConfig {
@@ -417,12 +474,14 @@ impl Default for TerrariumWorldConfig {
             max_plants: 28,
             max_fruits: 64,
             max_seeds: 96,
+            max_explicit_microbes: 16,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct TerrariumPlantGenome {
+    pub species_id: u32,
     pub max_height_mm: f32,
     pub canopy_radius_mm: f32,
     pub root_radius_mm: f32,
@@ -441,6 +500,7 @@ pub struct TerrariumPlantGenome {
 impl TerrariumPlantGenome {
     pub fn sample(rng: &mut StdRng) -> Self {
         Self {
+            species_id: rng.gen_range(1..=10000),
             max_height_mm: rng.gen_range(7.0..18.0),
             canopy_radius_mm: rng.gen_range(3.0..8.0),
             root_radius_mm: rng.gen_range(2.0..5.5),
@@ -459,6 +519,7 @@ impl TerrariumPlantGenome {
 
     pub fn mutate(&self, rng: &mut StdRng) -> Self {
         Self {
+            species_id: self.species_id,
             max_height_mm: clamp(self.max_height_mm + sample_normal(rng, 0.85), 6.5, 20.0),
             canopy_radius_mm: clamp(self.canopy_radius_mm + sample_normal(rng, 0.35), 2.5, 9.5),
             root_radius_mm: clamp(self.root_radius_mm + sample_normal(rng, 0.30), 1.8, 7.0),
@@ -616,6 +677,11 @@ pub enum EcologyTelemetryEvent {
     FlyFeeding { x: f32, y: f32, sugar_ingested_mg: f32, trehalose_mm: f32 },
     FlyEclosed { x: f32, y: f32 },
     FlyHypoxiaOnset { x: f32, y: f32, ambient_o2: f32, altitude: f32 },
+    ExplicitPromotion { x: usize, y: usize, guild: u8, represented_cells: f32 },
+    ExplicitDemotion { x: usize, y: usize },
+    ExplicitDeath { x: usize, y: usize, reason: String },
+    CellDivision { x: usize, y: usize },
+    PacketPopulationSeed { x: usize, y: usize },
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -656,10 +722,149 @@ pub struct TerrariumWorldSnapshot {
     pub fly_o2_gradient_correlation: f32,
     pub owned_fraction: f32,
     pub atomistic_probes: usize,
-    pub substrate_backend: &'static str,
+    pub substrate_backend: String,
     pub substrate_steps: u64,
     pub substrate_time_ms: f32,
     pub time_s: f32,
+
+    // === Extended snapshot fields (microbial guilds, explicit microbes, ecology) ===
+    pub avg_fly_hunger: f32,
+    pub avg_fly_trehalose_mm: f32,
+    pub avg_fly_atp_mm: f32,
+    pub fly_population_eggs: u32,
+    pub fly_population_embryos: u32,
+    pub fly_population_larvae: u32,
+    pub fly_population_pupae: u32,
+    pub fly_population_adults: u32,
+    pub fly_population_total: u32,
+    pub mean_air_pressure_kpa: f32,
+    pub mean_microbial_cells: f32,
+    pub mean_microbial_packets: f32,
+    pub mean_microbial_copiotroph_packets: f32,
+    pub mean_microbial_shadow_packets: f32,
+    pub mean_microbial_variant_packets: f32,
+    pub mean_microbial_novel_packets: f32,
+    pub mean_microbial_latent_packets: f32,
+    pub mean_microbial_oligotroph_packets: f32,
+    pub mean_microbial_packet_load: f32,
+    pub mean_microbial_copiotroph_fraction: f32,
+    pub mean_microbial_shadow_fraction: f32,
+    pub mean_microbial_variant_fraction: f32,
+    pub mean_microbial_novel_fraction: f32,
+    pub mean_microbial_bank_simpson_diversity: f32,
+    pub mean_microbial_strain_yield: f32,
+    pub mean_microbial_strain_stress_tolerance: f32,
+    pub mean_microbial_gene_catabolic: f32,
+    pub mean_microbial_gene_stress_response: f32,
+    pub mean_microbial_gene_dormancy_maintenance: f32,
+    pub mean_microbial_gene_extracellular_scavenging: f32,
+    pub mean_microbial_genotype_divergence: f32,
+    pub mean_microbial_catalog_generation: f32,
+    pub mean_microbial_catalog_novelty: f32,
+    pub mean_microbial_local_catalog_share: f32,
+    pub mean_microbial_catalog_bank_dominance: f32,
+    pub mean_microbial_catalog_bank_richness: f32,
+    pub mean_microbial_lineage_generation: f32,
+    pub mean_microbial_lineage_novelty: f32,
+    pub mean_microbial_packet_mutation_flux: f32,
+    pub mean_microbial_vitality: f32,
+    pub mean_microbial_dormancy: f32,
+    pub mean_microbial_reserve: f32,
+    pub mean_nitrifiers: f32,
+    pub mean_nitrifier_cells: f32,
+    pub mean_nitrifier_packets: f32,
+    pub mean_nitrifier_aerobic_packets: f32,
+    pub mean_nitrifier_shadow_packets: f32,
+    pub mean_nitrifier_variant_packets: f32,
+    pub mean_nitrifier_novel_packets: f32,
+    pub mean_nitrifier_latent_packets: f32,
+    pub mean_nitrifier_facultative_packets: f32,
+    pub mean_nitrifier_packet_load: f32,
+    pub mean_nitrifier_aerobic_fraction: f32,
+    pub mean_nitrifier_shadow_fraction: f32,
+    pub mean_nitrifier_variant_fraction: f32,
+    pub mean_nitrifier_novel_fraction: f32,
+    pub mean_nitrifier_bank_simpson_diversity: f32,
+    pub mean_nitrifier_strain_oxygen_affinity: f32,
+    pub mean_nitrifier_strain_ammonium_affinity: f32,
+    pub mean_nitrifier_gene_oxygen_respiration: f32,
+    pub mean_nitrifier_gene_ammonium_transport: f32,
+    pub mean_nitrifier_gene_stress_persistence: f32,
+    pub mean_nitrifier_gene_redox_efficiency: f32,
+    pub mean_nitrifier_genotype_divergence: f32,
+    pub mean_nitrifier_catalog_generation: f32,
+    pub mean_nitrifier_catalog_novelty: f32,
+    pub mean_nitrifier_local_catalog_share: f32,
+    pub mean_nitrifier_catalog_bank_dominance: f32,
+    pub mean_nitrifier_catalog_bank_richness: f32,
+    pub mean_nitrifier_lineage_generation: f32,
+    pub mean_nitrifier_lineage_novelty: f32,
+    pub mean_nitrifier_packet_mutation_flux: f32,
+    pub mean_nitrifier_vitality: f32,
+    pub mean_nitrifier_dormancy: f32,
+    pub mean_nitrifier_reserve: f32,
+    pub mean_nitrification_potential: f32,
+    pub mean_denitrifiers: f32,
+    pub mean_denitrifier_cells: f32,
+    pub mean_denitrifier_packets: f32,
+    pub mean_denitrifier_anoxic_packets: f32,
+    pub mean_denitrifier_shadow_packets: f32,
+    pub mean_denitrifier_variant_packets: f32,
+    pub mean_denitrifier_novel_packets: f32,
+    pub mean_denitrifier_latent_packets: f32,
+    pub mean_denitrifier_facultative_packets: f32,
+    pub mean_denitrifier_packet_load: f32,
+    pub mean_denitrifier_anoxic_fraction: f32,
+    pub mean_denitrifier_shadow_fraction: f32,
+    pub mean_denitrifier_variant_fraction: f32,
+    pub mean_denitrifier_novel_fraction: f32,
+    pub mean_denitrifier_bank_simpson_diversity: f32,
+    pub mean_denitrifier_strain_anoxia_affinity: f32,
+    pub mean_denitrifier_strain_nitrate_affinity: f32,
+    pub mean_denitrifier_gene_anoxia_respiration: f32,
+    pub mean_denitrifier_gene_nitrate_transport: f32,
+    pub mean_denitrifier_gene_stress_persistence: f32,
+    pub mean_denitrifier_gene_reductive_flexibility: f32,
+    pub mean_denitrifier_genotype_divergence: f32,
+    pub mean_denitrifier_catalog_generation: f32,
+    pub mean_denitrifier_catalog_novelty: f32,
+    pub mean_denitrifier_local_catalog_share: f32,
+    pub mean_denitrifier_catalog_bank_dominance: f32,
+    pub mean_denitrifier_catalog_bank_richness: f32,
+    pub mean_denitrifier_lineage_generation: f32,
+    pub mean_denitrifier_lineage_novelty: f32,
+    pub mean_denitrifier_packet_mutation_flux: f32,
+    pub mean_denitrifier_vitality: f32,
+    pub mean_denitrifier_dormancy: f32,
+    pub mean_denitrifier_reserve: f32,
+    pub mean_denitrification_potential: f32,
+    pub explicit_microbes: usize,
+    pub explicit_microbe_represented_cells: f32,
+    pub explicit_microbe_represented_packets: f32,
+    pub explicit_microbe_owned_fraction: f32,
+    pub explicit_microbe_max_authority: f32,
+    pub mean_explicit_microbe_activity: f32,
+    pub mean_explicit_microbe_atp_mm: f32,
+    pub mean_explicit_microbe_glucose_mm: f32,
+    pub mean_explicit_microbe_oxygen_mm: f32,
+    pub mean_explicit_microbe_division_progress: f32,
+    pub mean_explicit_microbe_local_co2: f32,
+    pub mean_explicit_microbe_translation_support: f32,
+    pub mean_explicit_microbe_energy_state: f32,
+    pub mean_explicit_microbe_stress_state: f32,
+    pub mean_explicit_microbe_genotype_divergence: f32,
+    pub mean_explicit_microbe_catalog_novelty: f32,
+    pub mean_explicit_microbe_local_catalog_share: f32,
+    pub packet_population_count: usize,
+    pub packet_population_total_cells: f32,
+    pub packet_population_mean_activity: f32,
+    pub packet_population_mean_dormancy: f32,
+    pub packet_population_total_packets: usize,
+    pub packet_population_promotion_candidates: usize,
+    pub plant_species_count: u32,
+    pub plant_species_ids: Vec<u32>,
+    pub ecology_events: Vec<EcologyTelemetryEvent>,
+    // === end extended fields ===
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -682,6 +887,209 @@ impl TerrariumTopdownView {
             Self::Odor => "odor",
             Self::GasExchange => "gas",
         }
+    }
+}
+
+
+/// An explicit microbe promoted from the packet population to individual-cell simulation.
+#[allow(dead_code)]
+pub struct TerrariumExplicitMicrobe {
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
+    pub guild: u8,
+    pub represented_cells: f32,
+    pub represented_packets: f32,
+    pub identity: TerrariumExplicitMicrobeIdentity,
+    pub whole_cell: Option<Box<crate::whole_cell::WholeCellSimulator>>,
+    pub last_snapshot: WholeCellSnapshot,
+    pub smoothed_energy: f32,
+    pub smoothed_stress: f32,
+    pub radius: usize,
+    pub patch_radius: usize,
+    pub age_steps: u64,
+    pub idx: u64,
+}
+
+impl std::fmt::Debug for TerrariumExplicitMicrobe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TerrariumExplicitMicrobe")
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .field("z", &self.z)
+            .field("guild", &self.guild)
+            .field("represented_cells", &self.represented_cells)
+            .field("idx", &self.idx)
+            .finish_non_exhaustive()
+    }
+}
+
+
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct TerrariumExplicitMicrobeIdentity {
+    pub bank_idx: usize,
+    pub represented_packets: f32,
+    pub record: SecondaryGenotypeRecord,
+    pub catalog: SecondaryGenotypeCatalogRecord,
+    pub genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
+    pub gene_catabolic: f32,
+    pub gene_stress_response: f32,
+    pub gene_dormancy_maintenance: f32,
+    pub gene_extracellular_scavenging: f32,
+}
+
+
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct WholeCellSnapshot {
+    pub atp_mm: f32,
+    pub glucose_mm: f32,
+    pub oxygen_mm: f32,
+    pub amino_acids_mm: f32,
+    pub nucleotides_mm: f32,
+    pub membrane_precursors_mm: f32,
+    pub metabolic_load: f32,
+    pub division_progress: f32,
+    pub local_chemistry: Option<LocalChemistryReport>,
+}
+
+
+#[derive(Debug, Clone, Copy, Default)]
+#[allow(dead_code)]
+pub struct LocalChemistryReport {
+    pub mean_carbon_dioxide: f32,
+    pub translation_support: f32,
+    pub atp_support: f32,
+    pub crowding_penalty: f32,
+}
+
+
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct WholeCellEnvironmentInputs {
+    pub glucose_mm: f32,
+    pub oxygen_mm: f32,
+    pub amino_acids_mm: f32,
+    pub nucleotides_mm: f32,
+    pub membrane_precursors_mm: f32,
+    pub metabolic_load: f32,
+    pub temperature_c: f32,
+    pub proton_concentration: f32,
+}
+
+
+/// Material region classification for explicit microbe environment sampling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[allow(dead_code)]
+pub enum MaterialRegionKind {
+    #[default]
+    Soil,
+    PoreWater,
+    GasPhase,
+    MineralSurface,
+    BiofilmMatrix,
+    Water,
+    Air,
+    Root,
+    Biofilm,
+}
+
+
+/// Material phase classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[allow(dead_code)]
+pub enum MaterialPhaseKind {
+    #[default]
+    Solid,
+    Liquid,
+    Gas,
+    Dissolved,
+    Colloidal,
+}
+
+
+/// Material phase selection criteria.
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct MaterialPhaseSelector {
+    pub kind: MaterialPhaseKind,
+    pub min_fraction: f32,
+}
+
+
+/// Material phase descriptor.
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct MaterialPhaseDescriptor {
+    pub kind: MaterialPhaseKind,
+    pub fraction: f32,
+    pub conductivity: f32,
+}
+
+
+/// Stub for molecule graph used in explicit_microbe_impl.rs.
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct MoleculeGraph {
+    pub nodes: Vec<u32>,
+    pub edges: Vec<(u32, u32)>,
+}
+
+
+/// Stub for regional material inventory.
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct RegionalMaterialInventory {
+    pub regions: Vec<(MaterialRegionKind, f32)>,
+}
+
+impl RegionalMaterialInventory {
+    pub fn estimate_whole_cell_environment_inputs(
+        &self,
+        _region_kinds: &[MaterialRegionKind],
+    ) -> WholeCellEnvironmentInputs {
+        WholeCellEnvironmentInputs::default()
+    }
+
+    pub fn total_amount_for_component(
+        &self,
+        _region: MaterialRegionKind,
+        _molecule: &MoleculeDescriptor,
+        _selector: &MaterialPhaseSelector,
+    ) -> f32 {
+        0.0
+    }
+
+    pub fn deposit_component(
+        &mut self,
+        _region: MaterialRegionKind,
+        _molecule: &MoleculeDescriptor,
+        _amount: f32,
+    ) {}
+
+    pub fn withdraw_component(
+        &mut self,
+        _region: MaterialRegionKind,
+        _molecule: &MoleculeDescriptor,
+        _amount: f32,
+    ) -> f32 {
+        0.0
+    }
+}
+
+
+/// Stub for molecule descriptor.
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct MoleculeDescriptor {
+    pub name: String,
+    pub molecular_weight: f32,
+}
+
+impl MoleculeDescriptor {
+    pub fn named(name: &str) -> Self {
+        Self { name: name.to_string(), molecular_weight: 0.0 }
     }
 }
 
@@ -738,7 +1146,61 @@ pub struct TerrariumWorld {
     ownership: Vec<SoilOwnershipCell>,
     /// Cached ownership diagnostics, refreshed on `rebuild_ownership()`.
     ownership_diagnostics: OwnershipDiagnostics,
+    // === Microbial guild + explicit microbe fields ===
+    pub microbial_cells: Vec<f32>,
+    pub microbial_packets: Vec<f32>,
+    pub microbial_copiotroph_packets: Vec<f32>,
+    pub microbial_copiotroph_fraction: Vec<f32>,
+    pub microbial_strain_yield: Vec<f32>,
+    pub microbial_strain_stress_tolerance: Vec<f32>,
+    pub microbial_latent_packets: Vec<Vec<f32>>,
+    pub microbial_latent_strain_yield: Vec<Vec<f32>>,
+    pub microbial_latent_strain_stress_tolerance: Vec<Vec<f32>>,
+    pub microbial_secondary: genotype::PublicSecondaryBanks,
+    pub microbial_vitality: Vec<f32>,
+    pub microbial_dormancy: Vec<f32>,
+    pub microbial_reserve: Vec<f32>,
+    pub microbial_packet_mutation_flux: Vec<f32>,
+    pub nitrifier_biomass: Vec<f32>,
+    pub nitrifier_cells: Vec<f32>,
+    pub nitrifier_packets: Vec<f32>,
+    pub nitrifier_aerobic_packets: Vec<f32>,
+    pub nitrifier_aerobic_fraction: Vec<f32>,
+    pub nitrifier_strain_oxygen_affinity: Vec<f32>,
+    pub nitrifier_strain_ammonium_affinity: Vec<f32>,
+    pub nitrifier_latent_packets: Vec<Vec<f32>>,
+    pub nitrifier_latent_strain_oxygen_affinity: Vec<Vec<f32>>,
+    pub nitrifier_latent_strain_ammonium_affinity: Vec<Vec<f32>>,
+    pub nitrifier_secondary: genotype::PublicSecondaryBanks,
+    pub nitrifier_vitality: Vec<f32>,
+    pub nitrifier_dormancy: Vec<f32>,
+    pub nitrifier_reserve: Vec<f32>,
+    pub nitrifier_packet_mutation_flux: Vec<f32>,
+    pub nitrification_potential: Vec<f32>,
+    pub denitrifier_biomass: Vec<f32>,
+    pub denitrifier_cells: Vec<f32>,
+    pub denitrifier_packets: Vec<f32>,
+    pub denitrifier_anoxic_packets: Vec<f32>,
+    pub denitrifier_anoxic_fraction: Vec<f32>,
+    pub denitrifier_strain_anoxia_affinity: Vec<f32>,
+    pub denitrifier_strain_nitrate_affinity: Vec<f32>,
+    pub denitrifier_latent_packets: Vec<Vec<f32>>,
+    pub denitrifier_latent_strain_anoxia_affinity: Vec<Vec<f32>>,
+    pub denitrifier_latent_strain_nitrate_affinity: Vec<Vec<f32>>,
+    pub denitrifier_secondary: genotype::PublicSecondaryBanks,
+    pub denitrifier_vitality: Vec<f32>,
+    pub denitrifier_dormancy: Vec<f32>,
+    pub denitrifier_reserve: Vec<f32>,
+    pub denitrifier_packet_mutation_flux: Vec<f32>,
+    pub denitrification_potential: Vec<f32>,
+    pub explicit_microbe_authority: Vec<f32>,
+    pub explicit_microbe_activity: Vec<f32>,
+    pub next_microbe_idx: u64,
+    pub md_calibrator: Option<calibrator::MolecularRateCalibrator>,
+    pub packet_populations: Vec<packet::GenotypePacketPopulation>,
+    pub air_pressure_kpa: Vec<f32>,
 }
+
 
 impl TerrariumWorld {
     pub fn width(&self) -> usize {
@@ -748,6 +1210,13 @@ impl TerrariumWorld {
     pub fn height(&self) -> usize {
         self.config.height
     }
+
+    /// Accessor for fly population (alias for fly_pop).
+    pub(crate) fn fly_population(&self) -> &FlyPopulation {
+        &self.fly_pop
+    }
+
+
 
     // ===== Ownership API =====
 
@@ -958,6 +1427,59 @@ impl TerrariumWorld {
             ],
             ownership: vec![SoilOwnershipCell::default(); plane],
             ownership_diagnostics: OwnershipDiagnostics::default(),
+            microbial_cells: vec![0.0; plane],
+            microbial_packets: vec![0.0; plane],
+            microbial_copiotroph_packets: vec![0.0; plane],
+            microbial_copiotroph_fraction: vec![0.0; plane],
+            microbial_strain_yield: vec![0.5; plane],
+            microbial_strain_stress_tolerance: vec![0.5; plane],
+            microbial_latent_packets: Vec::new(),
+            microbial_latent_strain_yield: Vec::new(),
+            microbial_latent_strain_stress_tolerance: Vec::new(),
+            microbial_secondary: genotype::PublicSecondaryBanks::new(plane),
+            microbial_vitality: vec![0.5; plane],
+            microbial_dormancy: vec![0.0; plane],
+            microbial_reserve: vec![0.3; plane],
+            microbial_packet_mutation_flux: vec![0.0; plane],
+            nitrifier_biomass: vec![0.0; plane],
+            nitrifier_cells: vec![0.0; plane],
+            nitrifier_packets: vec![0.0; plane],
+            nitrifier_aerobic_packets: vec![0.0; plane],
+            nitrifier_aerobic_fraction: vec![0.0; plane],
+            nitrifier_strain_oxygen_affinity: vec![0.5; plane],
+            nitrifier_strain_ammonium_affinity: vec![0.5; plane],
+            nitrifier_latent_packets: Vec::new(),
+            nitrifier_latent_strain_oxygen_affinity: Vec::new(),
+            nitrifier_latent_strain_ammonium_affinity: Vec::new(),
+            nitrifier_secondary: genotype::PublicSecondaryBanks::new(plane),
+            nitrifier_vitality: vec![0.5; plane],
+            nitrifier_dormancy: vec![0.0; plane],
+            nitrifier_reserve: vec![0.3; plane],
+            nitrifier_packet_mutation_flux: vec![0.0; plane],
+            nitrification_potential: vec![0.0; plane],
+            denitrifier_biomass: vec![0.0; plane],
+            denitrifier_cells: vec![0.0; plane],
+            denitrifier_packets: vec![0.0; plane],
+            denitrifier_anoxic_packets: vec![0.0; plane],
+            denitrifier_anoxic_fraction: vec![0.0; plane],
+            denitrifier_strain_anoxia_affinity: vec![0.5; plane],
+            denitrifier_strain_nitrate_affinity: vec![0.5; plane],
+            denitrifier_latent_packets: Vec::new(),
+            denitrifier_latent_strain_anoxia_affinity: Vec::new(),
+            denitrifier_latent_strain_nitrate_affinity: Vec::new(),
+            denitrifier_secondary: genotype::PublicSecondaryBanks::new(plane),
+            denitrifier_vitality: vec![0.5; plane],
+            denitrifier_dormancy: vec![0.0; plane],
+            denitrifier_reserve: vec![0.3; plane],
+            denitrifier_packet_mutation_flux: vec![0.0; plane],
+            denitrification_potential: vec![0.0; plane],
+            explicit_microbes: Vec::new(),
+            explicit_microbe_authority: vec![0.0; plane],
+            explicit_microbe_activity: vec![0.0; plane],
+            next_microbe_idx: 0,
+            md_calibrator: None,
+            packet_populations: Vec::new(),
+            air_pressure_kpa: vec![101.325; plane],
             config,
         })
     }
@@ -1412,6 +1934,20 @@ impl TerrariumWorld {
                 1.25,
             );
         }
+    }
+
+
+    /// Stub for actual odorant exchange used by explicit_microbe_impl.rs.
+    pub fn exchange_atmosphere_odorant_actual(
+        &mut self,
+        channel_idx: usize,
+        x: usize,
+        y: usize,
+        z: usize,
+        radius: usize,
+        amount: f32,
+    ) {
+        self.exchange_atmosphere_odorant(channel_idx, x, y, z, radius, amount);
     }
 
     fn exchange_atmosphere_humidity(
@@ -1923,6 +2459,38 @@ impl TerrariumWorld {
         &mut self.atomistic_probes
     }
 
+
+    /// Add an explicit microbe at the given soil position.
+    pub(crate) fn add_explicit_microbe(
+        &mut self,
+        x: usize,
+        y: usize,
+        z: usize,
+        represented_cells: f32,
+    ) -> Result<(), String> {
+        let flat = idx2(self.config.width, x, y);
+        let identity = self.explicit_microbe_identity_at(flat);
+        let wcs = crate::whole_cell::WholeCellSimulator::new_default();
+        let idx = self.next_microbe_idx;
+        self.next_microbe_idx += 1;
+        self.explicit_microbes.push(TerrariumExplicitMicrobe {
+            x, y, z,
+            guild: 0,
+            represented_cells,
+            represented_packets: 0.0,
+            identity,
+            whole_cell: Some(Box::new(wcs)),
+            last_snapshot: WholeCellSnapshot::default(),
+            smoothed_energy: 0.5,
+            smoothed_stress: 0.2,
+            radius: EXPLICIT_MICROBE_PATCH_RADIUS,
+            patch_radius: EXPLICIT_MICROBE_PATCH_RADIUS,
+            age_steps: 0,
+            idx,
+        });
+        Ok(())
+    }
+
     pub fn step_frame(&mut self) -> Result<(), String> {
         self.ecology_events.clear();
         let eco_dt = self.config.world_dt_s * self.config.time_warp;
@@ -1942,6 +2510,7 @@ impl TerrariumWorld {
             self.step_food_patches_native(eco_dt)?;
             self.step_seeds_native(eco_dt)?;
             self.step_atomistic_probes();
+            crate::probe_coupling::step_temperature_coupling(self);
             crate::enzyme_probes::apply_probe_catalytic_feedback(self);
             self.time_s += eco_dt;
         }
@@ -1955,161 +2524,7 @@ impl TerrariumWorld {
         Ok(())
     }
 
-    pub fn snapshot(&self) -> TerrariumWorldSnapshot {
-        let live_fruits = self
-            .fruits
-            .iter()
-            .filter(|fruit| fruit.source.alive && fruit.source.sugar_content > 0.01)
-            .count();
-        let food_remaining = self
-            .fruits
-            .iter()
-            .filter(|fruit| fruit.source.alive)
-            .map(|fruit| fruit.source.sugar_content.max(0.0))
-            .sum::<f32>();
-        let avg_fly_energy = if self.flies.is_empty() {
-            0.0
-        } else {
-            self.flies
-                .iter()
-                .map(|fly| fly.body_state().energy)
-                .sum::<f32>()
-                / self.flies.len() as f32
-        };
-        let avg_altitude = if self.flies.is_empty() {
-            0.0
-        } else {
-            self.flies.iter().map(|fly| fly.body_state().z).sum::<f32>() / self.flies.len() as f32
-        };
-        let total_plant_cells = self
-            .plants
-            .iter()
-            .map(|plant| plant.cellular.total_cells())
-            .sum::<f32>();
-        let mean_cell_vitality = if self.plants.is_empty() {
-            0.0
-        } else {
-            self.plants
-                .iter()
-                .map(|plant| plant.cellular.vitality())
-                .sum::<f32>()
-                / self.plants.len() as f32
-        };
-        let mean_cell_energy = if self.plants.is_empty() {
-            0.0
-        } else {
-            self.plants
-                .iter()
-                .map(|plant| plant.cellular.energy_charge())
-                .sum::<f32>()
-                / self.plants.len() as f32
-        };
-        let mean_division_pressure = if self.plants.is_empty() {
-            0.0
-        } else {
-            self.plants
-                .iter()
-                .map(|plant| plant.cellular.division_signal())
-                .sum::<f32>()
-                / self.plants.len() as f32
-        };
 
-        let mean_soil_glucose = self.substrate.mean_species(TerrariumSpecies::Glucose);
-        let mean_soil_oxygen = self.substrate.mean_species(TerrariumSpecies::OxygenGas);
-        let mean_soil_ammonium = self.substrate.mean_species(TerrariumSpecies::Ammonium);
-        let mean_soil_nitrate = self.substrate.mean_species(TerrariumSpecies::Nitrate);
-        let mean_soil_redox = {
-            let oxygen = mean_soil_oxygen;
-            let nitrate = mean_soil_nitrate;
-            let carbon_dioxide = self.substrate.mean_species(TerrariumSpecies::CarbonDioxide);
-            let proton = self.substrate.mean_species(TerrariumSpecies::Proton);
-            clamp(
-                (oxygen * 1.3 + nitrate * 0.7)
-                    / (oxygen * 1.3 + nitrate * 0.7 + carbon_dioxide * 0.35 + proton * 0.45 + 1e-9),
-                0.0,
-                1.0,
-            )
-        };
-
-        // Niche partitioning metrics.
-        let fly_plant_proximity_mean = if self.flies.is_empty() || self.plants.is_empty() {
-            0.0
-        } else {
-            let sum: f32 = self.flies.iter().map(|fly| {
-                let fb = fly.body_state();
-                self.plants.iter().map(|p| {
-                    let dx = fb.x - p.x as f32;
-                    let dy = fb.y - p.y as f32;
-                    (dx * dx + dy * dy).sqrt()
-                }).fold(f32::MAX, f32::min)
-            }).sum();
-            sum / self.flies.len() as f32
-        };
-        let fly_o2_gradient_correlation = if self.flies.len() < 2 {
-            0.0
-        } else {
-            let n = self.flies.len() as f32;
-            let zs: Vec<f32> = self.flies.iter().map(|f| f.body_state().z).collect();
-            let o2s: Vec<f32> = (0..self.flies.len()).map(|i| {
-                if i < self.fly_metabolisms.len() { self.fly_metabolisms[i].ambient_o2_fraction } else { 0.21 }
-            }).collect();
-            let z_mean = zs.iter().sum::<f32>() / n;
-            let o2_mean = o2s.iter().sum::<f32>() / n;
-            let cov: f32 = zs.iter().zip(o2s.iter()).map(|(z, o)| (z - z_mean) * (o - o2_mean)).sum::<f32>();
-            let var_z: f32 = zs.iter().map(|z| (z - z_mean).powi(2)).sum();
-            let var_o2: f32 = o2s.iter().map(|o| (o - o2_mean).powi(2)).sum();
-            let denom = (var_z * var_o2).sqrt();
-            if denom < 1e-12 { 0.0 } else { (cov / denom).clamp(-1.0, 1.0) }
-        };
-
-        TerrariumWorldSnapshot {
-            plants: self.plants.len(),
-            fruits: live_fruits,
-            seeds: self.seeds.len(),
-            flies: self.flies.len(),
-            food_remaining,
-            fly_food_total: self.fly_food_total,
-            avg_fly_energy,
-            avg_altitude,
-            light: self.daylight(),
-            temperature: mean(&self.temperature),
-            humidity: mean(&self.humidity),
-            mean_soil_moisture: mean(&self.moisture),
-            mean_deep_moisture: mean(&self.deep_moisture),
-            mean_microbes: mean(&self.microbial_biomass),
-            mean_symbionts: mean(&self.symbiont_biomass),
-            mean_canopy: mean(&self.canopy_cover),
-            mean_root_density: mean(&self.root_density),
-            total_plant_cells,
-            mean_cell_vitality,
-            mean_cell_energy,
-            mean_division_pressure,
-            mean_soil_glucose,
-            mean_soil_oxygen,
-            mean_soil_ammonium,
-            mean_soil_nitrate,
-            mean_soil_redox,
-            mean_soil_atp_flux: self.substrate.mean_species(TerrariumSpecies::AtpFlux),
-            mean_atmospheric_co2: mean(&self.odorants[ATMOS_CO2_IDX]),
-            mean_atmospheric_o2: mean(&self.odorants[ATMOS_O2_IDX]),
-            ecology_event_count: self.ecology_events.len(),
-            avg_fly_energy_charge: if self.fly_metabolisms.is_empty() {
-                0.0
-            } else {
-                self.fly_metabolisms.iter().map(|m| m.energy_charge()).sum::<f32>()
-                    / self.fly_metabolisms.len() as f32
-            },
-            fly_plant_proximity_mean,
-            fly_altitude_mean: avg_altitude,
-            fly_o2_gradient_correlation,
-            owned_fraction: self.ownership_diagnostics.owned_fraction,
-            atomistic_probes: self.atomistic_probes.len(),
-            substrate_backend: self.substrate.backend().as_str(),
-            substrate_steps: self.substrate.step_count(),
-            substrate_time_ms: self.substrate.time_ms(),
-            time_s: self.time_s,
-        }
-    }
 }
 
 // ── Orphaned submodules (14k lines) ──────────────────────────────────────────
@@ -2127,11 +2542,9 @@ mod calibrator;
 mod flora;
 #[cfg(feature = "terrarium_advanced")]
 mod soil;
-#[cfg(feature = "terrarium_advanced")]
 mod snapshot;
 #[cfg(feature = "terrarium_advanced")]
 mod biomechanics;
-#[cfg(feature = "terrarium_advanced")]
 mod explicit_microbe_impl;
 
 // Rendering modules — need crate::terrarium_render, terrarium_scene_query,
