@@ -1,6 +1,6 @@
-# oNeuro 3D
+# oNeura 3D
 
-`oneuro-3d` is the native 3D visualization track for oNeuro. This directory is
+`oneuro-3d` is the native 3D visualization track for oNeura. This directory is
 smaller and more experimental than the main Python and Rust/Metal benchmark
 paths, so the goal here is clarity:
 

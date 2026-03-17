@@ -1,5 +1,5 @@
 """
-oNeuro Robot Module - Real-world neural navigation interfaces.
+oNeura Robot Module - Real-world neural navigation interfaces.
 
 This module provides:
 - DroneInterface: MAVLink-based drone control

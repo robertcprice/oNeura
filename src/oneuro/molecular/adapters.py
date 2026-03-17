@@ -1,4 +1,4 @@
-"""Adapters to plug molecular neurons/synapses into existing oNeuro infrastructure.
+"""Adapters to plug molecular neurons/synapses into existing oNeura infrastructure.
 
 MolecularNeuronAdapter wraps MolecularNeuron with OrganicNeuron's full interface.
 MolecularSynapseAdapter wraps MolecularSynapse with OrganicSynapse's full interface.

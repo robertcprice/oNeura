@@ -1,8 +1,8 @@
-# oNeuro Physics Module - Complete Documentation
+# oNeura Physics Module - Complete Documentation
 
 ## Overview
 
-The oNeuro physics module provides a complete 3D neuromechanical simulation of *Drosophila melanogaster* using MuJoCo. It combines realistic body physics with simplified neural control to enable closed-loop sensorimotor behavior.
+The oNeura physics module provides a complete 3D neuromechanical simulation of *Drosophila melanogaster* using MuJoCo. It combines realistic body physics with simplified neural control to enable closed-loop sensorimotor behavior.
 
 ---
 

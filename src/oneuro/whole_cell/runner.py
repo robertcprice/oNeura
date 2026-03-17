@@ -39,7 +39,7 @@ class WholeCellLaunchResult:
 
 
 class MC4DRunner:
-    """Prepare and optionally launch MC4D runs under oNeuro-managed artifacts."""
+    """Prepare and optionally launch MC4D runs under oNeura-managed artifacts."""
 
     def __init__(
         self,

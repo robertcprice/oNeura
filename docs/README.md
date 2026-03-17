@@ -1,6 +1,6 @@
 # Documentation Index
 
-oNeuro is moving quickly. This index points to the docs that are most useful right now.
+oNeura is moving quickly. This index points to the docs that are most useful right now.
 
 ## Start Here
 

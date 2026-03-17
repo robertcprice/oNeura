@@ -9,7 +9,7 @@ Five experiments:
   E. Metabolic Crisis Recovery: ATP depletion → spike collapse → glucose rescue
 
 Run:
-    cd oNeuro && python3 demos/demo_full_brain.py
+    cd oNeura && python3 demos/demo_full_brain.py
 """
 
 from __future__ import annotations
@@ -401,7 +401,7 @@ def experiment_e_metabolic_crisis():
 
 def main():
     print("╔═══════════════════════════════════════════════════════╗")
-    print("║       oNeuro Full Brain Benchmark                    ║")
+    print("║       oNeura Full Brain Benchmark                    ║")
     print("║  All 12 subsystems wired, measuring emergent effects ║")
     print("╚═══════════════════════════════════════════════════════╝")
 

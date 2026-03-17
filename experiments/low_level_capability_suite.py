@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E402
-"""Execute the full low-level capability ladder for oNeuro.
+"""Execute the full low-level capability ladder for oNeura.
 
 This suite turns the ladder in docs/low_level_capability_tests.md into one
 reproducible experiment artifact with matched controls where possible.

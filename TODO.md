@@ -1,4 +1,4 @@
-# oNeuro TODO — Active Development Tracker
+# oNeura TODO — Active Development Tracker
 
 ## Current Session (2026-03-09)
 **Agent**: Claude Opus 4.6
@@ -205,7 +205,7 @@ A complete MuJoCo-based physics simulation for Drosophila melanogaster:
 - [x] **drug_locomotion_emergent.py** — drug → receptor → neural → behavior
 
 ### Completed This Session
-- [x] **Real brain → 3D connection** — real_fly_3d.py connects to actual oNeuro brain
+- [x] **Real brain → 3D connection** — real_fly_3d.py connects to actual oNeura brain
 - [x] **3D Minecraft world** — fly_world.html with Three.js (in browser)
 - [x] **Paper figures** — paper_figure.png, world_demo_figure.png
 - [x] **76 tests pass** — all physics modules verified
@@ -215,7 +215,7 @@ A complete MuJoCo-based physics simulation for Drosophila melanogaster:
 - [ ] **#17 Open-source release** — pip-installable oneuro-physics package
 
 ### COMPLETED THIS SESSION (2026-03-09)
-- [x] **Real 3D World Server** — Flask+SocketIO server running actual oNeuro brain
+- [x] **Real 3D World Server** — Flask+SocketIO server running actual oNeura brain
   - `src/oneuro/physics/world_server.py` — Full physics simulation with death/hunger
   - `src/oneuro/physics/templates/world.html` — Three.js browser client
   - Verified: ONEURO_AVAILABLE=True, serves HTML, WebSocket ready
@@ -368,7 +368,7 @@ self._dn_t = self._cx_t
 
 1. **Verify tar extraction**:
    ```bash
-   ssh root@ssh3.vast.ai "grep -A5 'def _split_half' /workspace/oNeuro/demos/demo_drosophila_ecosystem.py"
+   ssh root@ssh3.vast.ai "grep -A5 'def _split_half' /workspace/oNeura/demos/demo_drosophila_ecosystem.py"
    ```
 
 2. **Check for Python import caching**:
@@ -383,7 +383,7 @@ self._dn_t = self._cx_t
 
 4. **Test simple import**:
    ```bash
-   ssh root@ssh3.vast.ai "cd /workspace/oNeuro && python3 -c 'from demos.demo_drosophila_ecosystem import DrosophilaBrain; b = DrosophilaBrain(100); print(hasattr(b, \"_al_left_t\"))'"
+   ssh root@ssh3.vast.ai "cd /workspace/oNeura && python3 -c 'from demos.demo_drosophila_ecosystem import DrosophilaBrain; b = DrosophilaBrain(100); print(hasattr(b, \"_al_left_t\"))'"
    ```
 
 5. **Alternative deployment approach**:
@@ -395,19 +395,19 @@ self._dn_t = self._cx_t
 
 ```bash
 # Check if _split_half function exists in remote file
-ssh root@ssh3.vast.ai "grep -n 'def _split_half' /workspace/oNeuro/demos/demo_drosophila_ecosystem.py"
+ssh root@ssh3.vast.ai "grep -n 'def _split_half' /workspace/oNeura/demos/demo_drosophila_ecosystem.py"
 
 # Check if _al_left_t assignment exists
-ssh root@ssh3.vast.ai "grep -n 'self._al_left_t =' /workspace/oNeuro/demos/demo_drosophila_ecosystem.py"
+ssh root@ssh3.vast.ai "grep -n 'self._al_left_t =' /workspace/oNeura/demos/demo_drosophila_ecosystem.py"
 
 # Test the import directly
-ssh root@ssh3.vast.ai "cd /workspace/oNeuro && PYTHONPATH=src python3 -c 'from demos.demo_drosophila_ecosystem import DrosophilaBrain; print(dir(DrosophilaBrain))'"
+ssh root@ssh3.vast.ai "cd /workspace/oNeura && PYTHONPATH=src python3 -c 'from demos.demo_drosophila_ecosystem import DrosophilaBrain; print(dir(DrosophilaBrain))'"
 
 # Check for .pyc cache files
-ssh root@ssh3.vast.ai "find /workspace/oNeuro -name '*.pyc' 2>/dev/null | head -5"
+ssh root@ssh3.vast.ai "find /workspace/oNeura -name '*.pyc' 2>/dev/null | head -5"
 
 # List all .py files in demos/ to ensure extraction worked
-ssh root@ssh3.vast.ai "ls -la /workspace/oNeuro/demos/*.py"
+ssh root@ssh3.vast.ai "ls -la /workspace/oNeura/demos/*.py"
 ```
 
 ---
@@ -431,7 +431,7 @@ ssh root@ssh3.vast.ai "ls -la /workspace/oNeuro/demos/*.py"
 ---
 
 ## WS2: dONN Naming (DONE — committed fcb8926)
-**Goal**: Formalize ONN/dONN/oNeuro terminology across repo
+**Goal**: Formalize ONN/dONN/oNeura terminology across repo
 **Status**: COMPLETE
 
 - [x] README.md — terminology section

@@ -8,7 +8,7 @@ Demonstrates:
   - Synaptic transmission via real NT release/binding
 
 Usage:
-    cd oNeuro && PYTHONPATH=src python3 demos/molecular_tissue_demo.py
+    cd oNeura && PYTHONPATH=src python3 demos/molecular_tissue_demo.py
 """
 
 import sys, os
@@ -30,7 +30,7 @@ def main():
     np.random.seed(42)
 
     print("=" * 60)
-    print("  oNeuro Molecular Tissue Demo")
+    print("  oNeura Molecular Tissue Demo")
     print("=" * 60)
     print()
 

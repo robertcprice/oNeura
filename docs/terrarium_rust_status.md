@@ -139,9 +139,41 @@ Located in `oneuro-metal/src/whole_cell/stochastic_expression.rs`.
 
 Binary: `cargo run --profile fast --no-default-features --bin terrarium_ascii`
 
+## Quantum Runtime (2026-03-16)
+
+| Module | Lines | Tests | Status |
+|--------|-------|-------|--------|
+| `subatomic_quantum.rs` | ~2,700 | 8 | Wired as `pub mod` — orbital calculations, CASCI, reaction barriers |
+| `whole_cell_quantum_runtime.rs` | ~8,000 | 50/56 pass | Wired as `pub(crate) mod` — quantum chemistry bridge for whole-cell |
+| `atomistic_chemistry.rs` | ~900 | 12 | Wired — molecular topology from PDB/mmCIF |
+| `structure_ingest.rs` | ~1,200 | 19 | Wired — biomolecular file parsing |
+
+4 failing quantum tests need real scaffold molecule geometry (not stubs).
+
+## Atomistic Probe System (2026-03-16)
+
+| Feature | Status |
+|---------|--------|
+| `AtomisticProbe` in terrarium_world.rs | Wired |
+| `spawn_probe()`, `remove_probe()`, `step_atomistic_probes()` | Working |
+| EmbeddedMolecule → GPUMolecularDynamics bridge | Working |
+| Per-cell SoilOwnershipClass::AtomisticProbeRegion | Working |
+| 4 unit tests | All pass |
+
+## Commercial Modules (2026-03-16)
+
+| Module | Lines | Tests | Status |
+|--------|-------|-------|--------|
+| `drug_discovery.rs` | ~1,200 | embedded | Virtual screening, ADMET, lead optimization |
+| `enzyme_engineering.rs` | ~1,050 | embedded | Directed evolution, mutagenesis, DNA shuffling |
+
 ## Test Counts (2026-03-16)
 
-136 tests pass in comprehensive regression (0 failures):
+832+ tests across the full crate:
+- **183 regression tests** — core terrarium, biology, evolution engine
+- **649 satellite tests** — whole-cell, quantum runtime, commercial modules
+
+Key regression test breakdown:
 - terrarium_evolve: 49
 - terrarium_world: 22
 - whole_cell: 3
@@ -154,6 +186,8 @@ Binary: `cargo run --profile fast --no-default-features --bin terrarium_ascii`
 - soil_atmosphere: 4
 - substrate_stays_bounded: 4
 - organism_metabolism: 4
+- atomistic_chemistry: 12
+- structure_ingest: 19
 - guild_activity: 2
 - dishbrain_pong: 1
 - seed_cellular: 1

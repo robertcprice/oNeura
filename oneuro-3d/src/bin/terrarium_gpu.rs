@@ -561,7 +561,7 @@ fn main() {
         })
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()).set(WindowPlugin {
             primary_window: Some(Window {
-                title: "oNeuro Terrarium GPU".into(),
+                title: "oNeura Terrarium GPU".into(),
                 resolution: resolution.into(),
                 present_mode: PresentMode::AutoVsync,
                 resizable: true,

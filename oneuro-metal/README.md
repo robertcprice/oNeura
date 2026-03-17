@@ -1,4 +1,4 @@
-# oNeuro-Metal
+# oNeura-Metal
 
 **The world's first GPU-accelerated molecular brain simulator.**
 
@@ -6,7 +6,7 @@ Not a neural network. A complete molecular brain where every behavior — learni
 
 ## What is this?
 
-oNeuro-Metal is a biophysical neural engine written in Rust with Metal compute shaders. Every neuron in the simulation is a full molecular model: Hodgkin-Huxley ion channels, 4-compartment calcium dynamics, second messenger cascades (cAMP/PKA/PKC/CaMKII/CREB), gene expression, vesicle release, STDP via receptor trafficking, and Orch-OR quantum consciousness — all running on GPU.
+oNeura-Metal is a biophysical neural engine written in Rust with Metal compute shaders. Every neuron in the simulation is a full molecular model: Hodgkin-Huxley ion channels, 4-compartment calcium dynamics, second messenger cascades (cAMP/PKA/PKC/CaMKII/CREB), gene expression, vesicle release, STDP via receptor trafficking, and Orch-OR quantum consciousness — all running on GPU.
 
 The key insight: **you don't program behaviors.** You simulate biochemistry, and behaviors emerge. Administer Diazepam and GABA-A conductance increases, inhibition rises, firing rates drop. Apply general anesthesia and consciousness metrics collapse by >70%. Run a sleep cycle and memory consolidation happens through hippocampal replay. None of this is hardcoded — it falls out of the molecular simulation.
 
@@ -58,7 +58,7 @@ Apple Silicon unified memory (`StorageModeShared`) means GPU↔CPU sync is zero-
 
 ## Competitive Landscape
 
-| Capability | oNeuro-Metal | NEURON | NEST | Brian2 | CoreNeuron |
+| Capability | oNeura-Metal | NEURON | NEST | Brian2 | CoreNeuron |
 |---|---|---|---|---|---|
 | HH ion channels on GPU | **Yes** | No | No | No | Yes (partial) |
 | Second messenger cascades | **Yes (GPU)** | MOD files (CPU) | No | No | No |
@@ -82,8 +82,8 @@ Apple Silicon unified memory (`StorageModeShared`) means GPU↔CPU sync is zero-
 
 ```bash
 # Clone
-git clone https://github.com/bobbyprice/oNeuro.git
-cd oNeuro/oneuro-metal
+git clone https://github.com/bobbyprice/oNeura.git
+cd oNeura/oneuro-metal
 
 # Build and run tests
 cargo test
@@ -323,54 +323,60 @@ Compressed Sparse Row (CSR) for efficient spike propagation:
 | Ketamine | NMDA antagonist | NMDA channel block | Conductance ×0.1 |
 | *Anesthesia* | *Multi-target* | *GABA-A/NMDA/AMPA/Na_v/K_leak* | *>70% consciousness drop* |
 
-## Codebase
+## Terrarium Evolution Engine
 
+NSGA-II multi-objective optimizer that evolves terrarium ecosystem configurations via 18-parameter genomes.
+
+```bash
+cargo build --profile fast --no-default-features --bin terrarium_evolve
+
+# Standard fitness climb
+./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
+
+# Pareto multi-objective (7 objectives)
+./target/fast/terrarium_evolve --pareto --population 8 --generations 5 --frames 50 --lite
+
+# Stress resilience (drought + heat shocks)
+./target/fast/terrarium_evolve --pareto --stress-test --population 8 --generations 5 --frames 50 --lite
+
+# 3D ASCII renderer
+cargo run --profile fast --no-default-features --bin terrarium_ascii -- --mode iso --fps 15
 ```
-oneuro-metal/
-├── Cargo.toml + build.rs + pyproject.toml
-├── src/
-│   ├── lib.rs                    # Module declarations + re-exports
-│   ├── types.rs                  # Enums: NeuronArchetype, IonChannelType, NTType, etc.
-│   ├── constants.rs              # All biophysical constants from literature
-│   ├── neuron_arrays.rs          # SoA neuron state (~80 fields)
-│   ├── synapse_arrays.rs         # CSR sparse synapse storage
-│   ├── network.rs                # MolecularBrain orchestrator
-│   ├── brain_regions.rs          # RegionalBrain (cortex/thalamus/hippo/BG)
-│   ├── consciousness.rs          # 7 consciousness metrics
-│   ├── python.rs                 # PyO3 Python bindings
-│   ├── spike_propagation.rs      # Fired → outgoing synapses → PSC
-│   ├── stdp.rs                   # STDP + BCM + receptor trafficking
-│   ├── gene_expression.rs        # CREB→c-Fos→BDNF→AMPA
-│   ├── metabolism.rs             # Glycolysis + OxPhos + ATP
-│   ├── microtubules.rs           # Orch-OR quantum coherence
-│   ├── circadian.rs              # TTFL oscillator + adenosine
-│   ├── pharmacology.rs           # 7 drugs + anesthesia PK/PD
-│   ├── glia.rs                   # Astrocyte/oligo/microglia
-│   ├── gpu/
-│   │   ├── mod.rs                # Metal device init + pipeline cache
-│   │   ├── hh_gating.rs          # GPU dispatch + CPU fallback
-│   │   ├── membrane_integration.rs
-│   │   ├── calcium_dynamics.rs
-│   │   ├── second_messenger.rs
-│   │   ├── receptor_binding.rs
-│   │   ├── synapse_cleft.rs
-│   │   └── diffusion_3d.rs
-│   └── metal/
-│       ├── hh_gating.metal
-│       ├── membrane_euler.metal
-│       ├── calcium_ode.metal
-│       ├── second_messenger.metal
-│       ├── hill_binding.metal
-│       ├── cleft_dynamics.metal
-│       └── diffusion_3d.metal
 
-32 files, ~9,200 lines of Rust + Metal
-93 tests, 0 warnings
+Modes: Standard, NSGA-II Pareto, Stress-Test, Coevolution (fly brain + ecosystem), Bet-Hedging, GRN (gene regulatory networks).
+
+## Commercial Modules
+
+| Module | Capability | Lines |
+|--------|-----------|-------|
+| **Drug Discovery** | Virtual screening, ADMET prediction (Lipinski + Veber), lead optimization | ~1,200 |
+| **Enzyme Engineering** | Directed evolution, saturation mutagenesis, DNA shuffling, MM kinetics | ~1,050 |
+| **Drug Protocol Optimizer** | Single/pulsed/combination therapy, E. coli validation data | Built into terrarium_evolve |
+| **Gene Circuit Designer** | Target noise (Fano, CV), telegraph model, evolutionary optimization | Built into terrarium_evolve |
+
+## Tests
+
+832+ tests across the full crate:
+- **183 regression tests** — core terrarium, biology, evolution engine
+- **649 satellite tests** — whole-cell, quantum runtime, commercial modules
+
+```bash
+# Quick regression suite
+cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
+  soil_atmosphere terrarium_evolve drosophila_population plant_competition \
+  soil_fauna fly_metabolism field_coupling seed_cellular terrarium_world \
+  organism_metabolism stochastic atomistic_chemistry structure_ingest
 ```
 
 ## License
 
 MIT
+
+## Links
+
+- **Website**: [oneura.ai](https://oneura.ai)
+- **GitHub**: [github.com/robertcprice/oNeura](https://github.com/robertcprice/oNeura)
+- **Commercial licensing**: [hello@oneura.ai](mailto:hello@oneura.ai)
 
 ## Author
 

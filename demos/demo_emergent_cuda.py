@@ -3,7 +3,7 @@
 
 10 experiments demonstrating phenomena that arise NATURALLY from
 Hodgkin-Huxley dynamics, STDP, neuromodulation, and synaptic biology
-in oNeuro's dONN (digital Organic Neural Network) platform
+in oNeura's dONN (digital Organic Neural Network) platform
 — capabilities IMPOSSIBLE in standard artificial neural networks.
 
 Each experiment builds its own brain (no cross-contamination), trains it,

@@ -1,8 +1,8 @@
-# oNeuro
+# oNeura
 
 <div align="center">
 
-![oNeuro Logo](docs/assets/logo.png)
+![oNeura Logo](docs/assets/logo.png)
 
 **Build digital organisms with biophysically faithful brains — from molecules to behavior.**
 
@@ -15,7 +15,7 @@
 
 ## Project Status
 
-oNeuro is an **active working research project**. The repository is usable, but it is moving quickly:
+oNeura is an **active working research project**. The repository is usable, but it is moving quickly:
 
 - APIs and demo entrypoints are still changing
 - benchmark numbers can change as the GPU backends improve
@@ -35,19 +35,19 @@ This should be read as a **working project**, not a frozen release.
 This project exists because of the incredible people who contribute their time, ideas, and expertise:
 
 - **Eric Reid** (@ereid7) — Low-level capability benchmarks, corticostriatal mechanism assays, D1/D2 MSN pathways, hardened reward-modulated plasticity
-- **The oNeuro Community** — For pushing the boundaries of digital biology and neuromorphic computing
+- **The oNeura Community** — For pushing the boundaries of digital biology and neuromorphic computing
 
 *Want to contribute? PRs welcome!*
 
 ---
 
-## What Is oNeuro?
+## What Is oNeura?
 
-oNeuro is a platform for simulating **complete digital organisms** — brains, bodies, and environments — at molecular resolution. Every neuron runs real Hodgkin-Huxley ion channel dynamics, communicates through 6 real neurotransmitters, learns through STDP, and responds to drugs via pharmacokinetic/pharmacodynamic models. Membrane potential **emerges from physics** — it is never a hand-set float.
+oNeura is a platform for simulating **complete digital organisms** — brains, bodies, and environments — at molecular resolution. Every neuron runs real Hodgkin-Huxley ion channel dynamics, communicates through 6 real neurotransmitters, learns through STDP, and responds to drugs via pharmacokinetic/pharmacodynamic models. Membrane potential **emerges from physics** — it is never a hand-set float.
 
 We build digital flies that smell, navigate, learn, and respond to drugs. We build digital neural cultures that learn to play Pong using the free energy principle. We build digital worlds with real molecular diffusion physics where odorant plumes flow in wind.
 
-`oNeuro` now also carries a native Rust/Metal whole-cell modeling track for minimal-cell-style digital cells. That work is explicitly anchored to Thornburg, Z. R., Maytin, A., Kwon, J., Solomon, K. V., et al., "Bringing the Genetically Minimal Cell to Life on a Computer in 4D," `Cell` (2026), DOI `10.1016/j.cell.2026.02.009`. The current native backend is moving toward a substrate-first architecture where local chemistry, structural order, microdomain placement, reaction activity, higher-level CME/ODE/BD/geometry rates, subsystem readiness reduction, and chemistry exchange targeting are driven by generic reaction, assembly, localization, local-state, scalar process-rule, and affine reducer layers rather than hard-coded whole-cell behaviors or hand-authored global process pools.
+`oNeura` now also carries a native Rust/Metal whole-cell modeling track for minimal-cell-style digital cells. That work is explicitly anchored to Thornburg, Z. R., Maytin, A., Kwon, J., Solomon, K. V., et al., "Bringing the Genetically Minimal Cell to Life on a Computer in 4D," `Cell` (2026), DOI `10.1016/j.cell.2026.02.009`. The current native backend is moving toward a substrate-first architecture where local chemistry, structural order, microdomain placement, reaction activity, higher-level CME/ODE/BD/geometry rates, subsystem readiness reduction, and chemistry exchange targeting are driven by generic reaction, assembly, localization, local-state, scalar process-rule, and affine reducer layers rather than hard-coded whole-cell behaviors or hand-authored global process pools.
 
 **This is not a toy neural network simulator.** This is a molecular-resolution digital biology platform.
 
@@ -56,8 +56,8 @@ We build digital flies that smell, navigate, learn, and respond to drugs. We bui
 | Term | What It Means |
 |------|--------------|
 | **ONN** | **Organic Neural Network** — real biological neurons on hardware. Cortical Labs' [DishBrain](https://doi.org/10.1016/j.neuron.2022.09.001) (800K neurons playing Pong), FinalSpark's bioprocessors, and future living-tissue compute platforms. |
-| **dONN** | **digital Organic Neural Network** — oNeuro's biophysically faithful simulation of an ONN, running on GPU/CPU. Same molecular physics, same emergent behaviors, without the biology lab. |
-| **oNeuro** | The software platform for building, running, and experimenting with dONNs — from single neurons to 139K-neuron insect brains. |
+| **dONN** | **digital Organic Neural Network** — oNeura's biophysically faithful simulation of an ONN, running on GPU/CPU. Same molecular physics, same emergent behaviors, without the biology lab. |
+| **oNeura** | The software platform for building, running, and experimenting with dONNs — from single neurons to 139K-neuron insect brains. |
 
 A dONN differs from a standard artificial neural network (ANN) in the same way a wind tunnel differs from a paper airplane. In a dONN, action potentials emerge from ion channel kinetics, learning emerges from receptor trafficking and STDP, and drug effects emerge from real pharmacology acting on molecular targets. Nothing is hand-tuned.
 
@@ -65,7 +65,7 @@ A dONN differs from a standard artificial neural network (ANN) in the same way a
 ## Project Structure
 
 ```
-oNeuro/
+oNeura/
 ├── src/oneuro/
 │   ├── molecular/              # Molecular simulation engine + CUDA backend
 │   │   ├── cuda_backend.py     # GPU-accelerated HH brain (CUDAMolecularBrain)
@@ -282,8 +282,8 @@ Anchored to: Thornburg et al., *Cell* (2026), DOI `10.1016/j.cell.2026.02.009`.
 ## Quick Start
 
 ```bash
-git clone https://github.com/robertcprice/oNeuro.git
-cd oNeuro
+git clone https://github.com/robertcprice/oNeura.git
+cd oNeura
 python3 -m venv .venv
 source .venv/bin/activate
 
@@ -382,7 +382,7 @@ CARGO_BUILD_JOBS=4 cargo test --no-default-features --lib -- substrate_stays_bou
 
 ## How dONNs Differ from ANNs
 
-| Capability | Standard ANN | dONN (oNeuro) |
+| Capability | Standard ANN | dONN (oNeura) |
 |-----------|-------------|---------------|
 | **Action potentials** | Matrix multiply | Emerge from HH ion channel kinetics |
 | **Learning** | Backpropagation | STDP from receptor trafficking |
@@ -462,6 +462,22 @@ python3 experiments/generate_figures.py results.json figures/
 | `experiments/figures/*.png` | Publication figures |
 | `docs/benchmarks/RESULTS_SUMMARY.md` | Full results documentation |
 
+## Commercial & Enterprise
+
+oNeura includes commercial-grade modules for drug discovery and protein engineering, built on the same molecular physics engine:
+
+| Module | Capability | Use Case |
+|--------|-----------|----------|
+| **Drug Discovery** | Virtual screening, ADMET prediction, lead optimization | Pharma R&D, preclinical screening |
+| **Enzyme Engineering** | Directed evolution, saturation mutagenesis, DNA shuffling | Biotech, industrial enzymes |
+| **Drug Protocol Optimizer** | Single/pulsed/combination therapy comparison | Clinical dosing strategy |
+| **Gene Circuit Designer** | Target noise profiles via evolutionary optimization | Synthetic biology |
+| **Persister Cell Modeling** | Antibiotic persistence simulation (Balaban et al. 2004) | AMR research |
+
+For commercial licensing and enterprise support: [hello@oneura.ai](mailto:hello@oneura.ai)
+
+Visit [oneura.ai](https://oneura.ai) for documentation and pricing.
+
 ## Requirements
 
 - Python 3.11+
@@ -473,10 +489,10 @@ python3 experiments/generate_figures.py results.json figures/
 
 ```bibtex
 @software{oneuro_2026,
-  title = {oNeuro: Digital Organic Neural Network Platform for Molecular-Scale Brain Simulation},
+  title = {oNeura: Digital Organic Neural Network Platform for Molecular-Scale Brain Simulation},
   author = {Price, Robert C.},
   year = {2026},
-  url = {https://github.com/robertcprice/oNeuro}
+  url = {https://oneura.ai}
 }
 ```
 
@@ -484,4 +500,4 @@ python3 experiments/generate_figures.py results.json figures/
 
 CC BY-NC 4.0 — See [LICENSE](LICENSE)
 
-For commercial licensing: research@entropy.ai
+For commercial licensing: [hello@oneura.ai](mailto:hello@oneura.ai)

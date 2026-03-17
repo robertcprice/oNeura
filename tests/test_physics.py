@@ -1,7 +1,7 @@
 """
 Physics Module Tests
 
-Comprehensive tests for the oNeuro physics module, all runnable
+Comprehensive tests for the oNeura physics module, all runnable
 without MuJoCo installed. Tests cover:
 - LIF neuron dynamics
 - ConnectomeBridge signal propagation

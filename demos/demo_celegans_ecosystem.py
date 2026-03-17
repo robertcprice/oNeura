@@ -12,7 +12,7 @@ Key Differences from Eon Systems:
   - Eon:       Top-down connectome copy. Imports real connectivity from EM
                reconstructions (125K Drosophila neurons in their flagship demo).
                Behavior is inherited from the real wiring diagram.
-  - oNeuro/dONN: Bottom-up molecular dynamics. HH ion channels (Na+, K+, Ca2+),
+  - oNeura/dONN: Bottom-up molecular dynamics. HH ion channels (Na+, K+, Ca2+),
                6 neurotransmitters (DA, 5-HT, NE, ACh, GABA, Glu), 8+ drugs,
                STDP, and gene expression. Behavior EMERGES from molecular physics
                rather than being programmed or copied from a connectome.
@@ -26,8 +26,8 @@ Key Differences from Eon Systems:
 
 Terminology:
   - ONN:    Organic Neural Network -- real biological neurons (DishBrain, FinalSpark)
-  - dONN:   digital Organic Neural Network -- oNeuro's biophysically faithful simulation
-  - oNeuro: The platform for building and running dONNs
+  - dONN:   digital Organic Neural Network -- oNeura's biophysically faithful simulation
+  - oNeura: The platform for building and running dONNs
 
 4 Experiments:
   1. Chemotaxis:  NaCl gradient navigation (worm navigates UP gradient)

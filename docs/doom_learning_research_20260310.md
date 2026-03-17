@@ -29,7 +29,7 @@ Frémaux and Gerstner argue that reward-modulated learning needs:
 
 Critically, the synapse needs an eligibility trace so delayed reward can still reinforce the causal synapses.
 
-Implication for oNeuro:
+Implication for oNeura:
 
 - this matches what the backend already implements
 - the Doom demo should lean harder on eligibility + dopamine instead of mostly hand-editing `syn_strength`

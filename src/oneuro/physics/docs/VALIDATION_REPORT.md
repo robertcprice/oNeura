@@ -1,4 +1,4 @@
-# oNeuro Physics Module - Validation Report
+# oNeura Physics Module - Validation Report
 
 **Date**: 2026-03-09
 **Hardware**: NVIDIA H200 (143GB VRAM)

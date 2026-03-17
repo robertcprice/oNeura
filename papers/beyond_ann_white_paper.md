@@ -7,7 +7,7 @@ March 2026
 
 ## Abstract
 
-We present oNeuro, the first GPU-accelerated molecular brain simulator, and demonstrate through twenty-three controlled experiments that biophysically-grounded neural simulation produces cognitive capabilities that are fundamentally impossible in standard artificial neural networks. By simulating 16 molecular subsystems — from Hodgkin-Huxley ion channels and second messenger cascades to gene expression and quantum microtubule dynamics — oNeuro generates behaviors that *emerge* from biochemistry rather than being programmed. We demonstrate: (1) pharmacological modulation of learning without changing the training algorithm, (2) quantitative consciousness metrics that collapse under simulated general anesthesia, (3) emergent dose-response curves from Hill equation receptor kinetics, (4) sleep-dependent memory consolidation through NREM slow oscillation-coupled hippocampal replay, (5) drug-selective behavioral fingerprints arising from molecular target specificity, (6) non-linear polypharmacy interactions from competing actions on shared ion channels, (7) emergent symbol grounding — learning word-meaning associations through STDP alone, (8) temporal sequence prediction — the precursor to grammar, (9) compositional generalization — combining known words in novel ways, (10) two-brain communication through a shared vocabulary that emerges from coupled STDP training, (11-20) ten emergent cognitive phenomena including graceful degradation under lesion, semantic priming, sleep consolidation recovery, serial position effects, proactive interference, one-shot arousal learning, pharmacological dissociation, Ebbinghaus forgetting curves, categorical clustering, and spontaneous replay, and (21-23) three temporal dynamics phenomena: oscillation entrainment, gamma-theta cross-frequency coupling, and refractory frequency division. All twenty-three experiments pass at scales from 78 to 5,050 neurons with total runtime under 15 minutes. No language model, no backpropagation, no embeddings, and no tokenizer are used in the language experiments — proto-language *emerges* from molecular dynamics. None of these capabilities can be replicated in PyTorch, TensorFlow, JAX, or any standard neural network framework, because they require a molecular substrate that these frameworks lack. oNeuro bridges the gap between computational neuroscience and artificial intelligence, opening new directions in neuromorphic computing, computational pharmacology, consciousness research, and the biological origins of language.
+We present oNeura, the first GPU-accelerated molecular brain simulator, and demonstrate through twenty-three controlled experiments that biophysically-grounded neural simulation produces cognitive capabilities that are fundamentally impossible in standard artificial neural networks. By simulating 16 molecular subsystems — from Hodgkin-Huxley ion channels and second messenger cascades to gene expression and quantum microtubule dynamics — oNeura generates behaviors that *emerge* from biochemistry rather than being programmed. We demonstrate: (1) pharmacological modulation of learning without changing the training algorithm, (2) quantitative consciousness metrics that collapse under simulated general anesthesia, (3) emergent dose-response curves from Hill equation receptor kinetics, (4) sleep-dependent memory consolidation through NREM slow oscillation-coupled hippocampal replay, (5) drug-selective behavioral fingerprints arising from molecular target specificity, (6) non-linear polypharmacy interactions from competing actions on shared ion channels, (7) emergent symbol grounding — learning word-meaning associations through STDP alone, (8) temporal sequence prediction — the precursor to grammar, (9) compositional generalization — combining known words in novel ways, (10) two-brain communication through a shared vocabulary that emerges from coupled STDP training, (11-20) ten emergent cognitive phenomena including graceful degradation under lesion, semantic priming, sleep consolidation recovery, serial position effects, proactive interference, one-shot arousal learning, pharmacological dissociation, Ebbinghaus forgetting curves, categorical clustering, and spontaneous replay, and (21-23) three temporal dynamics phenomena: oscillation entrainment, gamma-theta cross-frequency coupling, and refractory frequency division. All twenty-three experiments pass at scales from 78 to 5,050 neurons with total runtime under 15 minutes. No language model, no backpropagation, no embeddings, and no tokenizer are used in the language experiments — proto-language *emerges* from molecular dynamics. None of these capabilities can be replicated in PyTorch, TensorFlow, JAX, or any standard neural network framework, because they require a molecular substrate that these frameworks lack. oNeura bridges the gap between computational neuroscience and artificial intelligence, opening new directions in neuromorphic computing, computational pharmacology, consciousness research, and the biological origins of language.
 
 ---
 
@@ -33,7 +33,7 @@ In an ANN, computation reduces to matrix multiplication, nonlinear activation, a
 
 What if, instead of abstracting neurons down to activation functions, we simulated them at the molecular level? What if membrane potentials *emerged* from Hodgkin-Huxley ion channel dynamics, learning *emerged* from STDP via receptor trafficking, and drug effects *emerged* from pharmacokinetics acting on real molecular targets?
 
-This is the approach taken by oNeuro. Each neuron in the simulation is a complete molecular model:
+This is the approach taken by oNeura. Each neuron in the simulation is a complete molecular model:
 
 - **8 ion channel types** with exact alpha/beta rate functions (Na_v, K_v, K_leak, Ca_v, AMPA, NMDA with Mg2+ block, GABA-A, nAChR)
 - **4-compartment calcium dynamics** (cytoplasmic, ER, mitochondrial, microdomain) with IP3R, RyR, SERCA, MCU, PMCA, and NCX
@@ -51,8 +51,8 @@ These subsystems interact continuously, creating a web of molecular causation wh
 Throughout this paper, we use the following terms:
 
 - **ONN (Organic Neural Network)**: A neural network composed of real biological neurons — for example, Cortical Labs' DishBrain (800K neurons on a multi-electrode array) or FinalSpark's bioprocessors.
-- **dONN (digital Organic Neural Network)**: oNeuro's biophysically faithful simulation of an ONN. Every neuron is a complete molecular model (HH ion channels, neurotransmitters, gene expression, STDP), and all behaviors — learning, drug response, consciousness — *emerge* from molecular dynamics rather than being programmed.
-- **oNeuro**: The software platform for building and running dONNs.
+- **dONN (digital Organic Neural Network)**: oNeura's biophysically faithful simulation of an ONN. Every neuron is a complete molecular model (HH ion channels, neurotransmitters, gene expression, STDP), and all behaviors — learning, drug response, consciousness — *emerge* from molecular dynamics rather than being programmed.
+- **oNeura**: The software platform for building and running dONNs.
 
 The distinction matters: a dONN is not an approximation or abstraction of biological neurons (as an ANN is). It simulates the same molecular machinery at sufficient fidelity that pharmacological, cognitive, and electrophysiological phenomena emerge without explicit programming.
 
@@ -60,7 +60,7 @@ The distinction matters: a dONN is not an approximation or abstraction of biolog
 
 This paper makes six contributions:
 
-1. **We describe oNeuro**, a molecular brain simulator with 16 interacting subsystems, regional brain architecture (cortex, thalamus, hippocampus, basal ganglia), and a GPU-accelerated Rust+Metal backend capable of simulating 100K+ neurons in real time.
+1. **We describe oNeura**, a molecular brain simulator with 16 interacting subsystems, regional brain architecture (cortex, thalamus, hippocampus, basal ganglia), and a GPU-accelerated Rust+Metal backend capable of simulating 100K+ neurons in real time.
 
 2. **We demonstrate six emergent pharmacological and cognitive capabilities** that are impossible in standard ANNs, each arising from molecular dynamics without being explicitly programmed.
 
@@ -78,7 +78,7 @@ This paper makes six contributions:
 
 ### 2.1 Sixteen Molecular Subsystems
 
-oNeuro simulates neurons as complete molecular systems. Table 1 lists all 16 subsystems, their computational role, and why they matter.
+oNeura simulates neurons as complete molecular systems. Table 1 lists all 16 subsystems, their computational role, and why they matter.
 
 **Table 1: Molecular Subsystems**
 
@@ -114,7 +114,7 @@ Inter-region projections follow known anatomy: thalamus -> cortex L4 (feedforwar
 
 ### 2.3 Learning Mechanisms
 
-Learning in oNeuro occurs through three biologically-grounded mechanisms:
+Learning in oNeura occurs through three biologically-grounded mechanisms:
 
 1. **Spike-Timing-Dependent Plasticity (STDP)**: When a presynaptic spike precedes a postsynaptic spike (within ~20ms), AMPA receptors are inserted into the postsynaptic membrane (LTP). When the order is reversed, AMPA receptors are removed (LTD). This is gated by NMDA receptor calcium influx — at resting potential, NMDA is blocked by Mg2+ and STDP cannot occur.
 
@@ -122,7 +122,7 @@ Learning in oNeuro occurs through three biologically-grounded mechanisms:
 
 3. **BCM Metaplasticity**: The LTP/LTD threshold slides based on postsynaptic activity history, preventing runaway potentiation. This emerges from CaMKII dynamics, not from an explicit BCM rule.
 
-### 2.4 GPU Acceleration (oNeuro-Metal)
+### 2.4 GPU Acceleration (oNeura-Metal)
 
 The Rust + Metal GPU backend (9,200 lines, 93 tests) accelerates all per-neuron computations:
 
@@ -179,7 +179,7 @@ Anesthesia consciousness drop: **99.8%**
 
 **Interpretation**: General anesthesia completely abolishes all consciousness metrics, reducing the composite to 0.000 with zero firing. This matches clinical reality: general anesthesia produces complete loss of consciousness. The 99.8% drop is consistent with the multi-target mechanism (GABA-A enhancement + NMDA blockade + sodium channel suppression).
 
-**Why ANNs can't**: Standard ANNs have no consciousness metrics. There is no Phi, no PCI, no branching ratio in PyTorch. There is nothing for anesthesia to *suppress* because there is nothing being *measured*. oNeuro's consciousness emerges from the same molecular dynamics that produce spikes — it is not a separate module bolted on.
+**Why ANNs can't**: Standard ANNs have no consciousness metrics. There is no Phi, no PCI, no branching ratio in PyTorch. There is nothing for anesthesia to *suppress* because there is nothing being *measured*. oNeura's consciousness emerges from the same molecular dynamics that produce spikes — it is not a separate module bolted on.
 
 ### 3.3 Experiment 3: Dose-Response Emergence
 
@@ -250,7 +250,7 @@ Anesthesia consciousness drop: **99.8%**
 
 The key insight is that Diazepam and Ketamine are BOTH "inhibitory" but through *completely different molecular mechanisms* (GABA-A enhancement vs. NMDA blockade), producing distinct fingerprints (Diazepam: -44.7%, CV=11.66; Ketamine: -6.6%, CV=9.03).
 
-**Why ANNs can't**: In PyTorch, "diazepam" and "ketamine" would both just be "reduce firing rate by X%." There is no molecular mechanism to distinguish them. In oNeuro, they act on different channels (GABA-A vs NMDA), producing different secondary effects (voltage, variability, cortical fraction) that could not be predicted from the firing rate alone.
+**Why ANNs can't**: In PyTorch, "diazepam" and "ketamine" would both just be "reduce firing rate by X%." There is no molecular mechanism to distinguish them. In oNeura, they act on different channels (GABA-A vs NMDA), producing different secondary effects (voltage, variability, cortical fraction) that could not be predicted from the firing rate alone.
 
 ### 3.6 Experiment 6: Polypharmacy Interaction
 
@@ -310,7 +310,7 @@ During testing, each word pattern is presented ALONE (no meaning pattern, no dop
 
 At larger scales (1018 neurons), all 4 words produce distinct, non-silent responses, and identification accuracy exceeds 75%.
 
-**Why ANNs can't do this differently**: While ANNs CAN learn symbol-meaning associations (this is what embeddings do), they do so through backpropagation — computing gradients of a loss function and updating weights analytically. In oNeuro, the association emerges from spike-timing: when thalamic "word" neurons fire just before cortical "meaning" neurons, AMPA receptors are physically inserted into the postsynaptic membrane (LTP). There is no loss function, no gradient, no optimizer. The learning is a *physical consequence* of molecular STDP.
+**Why ANNs can't do this differently**: While ANNs CAN learn symbol-meaning associations (this is what embeddings do), they do so through backpropagation — computing gradients of a loss function and updating weights analytically. In oNeura, the association emerges from spike-timing: when thalamic "word" neurons fire just before cortical "meaning" neurons, AMPA receptors are physically inserted into the postsynaptic membrane (LTP). There is no loss function, no gradient, no optimizer. The learning is a *physical consequence* of molecular STDP.
 
 ### 4.2 Experiment 8: Sequence Prediction — Proto-Syntax
 
@@ -339,7 +339,7 @@ A control word ("yellow") that was never part of any trained sequence is also te
 
 The key insight is that STDP eligibility traces successfully bridge the 10-step temporal gap between words. This is the molecular mechanism that would enable proto-grammar at larger scales: the brain learns "after hearing X, expect Y" through temporal STDP, not through any explicit sequence model.
 
-**Why ANNs can't do this differently**: Standard ANNs learn sequences through backpropagation through time (BPTT) or transformer attention. In oNeuro, temporal associations emerge from STDP eligibility traces — calcium-dependent molecular tags on recently-active synapses that "remember" which synapses were active when the reward signal arrives. There is no explicit memory of the sequence, only molecular residues of recent activity.
+**Why ANNs can't do this differently**: Standard ANNs learn sequences through backpropagation through time (BPTT) or transformer attention. In oNeura, temporal associations emerge from STDP eligibility traces — calcium-dependent molecular tags on recently-active synapses that "remember" which synapses were active when the reward signal arrives. There is no explicit memory of the sequence, only molecular residues of recent activity.
 
 ### 4.3 Experiment 9: Compositional Generalization — Novel Combinations
 
@@ -363,7 +363,7 @@ The key insight is that STDP eligibility traces successfully bridge the 10-step 
 
 This is compositional generalization — the hallmark of natural language. From a finite set of trained combinations, the brain can produce meaningful responses to novel combinations by *recombining* learned components. This capability emerges from the distributed nature of STDP-learned representations: each word strengthens a distinct subset of thalamocortical synapses, and presenting two words simultaneously activates both subsets, producing a predictable combined pattern.
 
-**Why ANNs can't do this from STDP**: While ANNs can achieve compositional generalization through backpropagation, they require explicit architectural choices (attention mechanisms, disentangled representations, systematic generalization objectives) to do so reliably. In oNeuro, compositionality emerges automatically from the distributed, overlapping nature of STDP-learned associations. No architectural choice was made to enable compositionality — it falls out of the molecular dynamics.
+**Why ANNs can't do this from STDP**: While ANNs can achieve compositional generalization through backpropagation, they require explicit architectural choices (attention mechanisms, disentangled representations, systematic generalization objectives) to do so reliably. In oNeura, compositionality emerges automatically from the distributed, overlapping nature of STDP-learned associations. No architectural choice was made to enable compositionality — it falls out of the molecular dynamics.
 
 ### 4.4 Experiment 10: Two-Brain Communication
 
@@ -396,7 +396,7 @@ During testing, the Speaker sees a word, its cortex response is relayed to the L
 
 At larger scales (1018 neurons), the wider channel (200+ cortex → 30+ relay neurons) provides sufficient bandwidth for accurate word identification, and the communication accuracy exceeds chance level.
 
-**Why ANNs can't do this the same way**: Multi-agent communication in ANNs (Lewis et al., 2017; Lazaridou et al., 2018) requires shared loss functions, differentiable communication channels, and end-to-end backpropagation. In oNeuro, the shared vocabulary emerges from coupled STDP: when the Speaker's L5 output drives the Listener's thalamus during training, STDP strengthens the cross-brain pathway in the same molecular way it strengthens within-brain pathways. No shared loss function, no gradient computation, no end-to-end training. The communication protocol is a *physical consequence* of Hebbian learning operating across a neural channel.
+**Why ANNs can't do this the same way**: Multi-agent communication in ANNs (Lewis et al., 2017; Lazaridou et al., 2018) requires shared loss functions, differentiable communication channels, and end-to-end backpropagation. In oNeura, the shared vocabulary emerges from coupled STDP: when the Speaker's L5 output drives the Listener's thalamus during training, STDP strengthens the cross-brain pathway in the same molecular way it strengthens within-brain pathways. No shared loss function, no gradient computation, no end-to-end training. The communication protocol is a *physical consequence* of Hebbian learning operating across a neural channel.
 
 ---
 
@@ -422,7 +422,7 @@ All experiments in this section use the MPS-optimized CUDA backend with CUDARegi
 
 **Interpretation**: Accuracy degrades *proportionally*, not catastrophically. At 25% lesion, 83% of memories survive — well above the 50% threshold. This is the hallmark of distributed representation: information is spread across redundant pathways, so no single lesion site is fatal. Standard ANNs show cliff-edge failure under random weight deletion because each weight participates in a fragile linear combination. The molecular brain's distributed STDP-learned pathways create inherent fault tolerance.
 
-**Why ANNs can't**: In a standard ANN, randomly zeroing 25% of weights typically destroys >75% of accuracy because the weight matrix encodes information holographically — every weight contributes to every output. oNeuro's degradation is graceful because STDP creates localized, redundant pathways.
+**Why ANNs can't**: In a standard ANN, randomly zeroing 25% of weights typically destroys >75% of accuracy because the weight matrix encodes information holographically — every weight contributes to every output. oNeura's degradation is graceful because STDP creates localized, redundant pathways.
 
 ### 5.2 Experiment 12: Semantic Priming
 
@@ -442,7 +442,7 @@ All experiments in this section use the MPS-optimized CUDA backend with CUDARegi
 
 **Results**: Sleep brain maintains high accuracy with stronger margins (margin change positive), while wake brain shows margin degradation. The targeted replay selectively strengthens specific synaptic pathways through coordinated STDP, while random noise creates undirected synaptic drift.
 
-**Why ANNs can't**: "Offline replay" in ML means replaying stored data through backpropagation. In oNeuro, consolidation requires the complete biological mechanism: NREM slow oscillation (cortical DOWN states → UP states), hippocampal sharp-wave ripple replay, and dopamine-gated STDP strengthening — none of which exist in gradient-based optimization.
+**Why ANNs can't**: "Offline replay" in ML means replaying stored data through backpropagation. In oNeura, consolidation requires the complete biological mechanism: NREM slow oscillation (cortical DOWN states → UP states), hippocampal sharp-wave ripple replay, and dopamine-gated STDP strengthening — none of which exist in gradient-based optimization.
 
 ### 5.4 Experiment 14: Serial Position Effect
 
@@ -482,7 +482,7 @@ All experiments in this section use the MPS-optimized CUDA backend with CUDARegi
 
 **Results**: Control brain: 100% accuracy. Diazepam brain: 50% accuracy. The benzodiazepine's enhancement of GABA-A conductance suppresses the excitatory co-activation needed for Hebbian/STDP learning, resulting in anterograde amnesia — exactly matching the clinical pharmacology of benzodiazepines.
 
-**Why ANNs can't**: There is no molecular target for benzodiazepines in a standard ANN. To simulate "drug-impaired learning," you must manually reduce the learning rate — but this is not pharmacology, it's hyperparameter tuning. In oNeuro, the impairment *emerges* from GABA-A conductance enhancement disrupting spike timing.
+**Why ANNs can't**: There is no molecular target for benzodiazepines in a standard ANN. To simulate "drug-impaired learning," you must manually reduce the learning rate — but this is not pharmacology, it's hyperparameter tuning. In oNeura, the impairment *emerges* from GABA-A conductance enhancement disrupting spike timing.
 
 ### 5.8 Experiment 18: Forgetting Curve (Ebbinghaus)
 
@@ -492,7 +492,7 @@ All experiments in this section use the MPS-optimized CUDA backend with CUDARegi
 
 **Results**: Accuracy decreases with delay (weight readout is highly resilient due to stable synapse weights, but the trend is monotonically decreasing). The decay follows STDP trace dynamics — background activity creates synaptic noise that gradually degrades trained patterns through competing Hebbian associations.
 
-**Why ANNs can't**: A trained ANN's weights don't change without explicit training updates. There is no "passage of time" between forward passes. In oNeuro, STDP operates continuously — every spike potentially modifies synaptic weights, creating an inherent forgetting mechanism.
+**Why ANNs can't**: A trained ANN's weights don't change without explicit training updates. There is no "passage of time" between forward passes. In oNeura, STDP operates continuously — every spike potentially modifies synaptic weights, creating an inherent forgetting mechanism.
 
 ### 5.9 Experiment 19: Categorical Clustering
 
@@ -502,7 +502,7 @@ All experiments in this section use the MPS-optimized CUDA backend with CUDARegi
 
 **Results**: Within-category similarity (0.9454) exceeds between-category similarity (0.9365), producing a positive clustering signal (+0.009). Words trained with similar temporal contexts develop similar relay→L5 weight profiles through shared STDP patterns. This categorical structure emerges WITHOUT explicit category labels.
 
-**Why ANNs can't**: While ANNs can develop category structure through backpropagation with category labels, oNeuro's clustering emerges purely from temporal co-occurrence patterns during training — the same mechanism hypothesized for human distributional semantics (Firth, 1957: "You shall know a word by the company it keeps").
+**Why ANNs can't**: While ANNs can develop category structure through backpropagation with category labels, oNeura's clustering emerges purely from temporal co-occurrence patterns during training — the same mechanism hypothesized for human distributional semantics (Firth, 1957: "You shall know a word by the company it keeps").
 
 ### 5.10 Experiment 20: Spontaneous Replay
 
@@ -512,7 +512,7 @@ All experiments in this section use the MPS-optimized CUDA backend with CUDARegi
 
 **Results**: 29 spontaneous replay events detected across all 8 trained words during free-running at medium scale. "Fish" replayed 8 times, "dog" 5 times, "cat" 4 times. Trained pathways have lower activation thresholds, causing random fluctuations to preferentially trigger learned patterns — the biological basis of mind-wandering and involuntary memory retrieval.
 
-**Why ANNs can't**: A standard ANN produces output only when given input. There is no spontaneous internal activity, no trained pathway with lower threshold, and no mechanism for random noise to trigger learned patterns. In oNeuro, the asymmetric STDP-strengthened pathways create attractor states that capture random fluctuations.
+**Why ANNs can't**: A standard ANN produces output only when given input. There is no spontaneous internal activity, no trained pathway with lower threshold, and no mechanism for random noise to trigger learned patterns. In oNeura, the asymmetric STDP-strengthened pathways create attractor states that capture random fluctuations.
 
 ---
 
@@ -593,11 +593,11 @@ This transition from temporal coding (every input triggers output) to rate codin
 
 ## 7. Competitive Landscape & Language Capabilities
 
-No existing neural simulator offers the combination of molecular fidelity, consciousness metrics, pharmacology, and GPU acceleration provided by oNeuro.
+No existing neural simulator offers the combination of molecular fidelity, consciousness metrics, pharmacology, and GPU acceleration provided by oNeura.
 
 **Table 2: Capability Comparison**
 
-| Capability | oNeuro | NEURON | NEST | Brian2 | CoreNeuron | PyTorch |
+| Capability | oNeura | NEURON | NEST | Brian2 | CoreNeuron | PyTorch |
 |---|---|---|---|---|---|---|
 | HH ion channels | Yes (GPU) | Yes (CPU) | No | Partial | Yes | No |
 | Second messenger cascades | Yes (GPU) | MOD files | No | No | No | No |
@@ -634,17 +634,17 @@ CoreNeuron (Kumbhar et al., 2019) provides GPU-accelerated HH simulation but is 
 
 ### 8.1 Implications for AI
 
-oNeuro demonstrates that molecular simulation produces cognitive capabilities that are qualitatively different from what standard ANNs can achieve. This opens several research directions:
+oNeura demonstrates that molecular simulation produces cognitive capabilities that are qualitatively different from what standard ANNs can achieve. This opens several research directions:
 
-1. **Neuromorphic computing**: oNeuro's molecular dynamics could inform the design of neuromorphic hardware that natively supports pharmacological modulation, sleep-like consolidation, and consciousness-like integration.
+1. **Neuromorphic computing**: oNeura's molecular dynamics could inform the design of neuromorphic hardware that natively supports pharmacological modulation, sleep-like consolidation, and consciousness-like integration.
 
-2. **Biologically-grounded AI**: By grounding AI computation in molecular dynamics, oNeuro provides a path toward AI systems whose behavior can be modulated, diagnosed, and treated with the same tools used for biological brains.
+2. **Biologically-grounded AI**: By grounding AI computation in molecular dynamics, oNeura provides a path toward AI systems whose behavior can be modulated, diagnosed, and treated with the same tools used for biological brains.
 
-3. **Hybrid architectures**: The Bio-LoRA architecture (Price, 2026) connects oNeuro's molecular brain to transformer-based language models, using biophysical state vectors to modulate LoRA adapter scaling. This creates a hybrid system where molecular dynamics influence language generation — a capability impossible with either system alone.
+3. **Hybrid architectures**: The Bio-LoRA architecture (Price, 2026) connects oNeura's molecular brain to transformer-based language models, using biophysical state vectors to modulate LoRA adapter scaling. This creates a hybrid system where molecular dynamics influence language generation — a capability impossible with either system alone.
 
 ### 8.2 Implications for Neuroscience
 
-oNeuro provides a computational platform for testing neuroscientific hypotheses:
+oNeura provides a computational platform for testing neuroscientific hypotheses:
 
 1. **Computational pharmacology**: The 7-drug library with Hill equation PK/PD enables in-silico drug screening. Dose-response curves can be generated for novel compounds by specifying molecular targets and binding affinities.
 
@@ -654,7 +654,7 @@ oNeuro provides a computational platform for testing neuroscientific hypotheses:
 
 ### 8.3 Implications for Drug Discovery
 
-The polypharmacy interaction experiment demonstrates that oNeuro can predict non-linear drug-drug interactions from first principles. This has direct applications in:
+The polypharmacy interaction experiment demonstrates that oNeura can predict non-linear drug-drug interactions from first principles. This has direct applications in:
 
 - **Drug safety screening**: Predicting adverse interactions before clinical trials
 - **Combination therapy optimization**: Finding optimal drug combinations for neurological disorders
@@ -666,9 +666,9 @@ The language experiments suggest a provocative hypothesis: the computational sub
 
 ### 8.5 Implications for Neural Dynamics Research
 
-The temporal dynamics experiments (Section 6) open a new research direction: using oNeuro as a platform for studying oscillatory neural computation. The gamma-theta coupling result (MI = 0.456) is particularly significant — this cross-frequency coupling pattern is considered a neural correlate of working memory binding (Lisman & Jensen, 2013), and its emergence from first-principles HH dynamics (without explicit oscillator circuits) validates the hypothesis that working memory substrates can emerge from basic biophysical properties.
+The temporal dynamics experiments (Section 6) open a new research direction: using oNeura as a platform for studying oscillatory neural computation. The gamma-theta coupling result (MI = 0.456) is particularly significant — this cross-frequency coupling pattern is considered a neural correlate of working memory binding (Lisman & Jensen, 2013), and its emergence from first-principles HH dynamics (without explicit oscillator circuits) validates the hypothesis that working memory substrates can emerge from basic biophysical properties.
 
-The refractory frequency division experiment demonstrates a fundamental computation — the transition from temporal to rate coding — that underlies all sensory processing. The fact that this emerges naturally from Na⁺ channel inactivation, rather than being programmed, suggests that oNeuro could serve as a platform for studying neural coding strategies in-silico.
+The refractory frequency division experiment demonstrates a fundamental computation — the transition from temporal to rate coding — that underlies all sensory processing. The fact that this emerges naturally from Na⁺ channel inactivation, rather than being programmed, suggests that oNeura could serve as a platform for studying neural coding strategies in-silico.
 
 ### 8.6 Limitations
 
@@ -711,9 +711,9 @@ The key insight is that **emergence requires the right substrate**. You cannot g
 
 Perhaps the most striking results are the temporal dynamics: a 1,010-neuron molecular brain spontaneously produces cross-frequency coupling (MI = 0.456) — a signature of working memory — without any explicit oscillator circuit. The entrainment selectivity, the gamma nesting within theta phase, and the frequency division all emerge from the same Hodgkin-Huxley equations that produce action potentials. This suggests that the computational repertoire of biological neural circuits is far richer than what can be captured by activation functions, regardless of how many layers or parameters are used.
 
-oNeuro provides this substrate. It is the first system to unify computational neuroscience, pharmacology, consciousness science, sleep research, emergent language, and neural dynamics in a single GPU-accelerated simulation engine. Every behavior reported in this paper is reproducible from the provided source code, and every claim is backed by real experimental data from simulations running on Apple Silicon.
+oNeura provides this substrate. It is the first system to unify computational neuroscience, pharmacology, consciousness science, sleep research, emergent language, and neural dynamics in a single GPU-accelerated simulation engine. Every behavior reported in this paper is reproducible from the provided source code, and every claim is backed by real experimental data from simulations running on Apple Silicon.
 
-The artificial and the biological need not remain separate. oNeuro shows that molecular simulation can produce the cognitive richness of biological brains while retaining the precision and reproducibility of computational models. The path forward is not to choose between ANNs and biology, but to build systems that are grounded in both.
+The artificial and the biological need not remain separate. oNeura shows that molecular simulation can produce the cognitive richness of biological brains while retaining the precision and reproducibility of computational models. The path forward is not to choose between ANNs and biology, but to build systems that are grounded in both.
 
 ---
 
@@ -774,9 +774,9 @@ The artificial and the biological need not remain separate. oNeuro shows that mo
 All experiments can be reproduced with:
 
 ```bash
-# Install oNeuro
-git clone https://github.com/bobbyprice/oNeuro.git
-cd oNeuro
+# Install oNeura
+git clone https://github.com/bobbyprice/oNeura.git
+cd oNeura
 
 # Run pharmacology + cognitive experiments (6 experiments, ~54 seconds)
 python3 demos/demo_beyond_ann.py

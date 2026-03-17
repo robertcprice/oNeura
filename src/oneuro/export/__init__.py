@@ -1,5 +1,5 @@
 """
-oNeuro Export Module - Edge deployment for spiking neural networks.
+oNeura Export Module - Edge deployment for spiking neural networks.
 
 This module provides:
 - ONNXExporter: Export brain models to ONNX format for edge deployment

@@ -12,8 +12,8 @@ vs unstructured sensory feedback.
 
 Terminology:
   - ONN:    Organic Neural Network — real biological neurons (DishBrain, FinalSpark)
-  - dONN:   digital Organic Neural Network — oNeuro's biophysically faithful simulation
-  - oNeuro: The platform for building and running dONNs
+  - dONN:   digital Organic Neural Network — oNeura's biophysically faithful simulation
+  - oNeura: The platform for building and running dONNs
 
 3 Experiments:
    1. Doom Navigation (30 episodes): health gathering via free energy principle

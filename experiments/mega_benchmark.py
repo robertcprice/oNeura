@@ -22,7 +22,7 @@ Pass/Fail Criteria:
 Output: console tables + JSON at /tmp/oneuro_mega_benchmark_results.json
 
 Usage:
-    cd oNeuro && python3 experiments/mega_benchmark.py
+    cd oNeura && python3 experiments/mega_benchmark.py
 """
 
 from __future__ import annotations
@@ -255,7 +255,7 @@ def experiment_consciousness_comparison(n_seeds: int = 3) -> dict:
 def run_mega_benchmark(n_seeds: int = 3) -> dict:
     """Run all sections of the mega benchmark."""
     print("\n" + "#" * 70)
-    print("  oNeuro MEGA BENCHMARK: Training + Consciousness")
+    print("  oNeura MEGA BENCHMARK: Training + Consciousness")
     print("#" * 70)
 
     t0 = time.time()

@@ -1,6 +1,6 @@
-# oNeuro WASM
+# oNeura WASM
 
-`oneuro-wasm` is the browser-facing sidecar for oNeuro. It keeps the lightweight
+`oneuro-wasm` is the browser-facing sidecar for oNeura. It keeps the lightweight
 WASM library and the browser demos together, but the directory is organized
 around two layers:
 

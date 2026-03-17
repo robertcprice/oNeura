@@ -1,4 +1,4 @@
-//! oNeuro 3D World - Realistic Fly Simulation
+//! oNeura 3D World - Realistic Fly Simulation
 
 use bevy::prelude::*;
 use std::f32::consts::PI;
@@ -148,7 +148,7 @@ fn spawn_food(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
 
 fn setup_ui(mut commands: Commands) {
     commands.spawn(TextBundle {
-        text: Text::from_section("oNeuro 3D Fly World", TextStyle { font_size: 30.0, color: Color::WHITE, ..Default::default() }),
+        text: Text::from_section("oNeura 3D Fly World", TextStyle { font_size: 30.0, color: Color::WHITE, ..Default::default() }),
         style: Style { position_type: PositionType::Absolute, position: UiRect { top: Val::Px(10.0), left: Val::Px(10.0), ..Default::default() }, ..Default::default() },
         ..Default::default()
     });

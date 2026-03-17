@@ -384,7 +384,7 @@ This could mean:
 # TRACK A: NEUROGENESIS PREVENTS FORGETTING
 # ============================================================================
 
-class StandardNetworkNoNeurogenesis:
+class StandardNetworkNoNeuragenesis:
     """
     Baseline: Network with FIXED architecture (no growth).
     This should suffer catastrophic forgetting.
@@ -571,7 +571,7 @@ def run_track_a_experiment(n_tasks: int = 4, verbose: bool = True):
         print("BASELINE: Fixed Architecture (No Neurogenesis)")
         print("="*60)
 
-    baseline = StandardNetworkNoNeurogenesis(n_neurons=30)
+    baseline = StandardNetworkNoNeuragenesis(n_neurons=30)
     baseline_accuracies = np.zeros((n_tasks, n_tasks))  # [after_task_i, on_task_j]
 
     for task_idx, (task_name, patterns, labels) in enumerate(tasks):

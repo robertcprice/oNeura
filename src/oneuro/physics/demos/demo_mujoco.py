@@ -9,7 +9,7 @@ This demo shows the full 3D physics simulation with:
 - Connectome-based brain controlling physics
 
 Usage:
-    cd /Users/bobbyprice/projects/oNeuro
+    cd /Users/bobbyprice/projects/oNeura
     PYTHONPATH=src python3 src/oneuro/physics/demo_mujoco.py
 """
 

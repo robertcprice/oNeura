@@ -1,5 +1,5 @@
 """
-oNeuro Proteins Module
+oNeura Proteins Module
 
 Submodules:
 - protein_folding: AlphaFold-style prediction, Rosetta energy

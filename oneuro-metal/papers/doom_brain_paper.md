@@ -28,7 +28,7 @@ However, the DishBrain paradigm faces practical constraints. Each experimental r
 
 ### 1.2 The dONN Approach
 
-We address these limitations with the digital Organic Neural Network (dONN), built on the oNeuro simulation platform (Price, 2026). A dONN simulates every biophysical process that produces neural computation: Hodgkin-Huxley ion channel dynamics with eight channel types per neuron, six neurotransmitter systems with receptor binding kinetics, STDP via AMPA receptor trafficking, second messenger cascades (cAMP/PKA, PLC/IP3/PKC, CaMKII, ERK, CREB), and pharmacokinetic/pharmacodynamic drug modeling. Behaviors emerge from the molecular substrate rather than being programmed. The distinction between a dONN and a conventional artificial neural network is fundamental: an ANN implements mathematical abstractions of neural computation (matrix multiplication followed by nonlinear activation), while a dONN simulates the molecular machinery that produces neural computation.
+We address these limitations with the digital Organic Neural Network (dONN), built on the oNeura simulation platform (Price, 2026). A dONN simulates every biophysical process that produces neural computation: Hodgkin-Huxley ion channel dynamics with eight channel types per neuron, six neurotransmitter systems with receptor binding kinetics, STDP via AMPA receptor trafficking, second messenger cascades (cAMP/PKA, PLC/IP3/PKC, CaMKII, ERK, CREB), and pharmacokinetic/pharmacodynamic drug modeling. Behaviors emerge from the molecular substrate rather than being programmed. The distinction between a dONN and a conventional artificial neural network is fundamental: an ANN implements mathematical abstractions of neural computation (matrix multiplication followed by nonlinear activation), while a dONN simulates the molecular machinery that produces neural computation.
 
 ### 1.3 Contributions
 
@@ -66,7 +66,7 @@ ViZDoom (Kempka et al., 2016) provides a research platform for AI agents in the 
 
 ### 2.4 Biophysical Neural Models
 
-Hodgkin and Huxley (1952) established the canonical model of action potential generation through voltage-gated ion channel kinetics. Izhikevich (2003) introduced computationally efficient neuron models that capture diverse firing patterns. Brian2 (Stimberg et al., 2019) and NEST (Gewaltig and Diesmann, 2007) provide platforms for spiking network simulation but lack the molecular-level detail (neurotransmitter systems, receptor trafficking, pharmacology) necessary for pharmacological experiments. oNeuro differs in simulating 16 interacting molecular subsystems per neuron, enabling emergent pharmacology.
+Hodgkin and Huxley (1952) established the canonical model of action potential generation through voltage-gated ion channel kinetics. Izhikevich (2003) introduced computationally efficient neuron models that capture diverse firing patterns. Brian2 (Stimberg et al., 2019) and NEST (Gewaltig and Diesmann, 2007) provide platforms for spiking network simulation but lack the molecular-level detail (neurotransmitter systems, receptor trafficking, pharmacology) necessary for pharmacological experiments. oNeura differs in simulating 16 interacting molecular subsystems per neuron, enabling emergent pharmacology.
 
 ### 2.5 Retinal Processing Models
 
@@ -104,7 +104,7 @@ Beyond the three classical HH channels, each neuron implements eight ion channel
 
 **Synaptic connectivity.** Synapses are stored in compressed sparse row (CSR) format for efficient traversal during the simulation step. Connection probabilities are scaled inversely with network size to maintain approximately constant in-degree (~10 inputs per neuron), preventing quadratic synapse explosion at larger scales. Each synapse stores a weight, neurotransmitter type, and pre/post neuron indices.
 
-**GPU acceleration.** The brain runs on Apple Metal GPU via the oNeuro-Metal Rust backend, with the full HH + STDP + molecular pipeline executing in a single fused simulation step. The same architecture supports CUDA backends for datacenter-scale experiments.
+**GPU acceleration.** The brain runs on Apple Metal GPU via the oNeura-Metal Rust backend, with the full HH + STDP + molecular pipeline executing in a single fused simulation step. The same architecture supports CUDA backends for datacenter-scale experiments.
 
 ### 3.2 Three-Layer Molecular Retina
 
@@ -435,7 +435,7 @@ All code is open-source. Every experiment is reproducible with a single command.
 
 21. Pathak, D., Agrawal, P., Efros, A. A., & Darrell, T. (2017). Curiosity-driven exploration by self-supervised prediction. In *International Conference on Machine Learning (ICML)*.
 
-22. Price, B. (2026). Digital Organic Neural Networks replicate and extend DishBrain game learning without biological tissue. Preprint. https://github.com/robertcprice/oNeuro
+22. Price, B. (2026). Digital Organic Neural Networks replicate and extend DishBrain game learning without biological tissue. Preprint. https://github.com/robertcprice/oNeura
 
 23. Rao, R. P., & Ballard, D. H. (1999). Predictive coding in the visual cortex: a functional interpretation of some extra-classical receptive-field effects. *Nature Neuroscience*, 2(1), 79-87.
 
@@ -453,11 +453,11 @@ All code is open-source. Every experiment is reproducible with a single command.
 
 ## Appendix A: Reproduction Instructions
 
-All experiments can be reproduced from the oNeuro repository:
+All experiments can be reproduced from the oNeura repository:
 
 ```bash
 # Clone and install
-git clone https://github.com/robertcprice/oNeuro.git && cd oNeuro
+git clone https://github.com/robertcprice/oNeura.git && cd oNeura
 pip install torch numpy vizdoom Pillow
 
 # Run all 3 ViZDoom experiments (requires vizdoom installed)
@@ -576,8 +576,8 @@ cd oneuro-metal && cargo test doom -- --nocapture
 | Term | Definition |
 |------|-----------|
 | **ONN** | Organic Neural Network -- a neural network built from real biological neurons (e.g., Cortical Labs' DishBrain, FinalSpark bioprocessors) |
-| **dONN** | digital Organic Neural Network -- oNeuro's biophysically faithful simulation of an ONN, implementing molecular substrates from which behavior emerges |
-| **oNeuro** | The open-source platform for building and running dONNs |
+| **dONN** | digital Organic Neural Network -- oNeura's biophysically faithful simulation of an ONN, implementing molecular substrates from which behavior emerges |
+| **oNeura** | The open-source platform for building and running dONNs |
 | **FEP** | Free Energy Principle -- the theoretical framework proposing that biological systems minimize variational free energy (surprise) |
 | **STDP** | Spike-Timing-Dependent Plasticity -- synaptic weight change dependent on the relative timing of pre- and postsynaptic spikes |
 | **HH** | Hodgkin-Huxley -- the biophysical model of action potential generation through voltage-gated ion channel dynamics |

@@ -1,7 +1,7 @@
 """
-Real oNeuro Fly Simulation + 3D Visualization
+Real oNeura Fly Simulation + 3D Visualization
 
-This actually runs the full oNeuro molecular simulation:
+This actually runs the full oNeura molecular simulation:
 - Hodgkin-Huxley ion channels
 - 6 neurotransmitters (DA, 5-HT, ACh, GABA, Glu, Oct)
 - STDP learning
@@ -18,19 +18,19 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-# Try to import oNeuro - may fail if CUDA not available
+# Try to import oNeura - may fail if CUDA not available
 try:
     from oneuro.organisms.drosophila import Drosophila, DrosophilaBrain
     from oneuro.worlds.molecular_world import MolecularWorld
     ONEURO_AVAILABLE = True
 except ImportError as e:
     ONEURO_AVAILABLE = False
-    print(f"Note: Full oNeuro not available ({e})")
+    print(f"Note: Full oNeura not available ({e})")
     print("Running simplified simulation...")
 
 
 class SimpleWorld:
-    """Simple world for testing when full oNeuro unavailable."""
+    """Simple world for testing when full oNeura unavailable."""
 
     def __init__(self):
         self.light_pos = np.array([1.0, 0.0, 1.0])
@@ -57,7 +57,7 @@ class SimpleWorld:
 
 class RealOneuroFlySimulation:
     """
-    ACTUAL oNeuro fly simulation - runs real molecular brain!
+    ACTUAL oNeura fly simulation - runs real molecular brain!
     """
 
     def __init__(self, scale='tiny', device='cpu'):
@@ -65,7 +65,7 @@ class RealOneuroFlySimulation:
         self.device = device
 
         if ONEURO_AVAILABLE:
-            print(f"Initializing real oNeuro brain ({scale} scale)...")
+            print(f"Initializing real oNeura brain ({scale} scale)...")
 
             # Create a simple world
             self.world = SimpleWorld()
@@ -91,11 +91,11 @@ class RealOneuroFlySimulation:
         self.history = []
 
     def step(self):
-        """One simulation step - ACTUALLY runs oNeuro!"""
+        """One simulation step - ACTUALLY runs oNeura!"""
         self.step_count += 1
 
         if self.fly is not None and ONEURO_AVAILABLE:
-            # Run REAL oNeuro step
+            # Run REAL oNeura step
             result = self.fly.step(self.world)
 
             # Get position from body state
@@ -132,14 +132,14 @@ class RealOneuroFlySimulation:
 
 
 def run_demo():
-    """Run a demo showing real oNeuro in action."""
+    """Run a demo showing real oNeura in action."""
     print("=" * 60)
     print("REAL oNEURO FLY SIMULATION")
     print("=" * 60)
 
     sim = RealOneuroFlySimulation(scale='tiny')
 
-    print("\nRunning 50 real oNeuro steps...")
+    print("\nRunning 50 real oNeura steps...")
     print("-" * 40)
 
     for i in range(50):

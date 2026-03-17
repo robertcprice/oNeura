@@ -1,4 +1,4 @@
-# oNeuro Physics Module
+# oNeura Physics Module
 
 Physics simulation for Drosophila melanogaster and neural-based organisms.
 

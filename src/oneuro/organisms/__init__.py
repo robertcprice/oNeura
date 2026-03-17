@@ -1,4 +1,4 @@
-"""oNeuro organism models -- biophysically faithful digital organisms.
+"""oNeura organism models -- biophysically faithful digital organisms.
 
 Each organism consists of:
   - A nervous system built on CUDAMolecularBrain (HH neurons, NTs, STDP)

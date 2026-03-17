@@ -5,7 +5,7 @@
 We should do both of the following:
 
 1. Use the published minimal-cell stack as an external reference and baseline.
-2. Expand `oNeuro` with a separate whole-cell subsystem instead of trying to force the neural engine to do bacterial whole-cell simulation.
+2. Expand `oNeura` with a separate whole-cell subsystem instead of trying to force the neural engine to do bacterial whole-cell simulation.
 
 This is not an either/or choice.
 
@@ -36,7 +36,7 @@ Short-term reuse should focus on the external reference stack:
 - The published orchestration pattern that couples RDME, CME, ODE, BD, and geometry updates.
 - Their frozen Syn3A production configuration as a baseline target.
 
-Within `oNeuro`, the reusable surfaces are mostly engineering patterns, not domain-complete biology:
+Within `oNeura`, the reusable surfaces are mostly engineering patterns, not domain-complete biology:
 
 - Step-based subsystem updates.
 - Dataclass-heavy state definitions.
@@ -45,7 +45,7 @@ Within `oNeuro`, the reusable surfaces are mostly engineering patterns, not doma
 
 ## What We Should Not Assume
 
-We should **not** assume that the external release means `oNeuro` already has this capability.
+We should **not** assume that the external release means `oNeura` already has this capability.
 
 The current repo is still neural-first:
 
@@ -75,13 +75,13 @@ Goal: reproduce and inspect the published pipeline with as little reinvention as
 
 Scope:
 
-- Stand up the published MC4D environment separately from `oNeuro`.
+- Stand up the published MC4D environment separately from `oNeura`.
 - Verify that we can run a small or partial reference workload.
 - Use the external runtime as the benchmark target for architecture and output shape.
 
-### Track B: Native `oNeuro` Whole-Cell Layer
+### Track B: Native `oNeura` Whole-Cell Layer
 
-Goal: build a first-class whole-cell subsystem inside `oNeuro`.
+Goal: build a first-class whole-cell subsystem inside `oNeura`.
 
 Scope:
 
@@ -131,7 +131,7 @@ Current native capabilities in `oneuro-metal`:
 - Local depletion and byproduct pressure now feed back into subsystem scaling and effective metabolic load instead of remaining passive diagnostics.
 - Per-subsystem differences in chemistry and scaling are now expressed as profile data tables instead of branch-specific support formulas, which keeps the runtime closer to a substrate-first architecture.
 
-## What Must Be Built In `oNeuro`
+## What Must Be Built In `oNeura`
 
 These surfaces do not currently exist in the repo and should be treated as new work:
 
@@ -184,10 +184,10 @@ These surfaces do not currently exist in the repo and should be treated as new w
 The recommended product direction is:
 
 - Use their released system to avoid wasting time rebuilding a known baseline.
-- Expand the library anyway, because owning the whole-cell abstraction inside `oNeuro` is what enables differentiation.
+- Expand the library anyway, because owning the whole-cell abstraction inside `oNeura` is what enables differentiation.
 
 In practice:
 
 - Reproduce with their stack.
 - Integrate around it.
-- Replace selectively where `oNeuro` needs native control, portability, or new biology.
+- Replace selectively where `oNeura` needs native control, portability, or new biology.

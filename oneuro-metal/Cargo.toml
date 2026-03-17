@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Bobby Price"]
 description = "GPU-accelerated molecular brain simulator — the world's first Metal-powered biophysical neural engine"
 license = "MIT"
-repository = "https://github.com/bobbyprice/oNeuro"
+repository = "https://github.com/bobbyprice/oNeura"
 keywords = ["neuroscience", "gpu", "metal", "hodgkin-huxley", "brain-simulation"]
 categories = ["science", "simulation"]
 

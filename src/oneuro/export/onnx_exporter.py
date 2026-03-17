@@ -19,7 +19,7 @@ from onnx import helper, TensorProto
 class ONNXExporter:
     """Export CUDAMolecularBrain to ONNX format for edge deployment."""
 
-    def __init__(self, brain, name: str = "oNeuroBrain"):
+    def __init__(self, brain, name: str = "oNeuraBrain"):
         """Initialize exporter with a brain model.
 
         Args:
@@ -172,7 +172,7 @@ class ONNXExporter:
         )
 
         # Create model
-        model = helper.make_model(graph, producer_name='oNeuro')
+        model = helper.make_model(graph, producer_name='oNeura')
         model.opset_import[0].version = 13
 
         return model

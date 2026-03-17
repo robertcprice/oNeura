@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Actual molecular terrarium demo built on the real oNeuro substrate.
+Actual molecular terrarium demo built on the real oNeura substrate.
 
 This demo intentionally uses the organism and world models that already exist
 in the repository instead of hand-authored "emergent" behavior rules:
@@ -567,7 +567,7 @@ def run_demo(
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
     pygame.init()
-    pygame.display.set_caption("oNeuro Actual Molecular Terrarium")
+    pygame.display.set_caption("oNeura Actual Molecular Terrarium")
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     clock = pygame.time.Clock()
 

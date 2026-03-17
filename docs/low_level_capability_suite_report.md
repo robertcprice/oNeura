@@ -1,6 +1,6 @@
 # Low-level capability suite report
 
-_oNeuro benchmark ladder report for the March 9, 2026 full-suite iteration_
+_oNeura benchmark ladder report for the March 9, 2026 full-suite iteration_
 
 ---
 

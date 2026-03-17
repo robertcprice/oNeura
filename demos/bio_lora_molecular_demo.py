@@ -8,7 +8,7 @@ Demonstrates:
   4. Reading network state back as a BioState vector
 
 Usage:
-    cd oNeuro && PYTHONPATH=src python3 demos/bio_lora_molecular_demo.py
+    cd oNeura && PYTHONPATH=src python3 demos/bio_lora_molecular_demo.py
 """
 
 import sys, os

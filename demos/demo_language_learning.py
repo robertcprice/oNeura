@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Emergent Language Learning in a digital Organic Neural Network (dONN).
 
-Demonstrates that a dONN (digital Organic Neural Network) built with oNeuro
+Demonstrates that a dONN (digital Organic Neural Network) built with oNeura
 — with no language model, no backpropagation, no embeddings, no tokenizer —
 can learn to associate symbols with meanings, chain symbols into sequences,
 generalize to novel compositions, and communicate between two brains, all
@@ -30,7 +30,7 @@ Experiment 4: Two-Brain Communication
   This is emergent communication: a shared vocabulary from STDP alone.
 
 Usage:
-    cd oNeuro && python3 demos/demo_language_learning.py
+    cd oNeura && python3 demos/demo_language_learning.py
     python3 demos/demo_language_learning.py --exp 1
     python3 demos/demo_language_learning.py --scale xlarge
 """

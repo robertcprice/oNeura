@@ -1,5 +1,5 @@
 """
-oNeuro Physics Module - MuJoCo Integration
+oNeura Physics Module - MuJoCo Integration
 
 Full 3D physics simulation for Drosophila melanogaster using MuJoCo.
 

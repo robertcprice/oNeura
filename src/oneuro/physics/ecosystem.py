@@ -1,7 +1,7 @@
 """
-oNeuro Ecosystem - Terrarium Simulation with Neural Flies
+oNeura Ecosystem - Terrarium Simulation with Neural Flies
 
-A complete ecosystem simulation where flies use their actual oNeuro brains
+A complete ecosystem simulation where flies use their actual oNeura brains
 to navigate, find food, mate, and survive. All behaviors emerge from
 neural dynamics, not hardcoded.
 
@@ -80,7 +80,7 @@ class NeuralActivity:
 
 class FlyOrganism:
     """
-    A fly with an oNeuro brain that generates emergent behavior.
+    A fly with an oNeura brain that generates emergent behavior.
 
     The fly has:
     - Bilateral antennae for olfactory sensing
@@ -176,7 +176,7 @@ class FlyOrganism:
 
     def process_brain(self, sensory: Dict, dt: float, is_night: bool) -> Dict:
         """
-        Process sensory input through the oNeuro brain.
+        Process sensory input through the oNeura brain.
         Returns motor commands that drive behavior.
         """
         if self.brain is None:
@@ -270,7 +270,7 @@ class Terrarium:
     A complete terrarium ecosystem with neural flies.
 
     Features:
-    - Multiple flies with oNeuro brains
+    - Multiple flies with oNeura brains
     - Food sources that get consumed
     - Day/night cycle affecting behavior
     - Full lifecycle: egg -> larva -> pupa -> adult

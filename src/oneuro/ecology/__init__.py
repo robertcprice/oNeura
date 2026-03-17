@@ -1,5 +1,5 @@
 """
-oNeuro Ecology Module
+oNeura Ecology Module
 
 Submodules:
 - ecosystems: Species, trophic levels, patches, logistic growth

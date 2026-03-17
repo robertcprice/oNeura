@@ -1,5 +1,5 @@
 """
-oNeuro Quantum Module
+oNeura Quantum Module
 
 Submodules:
 - quantum_mechanics: Wavefunctions, operators, Schrödinger equation

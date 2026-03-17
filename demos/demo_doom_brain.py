@@ -2,7 +2,7 @@
 """Doom FPS Brain -- A Biophysical Brain Plays Doom via Molecular Retina and FEP.
 
 A digital Organic Neural Network (dONN) plays a Doom-style FPS game using the
-oNeuro molecular brain (HH dynamics, 6 NTs, STDP) and optional biophysical
+oNeura molecular brain (HH dynamics, 6 NTs, STDP) and optional biophysical
 retina (3-layer photoreceptor-bipolar-RGC circuit).
 
 TWO modes demonstrate embodied cognition vs disembodied computation:

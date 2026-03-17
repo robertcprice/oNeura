@@ -2,7 +2,7 @@
 
 ## Overview
 
-digital Organic Neural Networks (dONNs) — built with oNeuro — open new possibilities for research and applications that are impossible with standard artificial neural networks. Because dONNs simulate the full molecular machinery of biological neurons (HH ion channels, neurotransmitters, gene expression, STDP), they can model development, adapt to damage, respond to drugs, and exhibit emergent consciousness metrics.
+digital Organic Neural Networks (dONNs) — built with oNeura — open new possibilities for research and applications that are impossible with standard artificial neural networks. Because dONNs simulate the full molecular machinery of biological neurons (HH ion channels, neurotransmitters, gene expression, STDP), they can model development, adapt to damage, respond to drugs, and exhibit emergent consciousness metrics.
 
 This tutorial explores practical applications and cutting-edge research directions, with emphasis on capabilities unique to the dONN paradigm.
 
@@ -517,7 +517,7 @@ results = test_neural_resilience()
 
 ### 5. Game Learning (DishBrain Replication)
 
-oNeuro's dONN replicates Cortical Labs' DishBrain (Kagan et al. 2022) — the first demonstration that an ONN (Organic Neural Network) can learn to play Pong via the Free Energy Principle. The dONN extends this with pharmacological experiments impossible on real tissue:
+oNeura's dONN replicates Cortical Labs' DishBrain (Kagan et al. 2022) — the first demonstration that an ONN (Organic Neural Network) can learn to play Pong via the Free Energy Principle. The dONN extends this with pharmacological experiments impossible on real tissue:
 
 ```bash
 # Replicate DishBrain Pong (5 experiments)

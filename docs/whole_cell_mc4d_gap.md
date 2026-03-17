@@ -1,6 +1,6 @@
 # MC4D Gap Analysis
 
-This note records the current gap between `oNeuro`'s native whole-cell path and the released `Minimal_Cell_4DWCM` implementation for `JCVI-syn3A`.
+This note records the current gap between `oNeura`'s native whole-cell path and the released `Minimal_Cell_4DWCM` implementation for `JCVI-syn3A`.
 
 ## Source Anchors
 
@@ -19,7 +19,7 @@ This note records the current gap between `oNeuro`'s native whole-cell path and 
 - File-backed restart/output infrastructure around CME, flux, and restart directories, rather than only in-memory stepping.
 - Organism-specific model content for the minimal cell, not only a generic substrate framework.
 
-## What `oNeuro` Has Now
+## What `oNeura` Has Now
 
 - A Rust-first native whole-cell runtime in `oneuro-metal` with RDME-like lattice diffusion, local chemistry microdomains, whole-cell scheduler/state logic, and GPU-backed hot paths.
 - A substrate-first IR for reactions, assembly, localization, scalar process operators, affine reducers, subsystem signatures, and compiled coupling bundles.

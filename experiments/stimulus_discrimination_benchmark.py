@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E402
-"""Minimal cue discrimination benchmark for oNeuro.
+"""Minimal cue discrimination benchmark for oNeura.
 
 This benchmark sits between the mechanistic corticostriatal pair protocol and
 the action-bias task. It asks a narrower question:

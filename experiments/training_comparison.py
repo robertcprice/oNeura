@@ -14,7 +14,7 @@ that emerge from its biophysical subsystems:
      spine plasticity give more stable learning trajectories.
 
 Usage:
-    cd oNeuro && python3 experiments/training_comparison.py
+    cd oNeura && python3 experiments/training_comparison.py
 """
 
 from __future__ import annotations

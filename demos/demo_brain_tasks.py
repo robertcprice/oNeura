@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Behavioral demos for the oNeuro molecular brain.
+"""Behavioral demos for the oNeura molecular brain.
 
 Four experiments that show the brain performing real tasks — learning
 associations, remembering things, responding to drugs — not just
@@ -676,7 +676,7 @@ def _build_brain(scale: str, seed: int) -> RegionalBrain:
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="oNeuro Behavioral Demos")
+    parser = argparse.ArgumentParser(description="oNeura Behavioral Demos")
     parser.add_argument("--demo", type=int, choices=[1, 2, 3, 4],
                         help="Run a specific demo (1-4)")
     parser.add_argument("--scale", choices=["minimal", "standard", "large", "xlarge"],
@@ -692,7 +692,7 @@ def main():
     }
 
     print("=" * 70)
-    print("  oNeuro Behavioral Demo Suite")
+    print("  oNeura Behavioral Demo Suite")
     print(f"  Scale: {args.scale}  |  Seed: {args.seed}")
     print("=" * 70)
 

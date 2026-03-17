@@ -1,4 +1,4 @@
-"""oNeuro — Biologically-inspired neural networks.
+"""oNeura — Biologically-inspired neural networks.
 
 Core:
     from oneuro.organic_neural_network import OrganicNeuron, OrganicSynapse, OrganicNeuralNetwork

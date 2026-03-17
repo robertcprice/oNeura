@@ -9,7 +9,7 @@ D. In-Silico Drug Screening: screen 8 drugs for efficacy, consciousness,
 E. Long-Duration Circadian + Parameter Sensitivity
 
 Usage:
-    cd oNeuro && python3 demos/demo_research_platforms.py
+    cd oNeura && python3 demos/demo_research_platforms.py
 """
 
 from __future__ import annotations
@@ -751,7 +751,7 @@ def platform_g_dose_response():
 def run_all_platforms():
     """Run all 7 research platforms."""
     print("\n" + "#" * 70)
-    print("  oNeuro RESEARCH PLATFORMS")
+    print("  oNeura RESEARCH PLATFORMS")
     print("#" * 70)
 
     t0 = time.time()

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This tutorial walks through oNeuro's Spatial Arena demo (inspired by Doom's BSP dungeon generation algorithm), which extends the DishBrain Pong paradigm (Tutorial 8, Application 5) from 1D tracking to 2D spatial navigation in a procedurally generated dungeon environment. The dONN (digital Organic Neural Network) must navigate rooms and corridors to reach a goal while avoiding enemies and collecting health pickups — all learning is driven by the **Free Energy Principle**, not reward signals.
+This tutorial walks through oNeura's Spatial Arena demo (inspired by Doom's BSP dungeon generation algorithm), which extends the DishBrain Pong paradigm (Tutorial 8, Application 5) from 1D tracking to 2D spatial navigation in a procedurally generated dungeon environment. The dONN (digital Organic Neural Network) must navigate rooms and corridors to reach a goal while avoiding enemies and collecting health pickups — all learning is driven by the **Free Energy Principle**, not reward signals.
 
 This tutorial covers:
 - The Free Energy Principle (FEP) in spatial environments
@@ -21,7 +21,7 @@ This tutorial covers:
 ## Quick Start
 
 ```bash
-cd oNeuro
+cd oNeura
 
 # Run all 3 experiments at small scale
 PYTHONPATH=src python3 demos/demo_doom_arena.py
@@ -205,7 +205,7 @@ At small scale (1K neurons), expect noisy learning with many failures. At medium
 
 ## Comparison to Original DishBrain
 
-| Aspect | DishBrain (Kagan 2022) | oNeuro Pong | oNeuro Spatial Arena |
+| Aspect | DishBrain (Kagan 2022) | oNeura Pong | oNeura Spatial Arena |
 |--------|----------------------|-------------|-------------------|
 | **Substrate** | 800K living neurons (ONN) | 1K-100K simulated (dONN) | 1K-100K simulated (dONN) |
 | **Task** | 1D Pong | 1D Pong | 25×25 dungeon navigation |

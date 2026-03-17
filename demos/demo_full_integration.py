@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-oNeuro Full Integration Demo
+oNeura Full Integration Demo
 
 This demonstrates the complete neural-molecular simulation pipeline:
 1. GPU-accelerated molecular dynamics (Rust/Metal)
@@ -179,7 +179,7 @@ def run_python_fallback():
 
 def main():
     print("="*60)
-    print("oNeuro - Neural Molecular Dynamics")
+    print("oNeura - Neural Molecular Dynamics")
     print("="*60)
 
     # Run MD demo

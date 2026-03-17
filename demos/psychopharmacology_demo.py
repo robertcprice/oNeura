@@ -10,7 +10,7 @@ Demonstrates drug effects on a molecular neural network:
 Tests: Fluoxetine (SSRI), Caffeine, Ketamine, Diazepam
 
 Usage:
-    cd oNeuro && PYTHONPATH=src python3 demos/psychopharmacology_demo.py
+    cd oNeura && PYTHONPATH=src python3 demos/psychopharmacology_demo.py
 """
 
 import sys, os
@@ -196,7 +196,7 @@ def make_network(seed=42):
 
 def main():
     print("=" * 60)
-    print("  oNeuro Computational Psychopharmacology Demo")
+    print("  oNeura Computational Psychopharmacology Demo")
     print("=" * 60)
 
     # Show network info

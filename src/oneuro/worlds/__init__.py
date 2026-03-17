@@ -1,4 +1,4 @@
-"""oNeuro Worlds — physical sandboxes for digital organisms."""
+"""oNeura Worlds — physical sandboxes for digital organisms."""
 
 from .molecular_world import MolecularWorld
 

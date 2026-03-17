@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This is the single execution document for taking `oNeuro` from its current Rust-first whole-cell runtime to a genome-explicit, chemistry-explicit, atomistically grounded microbial simulator.
+This is the single execution document for taking `oNeura` from its current Rust-first whole-cell runtime to a genome-explicit, chemistry-explicit, atomistically grounded microbial simulator.
 
 This document exists to end the stop-and-go loop.
 

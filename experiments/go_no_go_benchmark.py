@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Go/No-Go Benchmark for oNeuro Basal Ganglia Learning.
+"""Go/No-Go Benchmark for oNeura Basal Ganglia Learning.
 
 This benchmark tests whether the basal ganglia D1/D2 pathways can learn
 a simple Go/No-Go discrimination task through dopamine-modulated STDP.
@@ -539,7 +539,7 @@ def print_summary(summaries: Dict) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Go/No-Go Benchmark for oNeuro")
+    parser = argparse.ArgumentParser(description="Go/No-Go Benchmark for oNeura")
     parser.add_argument(
         "--conditions",
         nargs="+",
@@ -608,7 +608,7 @@ def main():
     )
 
     print("=" * 80)
-    print("oNeuro Go/No-Go Benchmark (CALIBRATED)")
+    print("oNeura Go/No-Go Benchmark (CALIBRATED)")
     print("=" * 80)
     print(f"\nConfiguration:")
     print(f"  Conditions: {args.conditions}")

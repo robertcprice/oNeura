@@ -1,4 +1,4 @@
-# Comparison: BoB (Nature 2024) vs oNeuro Drosophila Simulator
+# Comparison: BoB (Nature 2024) vs oNeura Drosophila Simulator
 
 ## Paper Citation
 ```
@@ -18,7 +18,7 @@
 
 ## Executive Summary
 
-| Aspect | BoB (Nature 2024) | oNeuro Drosophila |
+| Aspect | BoB (Nature 2024) | oNeura Drosophila |
 |--------|-------------------|------------------|
 | **Approach** | Functional Fly brain-inspired AI | Biophysical brain simulation |
 | **Neural Type** | Rate-based neurons (~100K units) | Hodgkin-Huxley spiking neurons |
@@ -27,7 +27,7 @@
 | **Validation** | Real-world autonomous flight | Benchmark tasks |
 | **Biological Fidelity** | Functional inspiration | Molecular resolution |
 
-**Verdict**: Different design philosophies - BoB prioritizes engineering performance, oNeuro prioritizes biological fidelity. Both are valuable and complementary.
+**Verdict**: Different design philosophies - BoB prioritizes engineering performance, oNeura prioritizes biological fidelity. Both are valuable and complementary.
 
 ---
 
@@ -42,7 +42,7 @@
 - **Ventral Nerve Cord (VNC)**: Motor control, wing regulation
 - **Implementation**: ~100K rate-based neural units organized by brain region
 
-**Our oNeuro**:
+**Our oNeura**:
 - **Cortex**: L2/3, L4, L5, L6 (hierarchical processing)
 - **Thalamus**: Relay neurons
 - **Hippocampus**: CA1, CA3, DG (memory formation)
@@ -65,7 +65,7 @@ class Neuron:
 - **Dynamics**: No ion channels
 - **Plasticity**: Backpropagation through time, reinforcement learning
 
-#### oNeuro
+#### oNeura
 ```python
 # Our implementation (HH neurons)
 class HHNeuron:
@@ -91,7 +91,7 @@ class HHNeuron:
 | **Spatial** | Path integration in CX (ring attractor) |
 | **Navigation** | Sun heading + landmark matching |
 
-#### oNeuro
+#### oNeura
 | Mechanism | Implementation |
 |-----------|---------------|
 | **STDP** | Spike-timing dependent plasticity |
@@ -111,7 +111,7 @@ class HHNeuron:
 - **Actuators**: Two-winged flapping robot (70mm wingspan)
 - **Power**: 40mW (neural computer only)
 
-#### oNeuro
+#### oNeura
 - **Training/Simulation**: GPU (CUDA/MPS) or CPU
 - **Deployment**: Desktop/cloud (no edge deployment yet)
 - **World**: MolecularWorld with odorant diffusion physics
@@ -129,7 +129,7 @@ class HHNeuron:
 | Landmark navigation | SUCCESS |
 | Sun heading | SUCCESS |
 
-#### oNeuro Experiments (from README)
+#### oNeura Experiments (from README)
 | Experiment | Result |
 |------------|--------|
 | Olfactory learning | PASS (MB conditioning) |
@@ -149,7 +149,7 @@ class HHNeuron:
 1. **Complete Central Complex Model**
    - Ring attractor for heading
    - Steering integration
-   - **Action**: Implement full CX with ring attractor in oNeuro
+   - **Action**: Implement full CX with ring attractor in oNeura
 
 2. **Edge Deployment Pipeline**
    - Model quantization/optimization for hardware
@@ -188,7 +188,7 @@ class HHNeuron:
 4. **FEP Learning**
    - Entropy-based learning without rewards
    - Matches biological DishBrain experiments
-   - **Unique to oNeuro**
+   - **Unique to oNeura**
 
 ---
 
@@ -224,12 +224,12 @@ class HHNeuron:
 
 ## Conclusion
 
-BoB (Nature 2024) and oNeuro serve **different but complementary** purposes:
+BoB (Nature 2024) and oNeura serve **different but complementary** purposes:
 
 | System | Philosophy | Best For |
 |--------|-----------|----------|
 | **BoB** | Engineering performance | Autonomous robots, edge AI |
-| **oNeuro** | Biological fidelity | Drug discovery, neuroscience research, fundamental biology |
+| **oNeura** | Biological fidelity | Drug discovery, neuroscience research, fundamental biology |
 
 **Our system is NOT worse** - it's different. We model at molecular resolution what BoB approximates functionally.
 

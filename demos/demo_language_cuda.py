@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """GPU-Accelerated Language Learning in digital Organic Neural Networks (dONNs).
 
-Runs language learning experiments on oNeuro dONN (digital Organic Neural
+Runs language learning experiments on oNeura dONN (digital Organic Neural
 Network) molecular brains using whichever GPU backend is available:
   - CUDA (Nvidia H200/A100/4090)
   - MPS (Apple Silicon) — now optimized via sparse matmul

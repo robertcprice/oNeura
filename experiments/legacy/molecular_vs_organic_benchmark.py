@@ -5,7 +5,7 @@ Compares both network types on XOR and PatternRecognition tasks using
 identical geometry, seed, and training protocol.
 
 Usage:
-    cd oNeuro && PYTHONPATH=src python3 experiments/molecular_vs_organic_benchmark.py
+    cd oNeura && PYTHONPATH=src python3 experiments/molecular_vs_organic_benchmark.py
 """
 
 import sys
@@ -80,7 +80,7 @@ def evaluate_network(network, task_cls, n_pre=5, n_train=200, n_post=20, seed=42
 
 def run_benchmark():
     print("=" * 78)
-    print("  oNeuro Benchmark: Molecular vs Organic Neural Networks")
+    print("  oNeura Benchmark: Molecular vs Organic Neural Networks")
     print("=" * 78)
     print()
 

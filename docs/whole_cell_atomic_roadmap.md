@@ -259,7 +259,7 @@ The next execution target is to keep replacing scheduler shortcuts with explicit
 61. Add automatic surrogate compilation from repeated atomistic neighborhoods so expensive local chemistry becomes reusable learned physical reductions.
 62. Add adaptive partitioning that can promote or demote a region between coarse and atomistic treatment during a live run.
 63. Add hardware-specialized backends in Rust for Metal and CUDA compute kernels rather than moving the hot loop back into Python.
-64. Add cluster-scale job orchestration for large multiscale runs, with artifact ingestion kept inside the existing `oNeuro` experiment model.
+64. Add cluster-scale job orchestration for large multiscale runs, with artifact ingestion kept inside the existing `oNeura` experiment model.
 
 ## Immediate Build Order From The Current Codebase
 

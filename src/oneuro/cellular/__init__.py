@@ -1,5 +1,5 @@
 """
-oNeuro Cellular Module
+oNeura Cellular Module
 
 Submodules:
 - organelles: Mitochondria, nucleus, ER, Golgi, ribosomes

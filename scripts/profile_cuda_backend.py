@@ -162,7 +162,7 @@ def _profile_regional(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Profile the PyTorch oNeuro backend")
+    parser = argparse.ArgumentParser(description="Profile the PyTorch oNeura backend")
     parser.add_argument("--target", default="regional", choices=["molecular", "regional"])
     parser.add_argument("--device", default="auto", help="Requested torch device: auto/cuda/mps/cpu")
     parser.add_argument("--neurons", type=int, default=25_000, help="Neuron count for molecular runs")

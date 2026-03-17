@@ -2,7 +2,7 @@
 """Beyond Artificial Neural Networks: dONN Capabilities Impossible in Standard ANNs.
 
 Demonstrates emergent capabilities of digital Organic Neural Networks (dONNs)
-built with oNeuro that CANNOT be achieved with conventional artificial neural
+built with oNeura that CANNOT be achieved with conventional artificial neural
 networks (PyTorch, TensorFlow, etc.) because ANNs lack the molecular substrate
 that produces these behaviors. A dONN simulates the full molecular machinery
 of biological neurons — HH ion channels, neurotransmitters, gene expression,
@@ -35,7 +35,7 @@ Experiment 6: Polypharmacy Interaction
   In ANNs: no mechanism for drug-drug interactions.
 
 Usage:
-    cd oNeuro && python3 demos/demo_beyond_ann.py
+    cd oNeura && python3 demos/demo_beyond_ann.py
     python3 demos/demo_beyond_ann.py --exp 1     # single experiment
     python3 demos/demo_beyond_ann.py --scale xlarge
 """
@@ -791,7 +791,7 @@ def exp6_polypharmacy(
     _why_ann_cant(
         "In standard ANNs, if you change learning_rate by +10% (caffeine)\n"
         "  and by -15% (diazepam), the combined effect is exactly -5%.\n"
-        "  In oNeuro, both drugs compete for the same GABA-A channel,\n"
+        "  In oNeura, both drugs compete for the same GABA-A channel,\n"
         "  producing emergent non-linear interactions."
     )
 

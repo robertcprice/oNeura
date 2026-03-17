@@ -1,4 +1,4 @@
-"""Native shared state for whole-cell simulation inside oNeuro."""
+"""Native shared state for whole-cell simulation inside oNeura."""
 
 from __future__ import annotations
 

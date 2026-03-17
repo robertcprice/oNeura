@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E402
-"""Initial cue-conditioned corticostriatal action-bias benchmark for oNeuro.
+"""Initial cue-conditioned corticostriatal action-bias benchmark for oNeura.
 
 This benchmark intentionally starts smaller than the regional-brain Go/No-Go demo.
 It asks a narrower question:

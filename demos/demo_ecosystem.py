@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-oNeuro Ecosystem Demo - Neural Fly Terrarium
+oNeura Ecosystem Demo - Neural Fly Terrarium
 
-Run a terrarium simulation where flies use their actual oNeuro brains
+Run a terrarium simulation where flies use their actual oNeura brains
 to navigate, find food, mate, and survive.
 
 Usage:
@@ -25,7 +25,7 @@ from oneuro.physics.ecosystem import Terrarium, FoodSource, LifeStage
 
 
 class NeuralEcosystem:
-    """Ecosystem with actual oNeuro Drosophila brains."""
+    """Ecosystem with actual oNeura Drosophila brains."""
 
     def __init__(self, n_flies=20):
         self.terrarium = Terrarium()
@@ -197,7 +197,7 @@ def run_headless(n_flies=20, steps=200):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='oNeuro Ecosystem Demo')
+    parser = argparse.ArgumentParser(description='oNeura Ecosystem Demo')
     parser.add_argument('--flies', type=int, default=20, help='Number of flies')
     parser.add_argument('--steps', type=int, default=200, help='Simulation steps')
     parser.add_argument('--render', action='store_true', help='Show visualization')

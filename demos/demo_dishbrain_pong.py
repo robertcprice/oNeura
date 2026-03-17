@@ -6,14 +6,14 @@ Replicates and extends Cortical Labs' DishBrain (Kagan et al. 2022, Neuron):
 array learned Pong in 5 minutes using the FREE ENERGY PRINCIPLE — no reward,
 no punishment, just structured (predictable) vs unstructured (random) feedback.
 
-This demo proves that oNeuro's dONN (digital Organic Neural Network) can
+This demo proves that oNeura's dONN (digital Organic Neural Network) can
 replicate the same learning phenomena without biological tissue, and extends
 the original work with pharmacological experiments impossible on real neurons.
 
 Terminology:
   - ONN:    Organic Neural Network — real biological neurons (DishBrain, FinalSpark)
-  - dONN:   digital Organic Neural Network — oNeuro's biophysically faithful simulation
-  - oNeuro: The platform for building and running dONNs
+  - dONN:   digital Organic Neural Network — oNeura's biophysically faithful simulation
+  - oNeura: The platform for building and running dONNs
 
 7 Experiments:
    1. DishBrain Pong Replication (free energy principle)

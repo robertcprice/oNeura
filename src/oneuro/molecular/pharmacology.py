@@ -3,7 +3,7 @@
 Eight drugs modeled with real pharmacokinetic (1-compartment) and
 pharmacodynamic (Hill equation) parameters from clinical literature.
 Each drug targets specific molecular components that already exist in the
-oNeuro molecular layer — no modifications to existing files needed.
+oNeura molecular layer — no modifications to existing files needed.
 
 Usage:
     from oneuro.molecular.pharmacology import DRUG_LIBRARY, DrugCocktail

@@ -1,4 +1,4 @@
-"""oNeuro environments -- simulated worlds for dONN brains.
+"""oNeura environments -- simulated worlds for dONN brains.
 
 Environments produce pixel frames (numpy uint8 RGB arrays) that can be
 processed by a molecular retina and fed into a digital organic neural network.

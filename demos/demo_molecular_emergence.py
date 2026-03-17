@@ -7,7 +7,7 @@ CONSEQUENCE of ion channel kinetics, receptor binding, enzyme catalysis,
 gene expression cascades, and TTFL oscillator ODEs.
 
 Usage:
-    cd oNeuro && PYTHONPATH=src python3 demos/demo_molecular_emergence.py
+    cd oNeura && PYTHONPATH=src python3 demos/demo_molecular_emergence.py
 """
 
 import sys

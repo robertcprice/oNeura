@@ -219,7 +219,7 @@ def _profile_drosophila(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Profile the Rust/Metal oNeuro backend")
+    parser = argparse.ArgumentParser(description="Profile the Rust/Metal oNeura backend")
     parser.add_argument(
         "--target",
         default="molecular",

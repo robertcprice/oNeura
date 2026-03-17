@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E402
-"""Mechanistic corticostriatal timing assay for oNeuro.
+"""Mechanistic corticostriatal timing assay for oNeura.
 
 This experiment isolates one claim that the simulator can realistically support:
 

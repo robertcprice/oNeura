@@ -27,7 +27,7 @@ class WholeCellArtifactSummary:
 
 
 class WholeCellArtifactIngestor:
-    """Summarize MC4D-style outputs into oNeuro JSON artifacts."""
+    """Summarize MC4D-style outputs into oNeura JSON artifacts."""
 
     def __init__(
         self,

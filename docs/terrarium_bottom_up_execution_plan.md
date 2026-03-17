@@ -591,7 +591,7 @@ Verification commands:
 - `cargo test --manifest-path oneuro-metal/Cargo.toml soil_broad -- --nocapture`
 - `cargo test --manifest-path oneuro-metal/Cargo.toml terrarium_world -- --nocapture`
 - `cargo run --manifest-path oneuro-metal/Cargo.toml --bin terrarium_native -- --frames 10 --no-render --summary-every 5`
-- `PYTHONPATH="/Users/bobbyprice/projects/oNeuro/.venv-codex/lib/python3.14/site-packages:src" python3 demos/demo_actual_molecular_terrarium.py --headless-frames 30`
+- `PYTHONPATH="/Users/bobbyprice/projects/oNeura/.venv-codex/lib/python3.14/site-packages:src" python3 demos/demo_actual_molecular_terrarium.py --headless-frames 30`
 
 Status:
 - `done` for source-level state suppression

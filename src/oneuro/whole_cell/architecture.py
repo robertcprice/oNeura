@@ -77,7 +77,7 @@ def syn3a_reference_program() -> WholeCellProgramSpec:
         target_gpu_count=2,
         notes=(
             "Reference architecture derived from the published minimal-cell 4D stack.",
-            "Native oNeuro support does not exist yet; use explicit adapters.",
+            "Native oNeura support does not exist yet; use explicit adapters.",
         ),
     )
     return WholeCellProgramSpec(

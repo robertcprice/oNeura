@@ -1,8 +1,8 @@
 """
-oNeuro 3D World Server
+oNeura 3D World Server
 
 Real-time Flask server that:
-1. Runs actual oNeuro simulation
+1. Runs actual oNeura simulation
 2. Serves 3D world via WebSocket
 3. Tracks fly health, hunger, death
 
@@ -21,7 +21,7 @@ from flask_socketio import SocketIO, emit
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-# oNeuro imports
+# oNeura imports
 try:
     from oneuro.organisms.drosophila import DrosophilaBrain
     from oneuro.physics.compound_eye import BinocularVisionSystem
@@ -106,7 +106,7 @@ class WorldState:
 
 class Fly:
     """
-    A fly with REAL oNeuro brain.
+    A fly with REAL oNeura brain.
     """
 
     def __init__(self, world, fly_id=0, is_player=False):
@@ -139,7 +139,7 @@ class Fly:
         self.speed = 0.0
         self.turn = 0.0
 
-        print(f"Fly {fly_id} created with oNeuro brain")
+        print(f"Fly {fly_id} created with oNeura brain")
 
     def step(self, dt=0.1):
         """One simulation step."""
@@ -186,7 +186,7 @@ class Fly:
             self.velocity[2] = max(0, self.velocity[2])
 
     def _neural_step(self, dt):
-        """Real oNeuro brain step."""
+        """Real oNeura brain step."""
         # Get sensory input
         light = self.world.get_light_at(self.position)
         odorants = self.world.get_odorants_at(self.position)
@@ -216,7 +216,7 @@ class Fly:
         self.turn = motor.get('turn', 0.0)
 
     def _simple_step(self, dt):
-        """Simple step when oNeuro unavailable."""
+        """Simple step when oNeura unavailable."""
         # Look for food
         best_food = None
         best_dist = float('inf')
@@ -346,7 +346,7 @@ def simulation_loop():
 def handle_connect():
     """Client connected."""
     print(f"Client connected")
-    emit('welcome', {'message': 'Connected to oNeuro World'})
+    emit('welcome', {'message': 'Connected to oNeura World'})
 
 
 @socketio.on('disconnect')
@@ -400,7 +400,7 @@ def main():
     print("=" * 60)
     print("oNEURO 3D WORLD SERVER")
     print("=" * 60)
-    print(f"oNeuro available: {ONEURO_AVAILABLE}")
+    print(f"oNeura available: {ONEURO_AVAILABLE}")
     print(f"Open http://localhost:5000 in your browser")
     print("=" * 60)
 

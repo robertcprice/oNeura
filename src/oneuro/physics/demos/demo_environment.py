@@ -6,7 +6,7 @@ Standalone demo showing 3D environment creation, MJCF generation,
 and environment sampling — all without requiring MuJoCo to be installed.
 
 Usage:
-    cd /Users/bobbyprice/projects/oNeuro
+    cd /Users/bobbyprice/projects/oNeura
     PYTHONPATH=src python3 src/oneuro/physics/demo_environment.py
 """
 

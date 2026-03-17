@@ -1,4 +1,4 @@
-# oNeuro Demos
+# oNeura Demos
 
 This is a working demo surface, not a frozen product menu. If you want the
 current benchmark-critical entrypoints first, start with:

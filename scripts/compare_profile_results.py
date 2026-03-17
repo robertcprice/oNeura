@@ -148,7 +148,7 @@ def _comparison_summary(rows: list[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compare Mac and A100 oNeuro profile JSON")
+    parser = argparse.ArgumentParser(description="Compare Mac and A100 oNeura profile JSON")
     parser.add_argument("--mac-profile", required=True, help="Mac profile JSON path")
     parser.add_argument("--mac-telemetry", default=None, help="Optional Mac telemetry JSON path")
     parser.add_argument("--a100-profile", default=None, help="A100 profile JSON path")

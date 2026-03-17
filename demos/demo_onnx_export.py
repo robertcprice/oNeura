@@ -49,7 +49,7 @@ def main():
 
     # Step 2: Initialize exporter
     print("Step 2: Initializing ONNX exporter...")
-    exporter = ONNXExporter(brain, name="oNeuro_Drosophila_Brain")
+    exporter = ONNXExporter(brain, name="oNeura_Drosophila_Brain")
 
     print(f"  ✓ Exporter initialized")
     print(f"  ✓ Brain model: {exporter.name}")

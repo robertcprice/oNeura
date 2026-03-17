@@ -1,7 +1,7 @@
 """
-Real oNeuro Fly in 3D Minecraft World
+Real oNeura Fly in 3D Minecraft World
 
-This connects the REAL oNeuro brain to the 3D visualization.
+This connects the REAL oNeura brain to the 3D visualization.
 The fly's brain actually runs Hodgkin-Huxley dynamics,
 and its neural activity drives movement in the 3D world.
 """
@@ -16,10 +16,10 @@ from oneuro.organisms.drosophila import DrosophilaBrain
 
 
 class RealFly3D:
-    """Fly with REAL oNeuro brain."""
+    """Fly with REAL oNeura brain."""
 
     def __init__(self, scale='tiny', device='cpu'):
-        print(f"Creating REAL oNeuro brain ({scale} scale)...")
+        print(f"Creating REAL oNeura brain ({scale} scale)...")
         self.brain = DrosophilaBrain(scale=scale, device=device)
 
         # Position in world
@@ -81,7 +81,7 @@ class RealFly3D:
 
 
 def demo():
-    """Demo the real oNeuro fly."""
+    """Demo the real oNeura fly."""
     print("=" * 60)
     print("REAL oNEURO FLY IN 3D WORLD")
     print("=" * 60)

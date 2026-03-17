@@ -85,8 +85,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `tests/test_whole_cell_assets.py`
 - Tests run:
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -107,9 +107,9 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-registry && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-registry && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-registry && PYTHONPATH=src python - <<'PY' ...`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-registry && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-registry && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-registry && PYTHONPATH=src python - <<'PY' ...`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -128,8 +128,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-transport.C9ElA8 && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-transport.C9ElA8 && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-transport.C9ElA8 && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-transport.C9ElA8 && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -149,9 +149,9 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-repair.kZAVlw && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-repair.kZAVlw && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase2-repair.kZAVlw && PYTHONPATH=src python - <<'PY' ...`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-repair.kZAVlw && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-repair.kZAVlw && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase2-repair.kZAVlw && PYTHONPATH=src python - <<'PY' ...`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -171,8 +171,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase3-scheduler.4uKnA5 && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase3-scheduler.4uKnA5 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase3-scheduler.4uKnA5 && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase3-scheduler.4uKnA5 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -191,8 +191,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase4-expression.12904 && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase4-expression.12904 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase4-expression.12904 && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase4-expression.12904 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -211,8 +211,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase5-assembly.8470 && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase5-assembly.8470 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase5-assembly.8470 && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase5-assembly.8470 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -380,8 +380,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase6-chromosome.18395 && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase6-chromosome.18395 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase6-chromosome.18395 && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase6-chromosome.18395 && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -402,8 +402,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -425,8 +425,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -447,8 +447,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -468,8 +468,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -491,8 +491,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -514,8 +514,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && cd /tmp/oNeuro-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && cd /tmp/oNeura-phase7-membrane.5ezW2U && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -537,8 +537,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -560,8 +560,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -579,8 +579,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q gpu::whole_cell_rdme --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -599,8 +599,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q bundled_syn3a_process_registry_compiles_from_assets --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -621,7 +621,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q test_organism_expression_state_responds_to_energy_and_load_stress --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -643,7 +643,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q test_head_on_transcription_increases_chromosome_collision_pressure --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -664,7 +664,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q test_nucleoid_localization_biases_chromosome_progress --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -688,8 +688,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q test_compiled_chromosome_domain_centers_bias_weight_peaks --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -746,8 +746,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q test_rdme_drive_fields_follow_compiled_chromosome_domains --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -766,8 +766,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -789,8 +789,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
   - `python3 -m py_compile tests/test_whole_cell_assets.py`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -850,7 +850,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -873,7 +873,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -896,7 +896,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -924,7 +924,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -948,7 +948,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -999,7 +999,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -1018,7 +1018,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1063,7 +1063,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1091,7 +1091,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1139,7 +1139,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1163,7 +1163,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1186,7 +1186,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1206,8 +1206,8 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell.rs oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1230,7 +1230,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1253,7 +1253,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1314,7 +1314,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/lib.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -1336,7 +1336,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/lib.rs oneuro-metal/src/whole_cell.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -1357,7 +1357,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/whole_cell.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -1377,7 +1377,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && maturin develop -m oneuro-metal/Cargo.toml`
   - `PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
@@ -1404,7 +1404,7 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
   - `src/oneuro/whole_cell/assets/bundles/mgen_minimal_demo/program_defaults.json`
   - `tests/test_whole_cell_assets.py`
 - Tests run:
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
 - Artifacts produced:
@@ -1426,10 +1426,10 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py tests/test_whole_cell_assets.py`
   - `rustfmt oneuro-metal/src/whole_cell_data.rs`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:
@@ -1453,10 +1453,10 @@ Use this ledger to record completed work packages from `docs/whole_cell_executio
 - Tests run:
   - `python3 -m py_compile src/oneuro/whole_cell/assets/compiler.py src/oneuro/whole_cell/assets/__init__.py src/oneuro/whole_cell/__init__.py tests/test_whole_cell_assets.py`
   - `rustfmt oneuro-metal/src/whole_cell_data.rs oneuro-metal/src/lib.rs oneuro-metal/src/whole_cell.rs`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell_assets.py`
   - `cargo test -q whole_cell_data --manifest-path oneuro-metal/Cargo.toml`
   - `cargo test -q whole_cell --manifest-path oneuro-metal/Cargo.toml`
-  - `source /Users/bobbyprice/projects/oNeuro/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
+  - `source /Users/bobbyprice/projects/oNeura/.venv-codex/bin/activate && PYTHONPATH=src pytest -q tests/test_whole_cell.py tests/test_whole_cell_assets.py`
 - Artifacts produced:
   - `none`
 - Remaining blockers:

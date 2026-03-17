@@ -8,7 +8,7 @@ Demonstrates the integration of:
 - Basic locomotion behaviors
 
 Usage:
-    cd /Users/bobbyprice/projects/oNeuro
+    cd /Users/bobbyprice/projects/oNeura
     python -m oneuro.physics.examples
 """
 

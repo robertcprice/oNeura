@@ -3,7 +3,7 @@
 A complete organism model: brain (nervous system), body (sensory + motor systems),
 and a unified Drosophila class that runs the sense-think-act loop every timestep.
 
-The Drosophila brain is built on oNeuro's CUDAMolecularBrain, giving every neuron
+The Drosophila brain is built on oNeura's CUDAMolecularBrain, giving every neuron
 Hodgkin-Huxley ion channels (Na_v, K_v, Ca_v), 6 neurotransmitters (DA, 5-HT,
 octopamine/NE, ACh, GABA, glutamate), STDP, and pharmacology. The wiring is
 organized into 15 brain regions matching the FlyWire connectome (Dorkenwald et al.

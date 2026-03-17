@@ -3,7 +3,7 @@
 
 A biophysically faithful Drosophila melanogaster living in a continuous 2D
 arena with odorant gradients, light sources, temperature fields, food patches,
-and a day/night cycle. This demo builds on oNeuro's dONN (digital Organic
+and a day/night cycle. This demo builds on oNeura's dONN (digital Organic
 Neural Network) framework to show that complex insect behaviors -- olfactory
 learning, phototaxis, thermotaxis, foraging, pharmacological modulation, and
 circadian activity -- EMERGE from molecular-level neural dynamics (HH ion
@@ -22,8 +22,8 @@ Key Drosophila neural architecture:
 
 Terminology:
   - ONN:    Organic Neural Network -- real biological neurons
-  - dONN:   digital Organic Neural Network -- oNeuro's simulation
-  - oNeuro: The platform for building and running dONNs
+  - dONN:   digital Organic Neural Network -- oNeura's simulation
+  - oNeura: The platform for building and running dONNs
 
 6 Experiments:
   1. Olfactory Learning (Mushroom Body conditioning)

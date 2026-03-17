@@ -12,7 +12,7 @@ March 2026
 
 ## Abstract
 
-We present the first digital replication of Cortical Labs' DishBrain experiment, in which living neurons on a multi-electrode array learned to play Pong through the free energy principle. Our digital Organic Neural Network (dONN), built on the oNeuro platform, implements a complete molecular substrate -- Hodgkin-Huxley ion channels, six neurotransmitters, spike-timing-dependent plasticity via receptor trafficking, gene expression, and pharmacokinetic/pharmacodynamic drug modeling -- and demonstrates game learning that recapitulates the key findings of Kagan et al. (2022). Across five experiments validated with 3 independent seeds (5,050 neurons each, 7,422 seconds total runtime) on an NVIDIA A100-PCIE-40GB GPU we show: (1) above-random Pong performance emerging from free energy minimization in 1 of 3 seeds (30% to 50%, +20pp), with the remaining seeds exhibiting elevated initial hit rates (60-90%) from favorable random connectivity but failing to show monotonic improvement -- revealing that the FEP learning signal competes with initialization-dependent dynamics at medium scale and that the automated pass criterion (final > initial AND final > baseline + 10%) is conservative for networks that start above baseline, (2) robust learning speed advantages for FEP over dopaminergic reward and random protocols (3/3 seeds pass, FEP mean 39.3 hits vs. DA 35.7 vs. random 31.3), (3) pharmacological modulation across five drugs where methamphetamine consistently produced the lowest hit count across all conditions and seeds (mean 11.0 hits) consistent with Yerkes-Dodson inverted-U dose-response, though the primary diazepam-impairment criterion passed in only 1 of 3 seeds (diazepam mean 13.7 vs. baseline 12.7) -- highlighting that the simple Pong task lacks sensitivity to detect moderate pharmacological modulation at 5K-neuron scale, (4) reliable extension to spatial navigation (3/3 seeds pass, mean 25.3% success vs. 15% random baseline), and (5) scale invariance of learning from 1,000 to 10,000 neurons (2/3 seeds show learning at all tiers, with the single failure attributable to a connectivity-dependent 10K regression in one seed). Small-scale experiments (1,000 neurons) pass 5/5 automated validation criteria in under 22 minutes on a single Apple M-series GPU. The entire codebase is open-source, and every experiment is reproducible with a single command.
+We present the first digital replication of Cortical Labs' DishBrain experiment, in which living neurons on a multi-electrode array learned to play Pong through the free energy principle. Our digital Organic Neural Network (dONN), built on the oNeura platform, implements a complete molecular substrate -- Hodgkin-Huxley ion channels, six neurotransmitters, spike-timing-dependent plasticity via receptor trafficking, gene expression, and pharmacokinetic/pharmacodynamic drug modeling -- and demonstrates game learning that recapitulates the key findings of Kagan et al. (2022). Across five experiments validated with 3 independent seeds (5,050 neurons each, 7,422 seconds total runtime) on an NVIDIA A100-PCIE-40GB GPU we show: (1) above-random Pong performance emerging from free energy minimization in 1 of 3 seeds (30% to 50%, +20pp), with the remaining seeds exhibiting elevated initial hit rates (60-90%) from favorable random connectivity but failing to show monotonic improvement -- revealing that the FEP learning signal competes with initialization-dependent dynamics at medium scale and that the automated pass criterion (final > initial AND final > baseline + 10%) is conservative for networks that start above baseline, (2) robust learning speed advantages for FEP over dopaminergic reward and random protocols (3/3 seeds pass, FEP mean 39.3 hits vs. DA 35.7 vs. random 31.3), (3) pharmacological modulation across five drugs where methamphetamine consistently produced the lowest hit count across all conditions and seeds (mean 11.0 hits) consistent with Yerkes-Dodson inverted-U dose-response, though the primary diazepam-impairment criterion passed in only 1 of 3 seeds (diazepam mean 13.7 vs. baseline 12.7) -- highlighting that the simple Pong task lacks sensitivity to detect moderate pharmacological modulation at 5K-neuron scale, (4) reliable extension to spatial navigation (3/3 seeds pass, mean 25.3% success vs. 15% random baseline), and (5) scale invariance of learning from 1,000 to 10,000 neurons (2/3 seeds show learning at all tiers, with the single failure attributable to a connectivity-dependent 10K regression in one seed). Small-scale experiments (1,000 neurons) pass 5/5 automated validation criteria in under 22 minutes on a single Apple M-series GPU. The entire codebase is open-source, and every experiment is reproducible with a single command.
 
 ---
 
@@ -40,9 +40,9 @@ Despite its significance, the DishBrain paradigm faces several practical limitat
 
 **Limited scalability.** The MEA technology used in DishBrain has a fixed electrode density and spatial extent. Scaling to larger networks or different architectures requires new hardware, not parametric adjustment.
 
-### 1.3 The Digital Alternative: oNeuro and dONNs
+### 1.3 The Digital Alternative: oNeura and dONNs
 
-We propose a complementary approach: the digital Organic Neural Network (dONN). Rather than culturing real neurons, oNeuro simulates them at the molecular level. Each neuron in a dONN implements:
+We propose a complementary approach: the digital Organic Neural Network (dONN). Rather than culturing real neurons, oNeura simulates them at the molecular level. Each neuron in a dONN implements:
 
 - **Hodgkin-Huxley ion channel dynamics** with eight channel types (Na_v, K_v, K_leak, Ca_v, AMPA, NMDA with Mg2+ block, GABA-A, nAChR), using exact alpha/beta rate functions to generate action potentials from first principles.
 - **Six neurotransmitter systems** (dopamine, serotonin, norepinephrine, acetylcholine, GABA, glutamate) with receptor binding kinetics, synaptic cleft dynamics, and transporter reuptake.
@@ -79,7 +79,7 @@ DishBrain's innovation was the explicit use of the free energy principle (Fristo
 
 Several software platforms simulate biological neural networks at various levels of abstraction. NEURON (Hines and Carnevale, 1997) and GENESIS (Bower and Beeman, 1998) provide detailed single-neuron compartmental models but are not designed for closed-loop behavioral experiments. Brian2 (Stimberg et al., 2019) offers flexible spiking network simulation but lacks molecular-level pharmacological modeling. The Human Brain Project's NEST simulator (Gewaltig and Diesmann, 2007) scales to millions of neurons but uses point-neuron models without molecular substrates.
 
-oNeuro differs from these platforms in three ways: (1) it simulates 16 interacting molecular subsystems per neuron, enabling emergent pharmacology and consciousness metrics; (2) it provides a GPU-accelerated backend (PyTorch sparse operations on CUDA, MPS, or ROCm) that makes behavioral experiments with thousands of neurons practical; and (3) it includes game environments and sensorimotor interfaces specifically designed for DishBrain-style experiments.
+oNeura differs from these platforms in three ways: (1) it simulates 16 interacting molecular subsystems per neuron, enabling emergent pharmacology and consciousness metrics; (2) it provides a GPU-accelerated backend (PyTorch sparse operations on CUDA, MPS, or ROCm) that makes behavioral experiments with thousands of neurons practical; and (3) it includes game environments and sensorimotor interfaces specifically designed for DishBrain-style experiments.
 
 ### 2.3 The Free Energy Principle
 
@@ -91,7 +91,7 @@ Our work provides the first computational validation that FEP-based game learnin
 
 ## 3. Methods
 
-### 3.1 oNeuro Architecture
+### 3.1 oNeura Architecture
 
 Each neuron in the dONN is modeled as a molecular system with 16 interacting subsystems. Here we summarize the components most relevant to game learning; full architectural details are provided in Price (2026).
 
@@ -469,13 +469,13 @@ That the dONN handles these challenges using the same underlying mechanism -- st
 
 ### 5.6 Future Directions
 
-**Million-neuron scale.** The oNeuro architecture, with its memory budget of approximately 40 KB per neuron, can simulate one million neurons in 40 GB of GPU memory. An H200 GPU (141 GB HBM3e) could potentially simulate over three million neurons -- approaching the scale of DishBrain. The Rust+Metal backend (oNeuro-Metal) provides an alternative high-performance path on Apple hardware.
+**Million-neuron scale.** The oNeura architecture, with its memory budget of approximately 40 KB per neuron, can simulate one million neurons in 40 GB of GPU memory. An H200 GPU (141 GB HBM3e) could potentially simulate over three million neurons -- approaching the scale of DishBrain. The Rust+Metal backend (oNeura-Metal) provides an alternative high-performance path on Apple hardware.
 
 **Multi-brain cooperation.** We have previously demonstrated that two dONNs can develop a shared vocabulary through coupled STDP training (Price, 2026). Extending this to cooperative game-playing -- two dONNs playing cooperative Pong, for example -- would test whether emergent communication can arise from sensorimotor interaction.
 
 **Closed-loop drug optimization.** Given the ability to rapidly test drug effects on game performance, a Bayesian optimization loop could search the space of drug doses and combinations to find pharmacological regimes that maximize (or minimize) specific behavioral outcomes. This would constitute a novel application of computational neuropharmacology.
 
-**More complex environments.** The Spatial Arena provides a basic spatial navigation task, but the oNeuro framework could interface with more complex game environments (Doom, Atari games, or robotics simulators via Gymnasium) to test the limits of FEP-based sensorimotor learning.
+**More complex environments.** The Spatial Arena provides a basic spatial navigation task, but the oNeura framework could interface with more complex game environments (Doom, Atari games, or robotics simulators via Gymnasium) to test the limits of FEP-based sensorimotor learning.
 
 **Integration with real ONN data.** A natural extension is to use the dONN as a predictive model for real DishBrain experiments. Synaptic weight distributions, STDP parameters, and pharmacological sensitivities calibrated against MEA recordings could make the dONN a quantitative digital twin of a specific biological culture.
 
@@ -483,7 +483,7 @@ That the dONN handles these challenges using the same underlying mechanism -- st
 
 ## 6. Conclusion
 
-We have demonstrated the first digital replication of DishBrain game learning using a digital Organic Neural Network built on the oNeuro platform. The dONN implements 16 interacting molecular subsystems -- from Hodgkin-Huxley ion channels and six neurotransmitter systems to gene expression and pharmacokinetic drug modeling -- and learns to play Pong through the free energy principle without explicit reward signals.
+We have demonstrated the first digital replication of DishBrain game learning using a digital Organic Neural Network built on the oNeura platform. The dONN implements 16 interacting molecular subsystems -- from Hodgkin-Huxley ion channels and six neurotransmitter systems to gene expression and pharmacokinetic drug modeling -- and learns to play Pong through the free energy principle without explicit reward signals.
 
 The 3-seed medium-scale validation on NVIDIA A100 hardware reveals both the strengths and current limitations of the approach. The FEP learning speed advantage over dopaminergic reward and random protocols was the most robust finding (3/3 seeds, FEP mean 39.3 hits vs. random 31.3), and arena navigation consistently exceeded random baseline (3/3 seeds, mean 25.3% vs. 15%). The Pong replication criterion and pharmacological diazepam criterion each passed in 1 of 3 seeds, reflecting initialization-dependent dynamics at 5K-neuron scale: networks that start with favorable random connectivity may not benefit from -- and can be disrupted by -- FEP training, and the Pong task's binary nature limits its statistical power for detecting moderate drug effects. These are honest limitations of the current medium-scale configuration, not fundamental obstacles: all seeds maintained above-baseline total performance, and the most pharmacologically potent drug (methamphetamine) produced directionally consistent impairment across all 3 seeds.
 
@@ -531,7 +531,7 @@ All code is open-source. Every experiment reported in this paper can be reproduc
 
 17. O'Keefe, J., & Dostrovsky, J. (1971). The hippocampus as a spatial map: preliminary evidence from unit activity in the freely-moving rat. *Brain Research*, 34(1), 171-175.
 
-18. Price, B. (2026). Emergent cognition from molecular dynamics: ten experiments demonstrating capabilities impossible in artificial neural networks. Preprint available at https://github.com/robertcprice/oNeuro.
+18. Price, B. (2026). Emergent cognition from molecular dynamics: ten experiments demonstrating capabilities impossible in artificial neural networks. Preprint available at https://github.com/robertcprice/oNeura.
 
 19. Rao, R. P., & Ballard, D. H. (1999). Predictive coding in the visual cortex: a functional interpretation of some extra-classical receptive-field effects. *Nature Neuroscience*, 2(1), 79-87.
 
@@ -557,11 +557,11 @@ All code is open-source. Every experiment reported in this paper can be reproduc
 
 ## Appendix A: Reproduction Instructions
 
-All experiments can be reproduced from the oNeuro repository:
+All experiments can be reproduced from the oNeura repository:
 
 ```bash
 # Clone and install
-git clone https://github.com/robertcprice/oNeuro.git && cd oNeuro
+git clone https://github.com/robertcprice/oNeura.git && cd oNeura
 pip install torch numpy
 
 # DishBrain Pong replication (5 experiments, ~22 minutes)
@@ -676,8 +676,8 @@ PYTHONPATH=src python3 demos/demo_dishbrain_pong.py --device cpu    # CPU fallba
 | Term | Definition |
 |------|-----------|
 | **ONN** | Organic Neural Network -- a neural network built from real biological neurons (e.g., Cortical Labs' DishBrain, FinalSpark bioprocessors) |
-| **dONN** | digital Organic Neural Network -- oNeuro's biophysically faithful simulation of an ONN, implementing molecular substrates from which behavior emerges |
-| **oNeuro** | The open-source software platform for building and running dONNs |
+| **dONN** | digital Organic Neural Network -- oNeura's biophysically faithful simulation of an ONN, implementing molecular substrates from which behavior emerges |
+| **oNeura** | The open-source software platform for building and running dONNs |
 | **FEP** | Free Energy Principle -- the theoretical framework proposing that biological systems minimize variational free energy (surprise) |
 | **STDP** | Spike-Timing-Dependent Plasticity -- the dependence of synaptic weight change on the relative timing of pre- and postsynaptic spikes |
 | **MEA** | Multi-Electrode Array -- the hardware platform used in DishBrain for electrical stimulation and recording of cultured neurons |
