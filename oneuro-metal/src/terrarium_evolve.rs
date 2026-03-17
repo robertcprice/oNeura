@@ -4115,9 +4115,10 @@ mod tests {
             ecology_event_count: 5, avg_fly_energy_charge: 0.85,
             fly_plant_proximity_mean: 3.0, fly_altitude_mean: 1.5,
             fly_o2_gradient_correlation: 0.3, owned_fraction: 0.2,
-            substrate_backend: "cpu", substrate_steps: 100,
+            substrate_backend: String::from("cpu"), substrate_steps: 100,
             substrate_time_ms: 10.0, time_s: 1.0,
             atomistic_probes: 0,
+            ..Default::default()
         };
         let noise = vec![FlyPhenotypicNoise::default(); 4];
         let fitness = bet_hedging_fitness(&snapshot, &noise);
@@ -4461,9 +4462,10 @@ mod tests {
             ecology_event_count: 5, avg_fly_energy_charge: 0.85,
             fly_plant_proximity_mean: 3.0, fly_altitude_mean: 1.5,
             fly_o2_gradient_correlation: 0.3, owned_fraction: 0.2,
-            substrate_backend: "cpu", substrate_steps: 100,
+            substrate_backend: String::from("cpu"), substrate_steps: 100,
             substrate_time_ms: 10.0, time_s: 1.0,
             atomistic_probes: 0,
+            ..Default::default()
         };
         let fly_noise = generate_population_noise(3, 0.5, 42);
         let plant_noise = generate_plant_noise(5, 0.5, 43);
