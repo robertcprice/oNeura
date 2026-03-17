@@ -233,7 +233,7 @@ A complete soil-plant-insect ecosystem where every chemical reaction uses litera
 
 ### Evolution Engine — NSGA-II Ecosystem Optimization (Rust)
 
-Evolves optimal terrarium configurations using 18-parameter genomes (soil pH, temperature, water, plants, microbes, enzyme kinetics, fly brain parameters). Fitness climbs from ~36 to ~78 over 5 generations.
+Evolves optimal terrarium configurations using 18-parameter genomes (soil pH, temperature, water, plants, microbes, enzyme kinetics, fly brain parameters). Fitness climbs from ~62 to ~85 over 5 generations (verified March 2026).
 
 ```bash
 cd oneuro-metal
@@ -246,6 +246,8 @@ Modes: Standard, NSGA-II Pareto (7 objectives), Stress-Test (drought+heat), Coev
 ### Whole-Cell Simulation — Syn3A Minimal Cell (Rust)
 
 Native Rust simulator for JCVI-Syn3A (493 genes). Staged integration: RDME lattice diffusion, CME stochastic expression, ODE metabolic fluxes, Brownian dynamics for chromosome physics, geometry/divisome for cell division, and CASCI quantum chemistry for reaction barriers.
+
+Includes a **stochastic gene expression** overlay using Gillespie tau-leaping: telegraph promoter model (ON/OFF states), mRNA bursting with configurable burst sizes, and protein noise with Fano factor > 1. Opt-in per simulation — the default remains deterministic for reproducibility.
 
 Anchored to: Thornburg et al., *Cell* (2026), DOI `10.1016/j.cell.2026.02.009`.
 
@@ -363,10 +365,10 @@ cd oneuro-metal
 cargo build --profile fast --no-default-features --bin terrarium_evolve --bin terrarium_native
 ./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
 
-# Run 58-test regression suite
+# Run 90-test regression suite (includes stochastic expression)
 cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
-  terrarium_evolve drosophila_population plant_competition soil_fauna fly_metabolism \
-  field_coupling seed_cellular terrarium_world
+  soil_atmosphere terrarium_evolve drosophila_population plant_competition soil_fauna \
+  fly_metabolism field_coupling seed_cellular terrarium_world organism_metabolism stochastic
 ```
 
 ## How dONNs Differ from ANNs

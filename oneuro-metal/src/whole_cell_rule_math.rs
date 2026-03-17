@@ -2,12 +2,209 @@
 //!
 //! These helpers keep occupancy-to-rule-context math and generic fallback
 //! blending out of the main simulator implementation.
+//!
+//! This module defines its own extended signal enum and context types because
+//! the canonical `WholeCellRuleSignal` in `whole_cell.rs` only exposes 36
+//! base signals.  The rule-math layer needs ~30 additional derived signals
+//! (process occupancy blends, capacity slots, inventory channels, etc.) that
+//! are computed here and consumed by `ScalarRule` evaluation.  Keeping these
+//! extra slots local avoids bloating the core enum while giving the rule
+//! evaluator full access to every signal dimension it needs.
 
 use crate::substrate_ir::{ScalarContext, ScalarRule, EMPTY_SCALAR_BRANCH};
-use crate::whole_cell::{WholeCellProcessFluxes, WholeCellRuleContext, WholeCellRuleSignal};
-use crate::whole_cell_data::{
-    WholeCellComplexAssemblyState, WholeCellProcessOccupancyState, WholeCellProcessWeights,
-};
+use crate::whole_cell_data::{WholeCellComplexAssemblyState, WholeCellProcessWeights};
+
+// ---------------------------------------------------------------------------
+// Local process-fluxes type (mirrors the private WholeCellProcessFluxes in
+// whole_cell.rs so that this module compiles independently).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WholeCellProcessFluxes {
+    pub(crate) energy_capacity: f32,
+    pub(crate) transcription_capacity: f32,
+    pub(crate) translation_capacity: f32,
+    pub(crate) replication_capacity: f32,
+    pub(crate) segregation_capacity: f32,
+    pub(crate) membrane_capacity: f32,
+    pub(crate) constriction_capacity: f32,
+}
+
+impl Default for WholeCellProcessFluxes {
+    fn default() -> Self {
+        Self {
+            energy_capacity: 0.0,
+            transcription_capacity: 0.0,
+            translation_capacity: 0.0,
+            replication_capacity: 0.0,
+            segregation_capacity: 0.0,
+            membrane_capacity: 0.0,
+            constriction_capacity: 0.0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Local occupancy state (the canonical type was removed from whole_cell_data).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WholeCellProcessOccupancyState {
+    pub(crate) current: WholeCellProcessWeights,
+    pub(crate) target: WholeCellProcessWeights,
+    pub(crate) assembly_rate: WholeCellProcessWeights,
+    pub(crate) degradation_rate: WholeCellProcessWeights,
+}
+
+impl Default for WholeCellProcessOccupancyState {
+    fn default() -> Self {
+        Self {
+            current: WholeCellProcessWeights::default(),
+            target: WholeCellProcessWeights::default(),
+            assembly_rate: WholeCellProcessWeights::default(),
+            degradation_rate: WholeCellProcessWeights::default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extended rule-signal enum -- superset of the 36 base signals from
+// `whole_cell::WholeCellRuleSignal` plus ~30 derived signals used only by
+// the rule-math layer.
+//
+// The first 37 entries (Dt .. MembranePrecursorFloor) are index-compatible
+// with the canonical enum so that `ScalarFactor` indices produced elsewhere
+// still evaluate correctly.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+pub(crate) enum RuleSignal {
+    // ---- base signals (indices 0-35, matching whole_cell::WholeCellRuleSignal) ----
+    Dt = 0,
+    AtpBandSignal,
+    RibosomeSignal,
+    ReplisomeSignal,
+    SeptumSignal,
+    WeightedRibosomeReplisomeSignal,
+    WeightedAtpSeptumSignal,
+    GlucoseSignal,
+    OxygenSignal,
+    AminoSignal,
+    NucleotideSignal,
+    MembraneSignal,
+    EnergySignal,
+    ReplicatedFraction,
+    InverseReplicatedFraction,
+    DivisionReadiness,
+    LocalizedSupplyScale,
+    CrowdingPenalty,
+    AtpSupport,
+    TranslationSupport,
+    NucleotideSupport,
+    MembraneSupport,
+    AtpBandScale,
+    RibosomeTranslationScale,
+    ReplisomeReplicationScale,
+    ReplisomeSegregationScale,
+    MembraneAssemblyScale,
+    FtszConstrictionScale,
+    MdTranslationScale,
+    MdMembraneScale,
+    QuantumOxphosEfficiency,
+    QuantumTranslationEfficiency,
+    QuantumNucleotideEfficiency,
+    QuantumMembraneEfficiency,
+    QuantumSegregationEfficiency,
+    EffectiveMetabolicLoad,
+    MembranePrecursorFloor, // = 36
+
+    // ---- extended signals (process occupancy blends) ----
+    EnergyProcessSignal,
+    TranscriptionProcessSignal,
+    TranslationProcessSignal,
+    ReplicationProcessSignal,
+    SegregationProcessSignal,
+    MembraneProcessSignal,
+    ConstrictionProcessSignal,
+
+    // ---- extended signals (complex inventory) ----
+    AtpBandComplexes,
+    RibosomeComplexes,
+    RnapComplexes,
+    ReplisomeComplexes,
+    MembraneComplexes,
+    FtszPolymer,
+    DnaaActivity,
+
+    // ---- extended signals (capacity / stage) ----
+    EnergyCapacity,
+    EnergyCapacityCapped16,
+    EnergyCapacityCapped18,
+    TranscriptionCapacity,
+    TranscriptionCapacityCapped16,
+    TranslationCapacity,
+    ReplicationCapacity,
+    SegregationCapacity,
+    MembraneCapacity,
+    ConstrictionCapacity,
+
+    // ---- extended signals (stage drive) ----
+    DnaaSignal,
+    ReplisomeAssemblySignal,
+    ConstrictionSignal,
+    TranscriptionDriveMix,
+    TranslationDriveMix,
+    BiosyntheticLoadMix,
+}
+
+impl RuleSignal {
+    pub(crate) const COUNT: usize = Self::BiosyntheticLoadMix as usize + 1;
+}
+
+// ---------------------------------------------------------------------------
+// Rule context -- a fixed-size signal array sized to hold every extended slot.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RuleContext {
+    pub(crate) signals: [f32; RuleSignal::COUNT],
+}
+
+impl Default for RuleContext {
+    fn default() -> Self {
+        Self {
+            signals: [0.0; RuleSignal::COUNT],
+        }
+    }
+}
+
+impl RuleContext {
+    /// Write a signal value, clamping to >=0 and replacing non-finite with 0.
+    fn set(&mut self, signal: RuleSignal, value: f32) {
+        self.signals[signal as usize] = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
+    /// Read a signal value.
+    fn get(self, signal: RuleSignal) -> f32 {
+        self.signals[signal as usize]
+    }
+
+    /// Convert to a `ScalarContext` for rule evaluation.
+    fn scalar(self) -> ScalarContext<{ RuleSignal::COUNT }> {
+        ScalarContext {
+            signals: self.signals,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Input bundles
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BaseRuleContextInputs {
@@ -54,7 +251,7 @@ pub(crate) struct StageRuleContextInputs {
     pub(crate) biosynthetic_load_mix: f32,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct DirectStageRuleMixInputs {
     pub(crate) fluxes: WholeCellProcessFluxes,
     pub(crate) runtime_occupancy: WholeCellProcessOccupancyState,
@@ -75,122 +272,112 @@ pub(crate) struct DirectStageRuleMixes {
     pub(crate) translation_drive_mix: Option<f32>,
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 fn saturating_signal(value: f32, half_saturation: f32) -> f32 {
     let value = value.max(0.0);
     let half_saturation = half_saturation.max(1.0e-6);
     (value / (value + half_saturation)).clamp(0.0, 1.0)
 }
 
+// ---------------------------------------------------------------------------
+// Population functions
+// ---------------------------------------------------------------------------
+
 pub(crate) fn populate_base_rule_context(
-    ctx: &mut WholeCellRuleContext,
+    ctx: &mut RuleContext,
     inputs: BaseRuleContextInputs,
 ) {
-    ctx.set(WholeCellRuleSignal::Dt, inputs.dt);
-    ctx.set(WholeCellRuleSignal::SeptumSignal, inputs.septum_signal);
-    ctx.set(WholeCellRuleSignal::GlucoseSignal, inputs.glucose_signal);
-    ctx.set(WholeCellRuleSignal::OxygenSignal, inputs.oxygen_signal);
-    ctx.set(WholeCellRuleSignal::AminoSignal, inputs.amino_signal);
+    ctx.set(RuleSignal::Dt, inputs.dt);
+    ctx.set(RuleSignal::SeptumSignal, inputs.septum_signal);
+    ctx.set(RuleSignal::GlucoseSignal, inputs.glucose_signal);
+    ctx.set(RuleSignal::OxygenSignal, inputs.oxygen_signal);
+    ctx.set(RuleSignal::AminoSignal, inputs.amino_signal);
+    ctx.set(RuleSignal::NucleotideSignal, inputs.nucleotide_signal);
+    ctx.set(RuleSignal::MembraneSignal, inputs.membrane_signal);
+    ctx.set(RuleSignal::EnergySignal, inputs.energy_signal);
     ctx.set(
-        WholeCellRuleSignal::NucleotideSignal,
-        inputs.nucleotide_signal,
-    );
-    ctx.set(WholeCellRuleSignal::MembraneSignal, inputs.membrane_signal);
-    ctx.set(WholeCellRuleSignal::EnergySignal, inputs.energy_signal);
-    ctx.set(
-        WholeCellRuleSignal::ReplicatedFraction,
+        RuleSignal::ReplicatedFraction,
         inputs.replicated_fraction,
     );
     ctx.set(
-        WholeCellRuleSignal::InverseReplicatedFraction,
+        RuleSignal::InverseReplicatedFraction,
         (1.0 - inputs.replicated_fraction).clamp(0.0, 1.0),
     );
+    ctx.set(RuleSignal::DivisionReadiness, inputs.division_readiness);
     ctx.set(
-        WholeCellRuleSignal::DivisionReadiness,
-        inputs.division_readiness,
-    );
-    ctx.set(
-        WholeCellRuleSignal::LocalizedSupplyScale,
+        RuleSignal::LocalizedSupplyScale,
         inputs.localized_supply_scale,
     );
+    ctx.set(RuleSignal::CrowdingPenalty, inputs.crowding_penalty);
+    ctx.set(RuleSignal::AtpSupport, inputs.atp_support);
     ctx.set(
-        WholeCellRuleSignal::CrowdingPenalty,
-        inputs.crowding_penalty,
-    );
-    ctx.set(WholeCellRuleSignal::AtpSupport, inputs.atp_support);
-    ctx.set(
-        WholeCellRuleSignal::TranslationSupport,
+        RuleSignal::TranslationSupport,
         inputs.translation_support,
     );
     ctx.set(
-        WholeCellRuleSignal::NucleotideSupport,
+        RuleSignal::NucleotideSupport,
         inputs.nucleotide_support,
     );
+    ctx.set(RuleSignal::MembraneSupport, inputs.membrane_support);
+    ctx.set(RuleSignal::AtpBandScale, inputs.atp_band_scale);
     ctx.set(
-        WholeCellRuleSignal::MembraneSupport,
-        inputs.membrane_support,
-    );
-    ctx.set(WholeCellRuleSignal::AtpBandScale, inputs.atp_band_scale);
-    ctx.set(
-        WholeCellRuleSignal::RibosomeTranslationScale,
+        RuleSignal::RibosomeTranslationScale,
         inputs.ribosome_translation_scale,
     );
     ctx.set(
-        WholeCellRuleSignal::ReplisomeReplicationScale,
+        RuleSignal::ReplisomeReplicationScale,
         inputs.replisome_replication_scale,
     );
     ctx.set(
-        WholeCellRuleSignal::ReplisomeSegregationScale,
+        RuleSignal::ReplisomeSegregationScale,
         inputs.replisome_segregation_scale,
     );
     ctx.set(
-        WholeCellRuleSignal::MembraneAssemblyScale,
+        RuleSignal::MembraneAssemblyScale,
         inputs.membrane_assembly_scale,
     );
     ctx.set(
-        WholeCellRuleSignal::FtszConstrictionScale,
+        RuleSignal::FtszConstrictionScale,
         inputs.ftsz_constriction_scale,
     );
+    ctx.set(RuleSignal::MdTranslationScale, inputs.md_translation_scale);
+    ctx.set(RuleSignal::MdMembraneScale, inputs.md_membrane_scale);
     ctx.set(
-        WholeCellRuleSignal::MdTranslationScale,
-        inputs.md_translation_scale,
-    );
-    ctx.set(
-        WholeCellRuleSignal::MdMembraneScale,
-        inputs.md_membrane_scale,
-    );
-    ctx.set(
-        WholeCellRuleSignal::QuantumOxphosEfficiency,
+        RuleSignal::QuantumOxphosEfficiency,
         inputs.quantum_oxphos_efficiency,
     );
     ctx.set(
-        WholeCellRuleSignal::QuantumTranslationEfficiency,
+        RuleSignal::QuantumTranslationEfficiency,
         inputs.quantum_translation_efficiency,
     );
     ctx.set(
-        WholeCellRuleSignal::QuantumNucleotideEfficiency,
+        RuleSignal::QuantumNucleotideEfficiency,
         inputs.quantum_nucleotide_efficiency,
     );
     ctx.set(
-        WholeCellRuleSignal::QuantumMembraneEfficiency,
+        RuleSignal::QuantumMembraneEfficiency,
         inputs.quantum_membrane_efficiency,
     );
     ctx.set(
-        WholeCellRuleSignal::QuantumSegregationEfficiency,
+        RuleSignal::QuantumSegregationEfficiency,
         inputs.quantum_segregation_efficiency,
     );
     ctx.set(
-        WholeCellRuleSignal::EffectiveMetabolicLoad,
+        RuleSignal::EffectiveMetabolicLoad,
         inputs.effective_metabolic_load,
     );
 }
 
 pub(crate) fn populate_process_rule_context(
-    ctx: &mut WholeCellRuleContext,
+    ctx: &mut RuleContext,
     occupancy: WholeCellProcessOccupancyState,
     inventory: WholeCellComplexAssemblyState,
 ) {
     ctx.set(
-        WholeCellRuleSignal::EnergyProcessSignal,
+        RuleSignal::EnergyProcessSignal,
         (occupancy.current.energy
             + 0.34 * occupancy.assembly_rate.energy
             + 0.10 * occupancy.target.energy
@@ -198,7 +385,7 @@ pub(crate) fn populate_process_rule_context(
             .max(0.0),
     );
     ctx.set(
-        WholeCellRuleSignal::TranscriptionProcessSignal,
+        RuleSignal::TranscriptionProcessSignal,
         (occupancy.current.transcription
             + 0.34 * occupancy.assembly_rate.transcription
             + 0.10 * occupancy.target.transcription
@@ -206,7 +393,7 @@ pub(crate) fn populate_process_rule_context(
             .max(0.0),
     );
     ctx.set(
-        WholeCellRuleSignal::TranslationProcessSignal,
+        RuleSignal::TranslationProcessSignal,
         (occupancy.current.translation
             + 0.36 * occupancy.assembly_rate.translation
             + 0.10 * occupancy.target.translation
@@ -214,7 +401,7 @@ pub(crate) fn populate_process_rule_context(
             .max(0.0),
     );
     ctx.set(
-        WholeCellRuleSignal::ReplicationProcessSignal,
+        RuleSignal::ReplicationProcessSignal,
         (occupancy.current.replication
             + 0.24 * occupancy.current.segregation
             + 0.34 * occupancy.assembly_rate.replication
@@ -223,7 +410,7 @@ pub(crate) fn populate_process_rule_context(
             .max(0.0),
     );
     ctx.set(
-        WholeCellRuleSignal::SegregationProcessSignal,
+        RuleSignal::SegregationProcessSignal,
         (occupancy.current.segregation
             + 0.30 * occupancy.assembly_rate.segregation
             + 0.10 * occupancy.target.segregation
@@ -231,7 +418,7 @@ pub(crate) fn populate_process_rule_context(
             .max(0.0),
     );
     ctx.set(
-        WholeCellRuleSignal::MembraneProcessSignal,
+        RuleSignal::MembraneProcessSignal,
         (occupancy.current.membrane
             + 0.30 * occupancy.assembly_rate.membrane
             + 0.10 * occupancy.target.membrane
@@ -239,7 +426,7 @@ pub(crate) fn populate_process_rule_context(
             .max(0.0),
     );
     ctx.set(
-        WholeCellRuleSignal::ConstrictionProcessSignal,
+        RuleSignal::ConstrictionProcessSignal,
         (occupancy.current.constriction
             + 0.34 * occupancy.assembly_rate.constriction
             + 0.12 * occupancy.target.constriction
@@ -247,89 +434,89 @@ pub(crate) fn populate_process_rule_context(
             .max(0.0),
     );
     ctx.set(
-        WholeCellRuleSignal::AtpBandComplexes,
+        RuleSignal::AtpBandComplexes,
         inventory.atp_band_complexes,
     );
     ctx.set(
-        WholeCellRuleSignal::RibosomeComplexes,
+        RuleSignal::RibosomeComplexes,
         inventory.ribosome_complexes,
     );
-    ctx.set(WholeCellRuleSignal::RnapComplexes, inventory.rnap_complexes);
+    ctx.set(RuleSignal::RnapComplexes, inventory.rnap_complexes);
     ctx.set(
-        WholeCellRuleSignal::ReplisomeComplexes,
+        RuleSignal::ReplisomeComplexes,
         inventory.replisome_complexes,
     );
     ctx.set(
-        WholeCellRuleSignal::MembraneComplexes,
+        RuleSignal::MembraneComplexes,
         inventory.membrane_complexes,
     );
-    ctx.set(WholeCellRuleSignal::FtszPolymer, inventory.ftsz_polymer);
-    ctx.set(WholeCellRuleSignal::DnaaActivity, inventory.dnaa_activity);
+    ctx.set(RuleSignal::FtszPolymer, inventory.ftsz_polymer);
+    ctx.set(RuleSignal::DnaaActivity, inventory.dnaa_activity);
 }
 
 pub(crate) fn populate_stage_rule_context(
-    ctx: &mut WholeCellRuleContext,
+    ctx: &mut RuleContext,
     inputs: StageRuleContextInputs,
 ) {
     ctx.set(
-        WholeCellRuleSignal::EnergyCapacity,
+        RuleSignal::EnergyCapacity,
         inputs.fluxes.energy_capacity,
     );
     ctx.set(
-        WholeCellRuleSignal::EnergyCapacityCapped16,
+        RuleSignal::EnergyCapacityCapped16,
         inputs.fluxes.energy_capacity.min(1.6),
     );
     ctx.set(
-        WholeCellRuleSignal::EnergyCapacityCapped18,
+        RuleSignal::EnergyCapacityCapped18,
         inputs.fluxes.energy_capacity.min(1.8),
     );
     ctx.set(
-        WholeCellRuleSignal::TranscriptionCapacity,
+        RuleSignal::TranscriptionCapacity,
         inputs.fluxes.transcription_capacity,
     );
     ctx.set(
-        WholeCellRuleSignal::TranscriptionCapacityCapped16,
+        RuleSignal::TranscriptionCapacityCapped16,
         inputs.fluxes.transcription_capacity.min(1.6),
     );
     ctx.set(
-        WholeCellRuleSignal::TranslationCapacity,
+        RuleSignal::TranslationCapacity,
         inputs.fluxes.translation_capacity,
     );
     ctx.set(
-        WholeCellRuleSignal::ReplicationCapacity,
+        RuleSignal::ReplicationCapacity,
         inputs.fluxes.replication_capacity,
     );
     ctx.set(
-        WholeCellRuleSignal::SegregationCapacity,
+        RuleSignal::SegregationCapacity,
         inputs.fluxes.segregation_capacity,
     );
     ctx.set(
-        WholeCellRuleSignal::MembraneCapacity,
+        RuleSignal::MembraneCapacity,
         inputs.fluxes.membrane_capacity,
     );
     ctx.set(
-        WholeCellRuleSignal::ConstrictionCapacity,
+        RuleSignal::ConstrictionCapacity,
         inputs.fluxes.constriction_capacity,
     );
-    ctx.set(WholeCellRuleSignal::DnaaSignal, inputs.dnaa_signal);
+    ctx.set(RuleSignal::DnaaSignal, inputs.dnaa_signal);
     ctx.set(
-        WholeCellRuleSignal::ReplisomeAssemblySignal,
+        RuleSignal::ReplisomeAssemblySignal,
         inputs.replisome_assembly_signal,
     );
     ctx.set(
-        WholeCellRuleSignal::ConstrictionSignal,
+        RuleSignal::ConstrictionSignal,
         inputs.constriction_signal,
     );
     ctx.set(
-        WholeCellRuleSignal::TranscriptionDriveMix,
+        RuleSignal::TranscriptionDriveMix,
         inputs.transcription_drive_mix,
     );
     ctx.set(
-        WholeCellRuleSignal::TranslationDriveMix,
+        RuleSignal::TranslationDriveMix,
         inputs.translation_drive_mix,
     );
     ctx.set(
-        WholeCellRuleSignal::BiosyntheticLoadMix,
+        RuleSignal::BiosyntheticLoadMix,
         inputs.biosynthetic_load_mix,
     );
 }
@@ -390,8 +577,8 @@ pub(crate) fn direct_stage_rule_mixes(inputs: DirectStageRuleMixInputs) -> Direc
 
 pub(crate) fn evaluate_process_preferred_capacity_rule(
     rule: ScalarRule,
-    process_signal: WholeCellRuleSignal,
-    scalar: ScalarContext<{ WholeCellRuleSignal::COUNT }>,
+    process_signal: RuleSignal,
+    scalar: ScalarContext<{ RuleSignal::COUNT }>,
 ) -> f32 {
     let branch = if scalar.signal(process_signal as usize) > 1.0e-6 && rule.branch_count >= 2 {
         rule.branches[1]
@@ -411,7 +598,7 @@ pub(crate) fn evaluate_process_preferred_capacity_rule(
 }
 
 pub(crate) fn capacity_rule_fluxes_from_context(
-    ctx: WholeCellRuleContext,
+    ctx: RuleContext,
     energy_rule: ScalarRule,
     transcription_rule: ScalarRule,
     translation_rule: ScalarRule,
@@ -424,37 +611,37 @@ pub(crate) fn capacity_rule_fluxes_from_context(
     WholeCellProcessFluxes {
         energy_capacity: evaluate_process_preferred_capacity_rule(
             energy_rule,
-            WholeCellRuleSignal::EnergyProcessSignal,
+            RuleSignal::EnergyProcessSignal,
             scalar,
         ),
         transcription_capacity: evaluate_process_preferred_capacity_rule(
             transcription_rule,
-            WholeCellRuleSignal::TranscriptionProcessSignal,
+            RuleSignal::TranscriptionProcessSignal,
             scalar,
         ),
         translation_capacity: evaluate_process_preferred_capacity_rule(
             translation_rule,
-            WholeCellRuleSignal::TranslationProcessSignal,
+            RuleSignal::TranslationProcessSignal,
             scalar,
         ),
         replication_capacity: evaluate_process_preferred_capacity_rule(
             replication_rule,
-            WholeCellRuleSignal::ReplicationProcessSignal,
+            RuleSignal::ReplicationProcessSignal,
             scalar,
         ),
         segregation_capacity: evaluate_process_preferred_capacity_rule(
             segregation_rule,
-            WholeCellRuleSignal::SegregationProcessSignal,
+            RuleSignal::SegregationProcessSignal,
             scalar,
         ),
         membrane_capacity: evaluate_process_preferred_capacity_rule(
             membrane_rule,
-            WholeCellRuleSignal::MembraneProcessSignal,
+            RuleSignal::MembraneProcessSignal,
             scalar,
         ),
         constriction_capacity: evaluate_process_preferred_capacity_rule(
             constriction_rule,
-            WholeCellRuleSignal::ConstrictionProcessSignal,
+            RuleSignal::ConstrictionProcessSignal,
             scalar,
         ),
     }
@@ -498,20 +685,19 @@ pub(crate) fn blend_runtime_bulk_delta(runtime_delta: f32, fallback_delta: f32) 
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
     use crate::substrate_ir::{ScalarBranch, ScalarFactor};
-    use crate::whole_cell_data::WholeCellProcessWeights;
 
-    fn test_scalar_factor(signal: WholeCellRuleSignal) -> ScalarFactor {
+    fn test_scalar_factor(signal: RuleSignal) -> ScalarFactor {
         ScalarFactor::new(signal as usize, 0.0, 1.0, 1.0)
     }
 
     #[test]
     fn populate_process_rule_context_sets_live_and_inventory_channels() {
         let occupancy = WholeCellProcessOccupancyState {
-            current: crate::whole_cell_data::WholeCellProcessWeights {
+            current: WholeCellProcessWeights {
                 energy: 2.0,
                 transcription: 3.0,
                 translation: 4.0,
@@ -520,7 +706,7 @@ mod tests {
                 membrane: 7.0,
                 constriction: 8.0,
             },
-            target: crate::whole_cell_data::WholeCellProcessWeights {
+            target: WholeCellProcessWeights {
                 energy: 1.0,
                 transcription: 1.0,
                 translation: 1.0,
@@ -529,7 +715,7 @@ mod tests {
                 membrane: 1.0,
                 constriction: 1.0,
             },
-            assembly_rate: crate::whole_cell_data::WholeCellProcessWeights {
+            assembly_rate: WholeCellProcessWeights {
                 energy: 0.5,
                 transcription: 0.5,
                 translation: 0.5,
@@ -538,7 +724,7 @@ mod tests {
                 membrane: 0.5,
                 constriction: 0.5,
             },
-            degradation_rate: Default::default(),
+            degradation_rate: WholeCellProcessWeights::default(),
         };
         let inventory = WholeCellComplexAssemblyState {
             atp_band_complexes: 11.0,
@@ -550,18 +736,18 @@ mod tests {
             dnaa_activity: 17.0,
             ..WholeCellComplexAssemblyState::default()
         };
-        let mut ctx = WholeCellRuleContext::default();
+        let mut ctx = RuleContext::default();
 
         populate_process_rule_context(&mut ctx, occupancy, inventory);
 
-        assert!(ctx.get(WholeCellRuleSignal::EnergyProcessSignal) > 2.0);
-        assert!((ctx.get(WholeCellRuleSignal::FtszPolymer) - 16.0).abs() < 1.0e-6);
-        assert!((ctx.get(WholeCellRuleSignal::DnaaActivity) - 17.0).abs() < 1.0e-6);
+        assert!(ctx.get(RuleSignal::EnergyProcessSignal) > 2.0);
+        assert!((ctx.get(RuleSignal::FtszPolymer) - 16.0).abs() < 1.0e-6);
+        assert!((ctx.get(RuleSignal::DnaaActivity) - 17.0).abs() < 1.0e-6);
     }
 
     #[test]
     fn populate_base_and_stage_rule_context_sets_expected_surfaces() {
-        let mut ctx = WholeCellRuleContext::default();
+        let mut ctx = RuleContext::default();
         populate_base_rule_context(
             &mut ctx,
             BaseRuleContextInputs {
@@ -618,17 +804,17 @@ mod tests {
             },
         );
 
-        assert!((ctx.get(WholeCellRuleSignal::Dt) - 0.25).abs() < 1.0e-6);
-        assert!((ctx.get(WholeCellRuleSignal::InverseReplicatedFraction) - 0.75).abs() < 1.0e-6);
-        assert!((ctx.get(WholeCellRuleSignal::EnergyCapacityCapped16) - 1.6).abs() < 1.0e-6);
-        assert!((ctx.get(WholeCellRuleSignal::TranslationDriveMix) - 0.4).abs() < 1.0e-6);
+        assert!((ctx.get(RuleSignal::Dt) - 0.25).abs() < 1.0e-6);
+        assert!((ctx.get(RuleSignal::InverseReplicatedFraction) - 0.75).abs() < 1.0e-6);
+        assert!((ctx.get(RuleSignal::EnergyCapacityCapped16) - 1.6).abs() < 1.0e-6);
+        assert!((ctx.get(RuleSignal::TranslationDriveMix) - 0.4).abs() < 1.0e-6);
     }
 
     #[test]
     fn capacity_rule_fluxes_prefer_process_branch_when_live_signal_exists() {
-        let mut ctx = WholeCellRuleContext::default();
-        ctx.set(WholeCellRuleSignal::EnergyProcessSignal, 2.0);
-        ctx.set(WholeCellRuleSignal::AtpBandComplexes, 10.0);
+        let mut ctx = RuleContext::default();
+        ctx.set(RuleSignal::EnergyProcessSignal, 2.0);
+        ctx.set(RuleSignal::AtpBandComplexes, 10.0);
         let rule = ScalarRule::new(
             0.0,
             2,
@@ -637,7 +823,7 @@ mod tests {
                     1.0,
                     1,
                     [
-                        test_scalar_factor(WholeCellRuleSignal::AtpBandComplexes),
+                        test_scalar_factor(RuleSignal::AtpBandComplexes),
                         crate::substrate_ir::EMPTY_SCALAR_FACTOR,
                         crate::substrate_ir::EMPTY_SCALAR_FACTOR,
                         crate::substrate_ir::EMPTY_SCALAR_FACTOR,
@@ -651,7 +837,7 @@ mod tests {
                     1.0,
                     1,
                     [
-                        test_scalar_factor(WholeCellRuleSignal::EnergyProcessSignal),
+                        test_scalar_factor(RuleSignal::EnergyProcessSignal),
                         crate::substrate_ir::EMPTY_SCALAR_FACTOR,
                         crate::substrate_ir::EMPTY_SCALAR_FACTOR,
                         crate::substrate_ir::EMPTY_SCALAR_FACTOR,

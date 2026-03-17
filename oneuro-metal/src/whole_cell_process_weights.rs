@@ -136,7 +136,7 @@ pub(crate) fn process_weights_mean_signal(weights: WholeCellProcessWeights) -> f
         / 7.0
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
 

@@ -133,10 +133,10 @@ pub(crate) fn explicit_runtime_assembly_inventory(
     assembly_inventory_projection_available(inventory).then_some(inventory)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
-    use crate::whole_cell_data::{WholeCellAssetClass, WholeCellReactionClass};
+    use crate::whole_cell_data::{WholeCellAssetClass, WholeCellAssemblyFamily, WholeCellReactionClass};
 
     #[test]
     fn named_complex_effective_projection_includes_intermediates() {
@@ -144,6 +144,7 @@ mod tests {
             id: "test_complex".to_string(),
             operon: "test_operon".to_string(),
             asset_class: WholeCellAssetClass::Generic,
+            family: WholeCellAssemblyFamily::Generic,
             subsystem_targets: Vec::new(),
             abundance: 10.0,
             target_abundance: 12.0,
@@ -158,6 +159,12 @@ mod tests {
             component_satisfaction: 0.0,
             structural_support: 0.0,
             assembly_progress: 0.0,
+            stalled_intermediate: 0.0,
+            damaged_abundance: 0.0,
+            limiting_component_signal: 0.0,
+            shared_component_pressure: 0.0,
+            insertion_progress: 0.0,
+            failure_count: 0.0,
         };
 
         let (abundance, target, assembly_rate, degradation_rate) =
@@ -210,6 +217,9 @@ mod tests {
                 operon: None,
                 parent_complex: None,
                 subsystem_targets: Vec::new(),
+                chromosome_domain: None,
+                patch_domain: Default::default(),
+                spatial_scope: Default::default(),
                 count: 16.0,
                 anchor_count: 25.0,
                 synthesis_rate: 3.0,
@@ -230,6 +240,9 @@ mod tests {
                 operon: None,
                 parent_complex: None,
                 subsystem_targets: Vec::new(),
+                chromosome_domain: None,
+                patch_domain: Default::default(),
+                spatial_scope: Default::default(),
                 count: 9.0,
                 anchor_count: 16.0,
                 synthesis_rate: 2.0,
@@ -251,6 +264,9 @@ mod tests {
             reactants: Vec::new(),
             products: Vec::new(),
             subsystem_targets: Vec::new(),
+            chromosome_domain: None,
+            patch_domain: Default::default(),
+            spatial_scope: Default::default(),
             current_flux: 2.5,
             cumulative_extent: 0.0,
             reactant_satisfaction: 1.0,

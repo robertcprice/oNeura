@@ -1,20 +1,24 @@
-//! PDB / mmCIF structure ingestion → `EmbeddedMolecule`.
+//! PDB / mmCIF structure ingestion → [`EmbeddedMolecule`] and [`BiomolecularTopology`].
 //!
 //! Parses coordinate files (ATOM/HETATM records for PDB, `_atom_site` loops
-//! for mmCIF) into [`EmbeddedMolecule`] instances.  Bonds are inferred from
-//! inter-atomic distances using covalent radii when the file does not supply
-//! explicit CONECT records.
+//! for mmCIF) into biomolecular structures with full residue-level topology,
+//! secondary structure, and disulfide bridge annotations.
 //!
 //! # Design Notes
 //!
 //! Force field parameters are NOT imported wholesale — the quantum layer
 //! derives them.  This module's job is purely structural: atoms + coordinates
-//! + connectivity.  Bond orders default to Single; a future refinement can
-//! assign orders from geometry or from the quantum solution itself.
+//! + connectivity + biomolecular annotation.  Bond orders default to Single
+//! for distance-inferred bonds; standard residue templates assign correct
+//! orders for backbone C=O double bonds.
 
 use crate::atomistic_chemistry::{
-    BondOrder, EmbeddedMolecule, MoleculeGraph, PeriodicElement,
+    BiomolecularTopology, BondOrder, DisulfideBridge, EmbeddedMolecule, MoleculeGraph,
+    PeriodicElement, ResidueInfo, SecondaryStructureElement, SecondaryStructureKind,
 };
+
+/// Tolerance factor for covalent bond detection (1.0 + TOLERANCE).
+const BOND_TOLERANCE: f32 = 0.40; // 40 % tolerance
 
 // ---------------------------------------------------------------------------
 // Covalent radii (Å) for distance-based bond inference.
@@ -22,32 +26,11 @@ use crate::atomistic_chemistry::{
 // ---------------------------------------------------------------------------
 
 fn covalent_radius_angstrom(element: PeriodicElement) -> f32 {
-    match element {
-        PeriodicElement::H => 0.31,
-        PeriodicElement::C => 0.76,
-        PeriodicElement::N => 0.71,
-        PeriodicElement::O => 0.66,
-        PeriodicElement::S => 1.05,
-        PeriodicElement::P => 1.07,
-        PeriodicElement::Fe => 1.32,
-        PeriodicElement::Mg => 1.41,
-        PeriodicElement::Ca => 1.76,
-        PeriodicElement::Zn => 1.22,
-        PeriodicElement::Na => 1.66,
-        PeriodicElement::K => 2.03,
-        PeriodicElement::Cl => 1.02,
-        PeriodicElement::Mn => 1.39,
-        PeriodicElement::Cu => 1.32,
-        PeriodicElement::Se => 1.20,
-        _ => 1.50, // conservative fallback
-    }
+    element.covalent_radius_angstrom()
 }
 
-/// Tolerance factor for covalent bond detection (1.0 + TOLERANCE).
-const BOND_TOLERANCE: f32 = 0.40; // 40 % tolerance
-
 // ---------------------------------------------------------------------------
-// PDB parsing
+// Errors
 // ---------------------------------------------------------------------------
 
 /// Errors that can occur during structure ingestion.
@@ -78,6 +61,10 @@ impl std::fmt::Display for StructureIngestError {
 
 impl std::error::Error for StructureIngestError {}
 
+// ---------------------------------------------------------------------------
+// Ingest options
+// ---------------------------------------------------------------------------
+
 /// Options controlling structure ingestion.
 #[derive(Debug, Clone)]
 pub struct IngestOptions {
@@ -89,6 +76,12 @@ pub struct IngestOptions {
     pub infer_bonds: bool,
     /// Maximum bond length tolerance factor (default 0.40).
     pub bond_tolerance: f32,
+    /// Whether to parse HELIX/SHEET records for secondary structure.
+    pub parse_secondary_structure: bool,
+    /// Whether to parse SSBOND records for disulfide bridges.
+    pub parse_disulfide_bridges: bool,
+    /// Whether to store residue-level atom annotations.
+    pub store_residue_info: bool,
 }
 
 impl Default for IngestOptions {
@@ -98,9 +91,16 @@ impl Default for IngestOptions {
             chain_filter: Vec::new(),
             infer_bonds: true,
             bond_tolerance: BOND_TOLERANCE,
+            parse_secondary_structure: true,
+            parse_disulfide_bridges: true,
+            store_residue_info: true,
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// PDB parsing — raw EmbeddedMolecule
+// ---------------------------------------------------------------------------
 
 /// Parse a PDB-format string into an `EmbeddedMolecule`.
 ///
@@ -111,10 +111,9 @@ pub fn embedded_molecule_from_pdb(
     pdb_text: &str,
     options: &IngestOptions,
 ) -> Result<EmbeddedMolecule, StructureIngestError> {
-    let mut elements: Vec<PeriodicElement> = Vec::new();
+    let mut graph = MoleculeGraph::new("pdb_structure");
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut conect_pairs: Vec<(usize, usize)> = Vec::new();
-    // Map from PDB serial number → our index.
     let mut serial_to_idx: std::collections::HashMap<usize, usize> = Default::default();
 
     for (line_no, line) in pdb_text.lines().enumerate() {
@@ -124,7 +123,7 @@ pub fn embedded_molecule_from_pdb(
 
         if is_atom || (is_hetatm && options.include_hetatm) {
             if line.len() < 54 {
-                continue; // malformed short line
+                continue;
             }
 
             // Chain ID (column 22, 1-indexed → index 21).
@@ -144,7 +143,6 @@ pub fn embedded_molecule_from_pdb(
             let element_str = if line.len() >= 78 {
                 line[76..78].trim()
             } else {
-                // Fall back: first non-digit, non-space char in columns 13-16.
                 let name = &line[12..16.min(line.len())];
                 name.trim()
                     .trim_start_matches(|c: char| c.is_ascii_digit())
@@ -183,13 +181,39 @@ pub fn embedded_molecule_from_pdb(
 
             // PDB serial number: columns 7-11.
             if let Ok(serial) = line[6..11].trim().parse::<usize>() {
-                serial_to_idx.insert(serial, elements.len());
+                serial_to_idx.insert(serial, graph.atom_count());
             }
 
-            elements.push(element);
+            // Residue-level annotation.
+            let residue = if options.store_residue_info && line.len() >= 27 {
+                let atom_name_str = line[12..16.min(line.len())].trim();
+                let res_name = line[17..20.min(line.len())].trim();
+                let chain_id = line[21..22].trim();
+                let seq_num = line[22..26].trim().parse::<i32>().unwrap_or(0);
+                let ins_code = if line.len() > 26 {
+                    line[26..27].trim().to_string()
+                } else {
+                    String::new()
+                };
+                graph.add_atom(
+                    element,
+                    atom_name_str,
+                    Some(ResidueInfo {
+                        name: res_name.to_string(),
+                        chain_id: chain_id.to_string(),
+                        seq_num,
+                        ins_code,
+                    }),
+                );
+                true
+            } else {
+                graph.add_element(element);
+                false
+            };
+            let _ = residue; // used for control flow
+
             positions.push([x, y, z]);
         } else if record.starts_with("CONECT") && line.len() >= 11 {
-            // CONECT records: first serial at 7-11, bonded serials at 12-16, 17-21, ...
             if let Ok(base_serial) = line[6..11].trim().parse::<usize>() {
                 let mut col = 11;
                 while col + 5 <= line.len() {
@@ -204,13 +228,8 @@ pub fn embedded_molecule_from_pdb(
         }
     }
 
-    if elements.is_empty() {
+    if graph.atom_count() == 0 {
         return Err(StructureIngestError::EmptyStructure);
-    }
-
-    let mut graph = MoleculeGraph::new("pdb_structure");
-    for &elem in &elements {
-        graph.add_element(elem);
     }
 
     // Add bonds: from CONECT records first, then infer remaining.
@@ -227,15 +246,103 @@ pub fn embedded_molecule_from_pdb(
 
     // Distance-based bond inference.
     if options.infer_bonds && bonded_pairs.is_empty() {
-        infer_bonds_from_distances(
-            &elements,
-            &positions,
-            options.bond_tolerance,
-            &mut graph,
-        );
+        let elements: Vec<PeriodicElement> = graph.atoms.iter().map(|a| a.element).collect();
+        infer_bonds_from_distances(&elements, &positions, options.bond_tolerance, &mut graph);
     }
 
+    // Upgrade backbone C=O bonds to double based on standard residue templates.
+    upgrade_backbone_bond_orders(&mut graph);
+
     EmbeddedMolecule::new(graph, positions).map_err(|_e| StructureIngestError::EmptyStructure)
+}
+
+// ---------------------------------------------------------------------------
+// PDB parsing — full BiomolecularTopology
+// ---------------------------------------------------------------------------
+
+/// Parse a PDB-format string into a full [`BiomolecularTopology`].
+///
+/// This is the high-level entry point that produces an annotated structure
+/// with secondary structure, disulfide bridges, and residue-level metadata.
+pub fn biomolecular_topology_from_pdb(
+    pdb_text: &str,
+    options: &IngestOptions,
+) -> Result<BiomolecularTopology, StructureIngestError> {
+    let molecule = embedded_molecule_from_pdb(pdb_text, options)?;
+    let mut topo = BiomolecularTopology::new(molecule);
+
+    // Parse TITLE.
+    for line in pdb_text.lines() {
+        if line.starts_with("TITLE ") && line.len() > 10 {
+            let title_part = line[10..].trim();
+            if !title_part.is_empty() {
+                if !topo.title.is_empty() {
+                    topo.title.push(' ');
+                }
+                topo.title.push_str(title_part);
+            }
+        }
+    }
+
+    // Parse HELIX records.
+    if options.parse_secondary_structure {
+        for line in pdb_text.lines() {
+            if line.starts_with("HELIX ") && line.len() >= 38 {
+                let helix_class = line[38..40.min(line.len())].trim().parse::<u32>().unwrap_or(1);
+                let kind = match helix_class {
+                    1 => SecondaryStructureKind::AlphaHelix,
+                    5 => SecondaryStructureKind::Helix310,
+                    3 => SecondaryStructureKind::PiHelix,
+                    _ => SecondaryStructureKind::AlphaHelix,
+                };
+                let chain_id = line[19..20].trim().to_string();
+                let start_seq = line[21..25].trim().parse::<i32>().unwrap_or(0);
+                let end_seq = line[33..37].trim().parse::<i32>().unwrap_or(0);
+                if start_seq <= end_seq {
+                    topo.secondary_structure.push(SecondaryStructureElement {
+                        kind,
+                        chain_id,
+                        start_seq,
+                        end_seq,
+                    });
+                }
+            }
+
+            if line.starts_with("SHEET ") && line.len() >= 38 {
+                let chain_id = line[21..22].trim().to_string();
+                let start_seq = line[22..26].trim().parse::<i32>().unwrap_or(0);
+                let end_seq = line[33..37].trim().parse::<i32>().unwrap_or(0);
+                if start_seq <= end_seq {
+                    topo.secondary_structure.push(SecondaryStructureElement {
+                        kind: SecondaryStructureKind::BetaStrand,
+                        chain_id,
+                        start_seq,
+                        end_seq,
+                    });
+                }
+            }
+        }
+    }
+
+    // Parse SSBOND records.
+    if options.parse_disulfide_bridges {
+        for line in pdb_text.lines() {
+            if line.starts_with("SSBOND") && line.len() >= 35 {
+                let chain1 = line[15..16].trim().to_string();
+                let seq1 = line[17..21].trim().parse::<i32>().unwrap_or(0);
+                let chain2 = line[29..30].trim().to_string();
+                let seq2 = line[31..35].trim().parse::<i32>().unwrap_or(0);
+                topo.disulfide_bridges.push(DisulfideBridge {
+                    chain_id_1: chain1,
+                    seq_num_1: seq1,
+                    chain_id_2: chain2,
+                    seq_num_2: seq2,
+                });
+            }
+        }
+    }
+
+    Ok(topo)
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +358,6 @@ pub fn embedded_molecule_from_mmcif(
     cif_text: &str,
     options: &IngestOptions,
 ) -> Result<EmbeddedMolecule, StructureIngestError> {
-    // Find the _atom_site loop.
     let lines: Vec<&str> = cif_text.lines().collect();
     let mut in_atom_site;
     let mut columns: Vec<String> = Vec::new();
@@ -262,7 +368,6 @@ pub fn embedded_molecule_from_mmcif(
         let line = lines[i].trim();
 
         if line.starts_with("loop_") {
-            // Check if the next lines define _atom_site columns.
             in_atom_site = false;
             columns.clear();
             i += 1;
@@ -272,7 +377,6 @@ pub fn embedded_molecule_from_mmcif(
                 i += 1;
             }
             if in_atom_site {
-                // Now read data rows until a line starts with '_', 'loop_', '#', or is empty.
                 while i < lines.len() {
                     let row = lines[i].trim();
                     if row.is_empty()
@@ -285,7 +389,7 @@ pub fn embedded_molecule_from_mmcif(
                     data_rows.push(split_cif_row(row));
                     i += 1;
                 }
-                break; // We found our atom_site block.
+                break;
             }
         } else {
             i += 1;
@@ -296,7 +400,6 @@ pub fn embedded_molecule_from_mmcif(
         return Err(StructureIngestError::EmptyStructure);
     }
 
-    // Find column indices.
     let col_idx = |name: &str| -> Result<usize, StructureIngestError> {
         columns
             .iter()
@@ -312,8 +415,17 @@ pub fn embedded_molecule_from_mmcif(
     let chain_col = col_idx("_atom_site.auth_asym_id")
         .or_else(|_| col_idx("_atom_site.label_asym_id"))
         .ok();
+    let atom_name_col = col_idx("_atom_site.label_atom_id")
+        .or_else(|_| col_idx("_atom_site.auth_atom_id"))
+        .ok();
+    let res_name_col = col_idx("_atom_site.label_comp_id")
+        .or_else(|_| col_idx("_atom_site.auth_comp_id"))
+        .ok();
+    let seq_num_col = col_idx("_atom_site.auth_seq_id")
+        .or_else(|_| col_idx("_atom_site.label_seq_id"))
+        .ok();
 
-    let mut elements: Vec<PeriodicElement> = Vec::new();
+    let mut graph = MoleculeGraph::new("mmcif_structure");
     let mut positions: Vec<[f32; 3]> = Vec::new();
 
     for (row_no, row) in data_rows.iter().enumerate() {
@@ -322,14 +434,12 @@ pub fn embedded_molecule_from_mmcif(
             continue;
         }
 
-        // Filter HETATM if requested.
         if let Some(gc) = group_col {
             if row.len() > gc && row[gc] == "HETATM" && !options.include_hetatm {
                 continue;
             }
         }
 
-        // Chain filter.
         if let Some(cc) = chain_col {
             if !options.chain_filter.is_empty() && row.len() > cc {
                 let chain = &row[cc];
@@ -368,22 +478,52 @@ pub fn embedded_molecule_from_mmcif(
                 detail: format!("z: {e}"),
             })?;
 
-        elements.push(element);
+        // Residue-level annotation from mmCIF columns.
+        if options.store_residue_info {
+            let atom_name = atom_name_col
+                .and_then(|c| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let res_name = res_name_col
+                .and_then(|c| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let chain_id = chain_col
+                .and_then(|c| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let seq_num = seq_num_col
+                .and_then(|c| row.get(c))
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(0);
+
+            graph.add_atom(
+                element,
+                atom_name,
+                Some(ResidueInfo {
+                    name: res_name.to_string(),
+                    chain_id: chain_id.to_string(),
+                    seq_num,
+                    ins_code: String::new(),
+                }),
+            );
+        } else {
+            graph.add_element(element);
+        }
+
         positions.push([x, y, z]);
     }
 
-    if elements.is_empty() {
+    if graph.atom_count() == 0 {
         return Err(StructureIngestError::EmptyStructure);
     }
 
-    let mut graph = MoleculeGraph::new("mmcif_structure");
-    for &elem in &elements {
-        graph.add_element(elem);
-    }
-
     if options.infer_bonds {
+        let elements: Vec<PeriodicElement> = graph.atoms.iter().map(|a| a.element).collect();
         infer_bonds_from_distances(&elements, &positions, options.bond_tolerance, &mut graph);
     }
+
+    upgrade_backbone_bond_orders(&mut graph);
 
     EmbeddedMolecule::new(graph, positions).map_err(|_e| StructureIngestError::EmptyStructure)
 }
@@ -395,7 +535,7 @@ pub fn embedded_molecule_from_mmcif(
 /// Infer covalent bonds from inter-atomic distances using covalent radii.
 ///
 /// Two atoms are bonded if distance < (r_i + r_j) * (1 + tolerance).
-/// Uses O(n²) brute force — fine for typical structures (< 50 000 atoms).
+/// Uses O(n^2) brute force — fine for typical structures (< 50 000 atoms).
 fn infer_bonds_from_distances(
     elements: &[PeriodicElement],
     positions: &[[f32; 3]],
@@ -423,6 +563,52 @@ fn infer_bonds_from_distances(
     }
 }
 
+/// Upgrade backbone C=O bonds from Single to Double using residue annotation.
+///
+/// For standard amino acids, the backbone carbonyl (atom name "C" bonded to "O")
+/// should be a double bond.  This runs after distance-based bond inference.
+fn upgrade_backbone_bond_orders(graph: &mut MoleculeGraph) {
+    // Build lookup: which atoms have residue info and are backbone C or O?
+    let carbonyl_c_indices: Vec<usize> = graph
+        .atoms
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| {
+            a.atom_name == "C"
+                && a.residue.is_some()
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    let carbonyl_o_indices: Vec<usize> = graph
+        .atoms
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| {
+            a.atom_name == "O"
+                && a.residue.is_some()
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    // For each C-O pair in the same residue, upgrade to double bond.
+    for bond in &mut graph.bonds {
+        let (bi, bj) = (bond.i, bond.j);
+        let is_co = (carbonyl_c_indices.contains(&bi) && carbonyl_o_indices.contains(&bj))
+            || (carbonyl_c_indices.contains(&bj) && carbonyl_o_indices.contains(&bi));
+        if is_co {
+            // Check same residue.
+            let res_i = graph.atoms[bi].residue.as_ref();
+            let res_j = graph.atoms[bj].residue.as_ref();
+            if let (Some(ri), Some(rj)) = (res_i, res_j) {
+                if ri.chain_id == rj.chain_id && ri.seq_num == rj.seq_num {
+                    bond.order = BondOrder::Double;
+                }
+            }
+        }
+    }
+}
+
 /// Split a mmCIF data row by whitespace, respecting single-quoted fields.
 fn split_cif_row(row: &str) -> Vec<String> {
     let mut tokens = Vec::new();
@@ -431,7 +617,7 @@ fn split_cif_row(row: &str) -> Vec<String> {
         if c.is_whitespace() {
             chars.next();
         } else if c == '\'' {
-            chars.next(); // consume opening quote
+            chars.next();
             let mut token = String::new();
             while let Some(&inner) = chars.peek() {
                 if inner == '\'' {
@@ -480,21 +666,41 @@ END
         let mol = embedded_molecule_from_pdb(MINI_PDB, &IngestOptions::default()).unwrap();
         assert_eq!(mol.graph.atom_count(), 6);
         assert_eq!(mol.positions_angstrom.len(), 6);
-        // N is first
         assert_eq!(mol.graph.atoms[0].element, PeriodicElement::N);
-        // H is last
         assert_eq!(mol.graph.atoms[5].element, PeriodicElement::H);
+    }
+
+    #[test]
+    fn test_pdb_residue_annotation() {
+        let mol = embedded_molecule_from_pdb(MINI_PDB, &IngestOptions::default()).unwrap();
+        let res = mol.graph.atoms[0].residue.as_ref().unwrap();
+        assert_eq!(res.name, "ALA");
+        assert_eq!(res.chain_id, "A");
+        assert_eq!(res.seq_num, 1);
+        assert_eq!(mol.graph.atoms[1].atom_name, "CA");
     }
 
     #[test]
     fn test_pdb_bond_inference() {
         let mol = embedded_molecule_from_pdb(MINI_PDB, &IngestOptions::default()).unwrap();
-        // N-CA bond should be inferred (~1.46 Å, well within covalent radius sum)
         assert!(
             mol.graph.bonds.len() >= 4,
             "expected at least 4 bonds, got {}",
             mol.graph.bonds.len()
         );
+    }
+
+    #[test]
+    fn test_pdb_carbonyl_double_bond() {
+        let mol = embedded_molecule_from_pdb(MINI_PDB, &IngestOptions::default()).unwrap();
+        // Find the C=O bond (atom names "C" and "O" in same residue ALA 1).
+        let c_idx = mol.graph.atoms.iter().position(|a| a.atom_name == "C").unwrap();
+        let o_idx = mol.graph.atoms.iter().position(|a| a.atom_name == "O").unwrap();
+        let co_bond = mol.graph.bonds.iter().find(|b| {
+            (b.i == c_idx && b.j == o_idx) || (b.i == o_idx && b.j == c_idx)
+        });
+        assert!(co_bond.is_some(), "C-O bond not found");
+        assert_eq!(co_bond.unwrap().order, BondOrder::Double, "C=O should be double bond");
     }
 
     #[test]
@@ -509,9 +715,8 @@ END
             chain_filter: vec!["B".to_string()],
             ..IngestOptions::default()
         };
-        // All atoms are chain A, so filtering for B should give empty.
         let result = embedded_molecule_from_pdb(MINI_PDB, &opts);
-        assert!(result.is_err()); // EmptyStructure
+        assert!(result.is_err()); // EmptyStructure — all atoms are chain A
     }
 
     #[test]
@@ -530,15 +735,90 @@ END
 
     #[test]
     fn test_covalent_radii_reasonable() {
-        // C-C bond ~ 1.54 Å, sum of radii = 1.52 Å — should be detected.
         let r_cc = covalent_radius_angstrom(PeriodicElement::C) * 2.0;
         assert!(r_cc > 1.4 && r_cc < 1.6, "C-C covalent sum = {r_cc}");
 
-        // N-H bond ~ 1.01 Å, sum of radii = 1.02 Å.
         let r_nh =
             covalent_radius_angstrom(PeriodicElement::N) + covalent_radius_angstrom(PeriodicElement::H);
         assert!(r_nh > 0.9 && r_nh < 1.2, "N-H covalent sum = {r_nh}");
     }
+
+    // -- Secondary structure and disulfide --
+
+    const PDB_WITH_ANNOTATIONS: &str = "\
+TITLE     TEST STRUCTURE WITH ANNOTATIONS
+HELIX    1 H1  ALA A    3  ALA A   10  1                               8
+SHEET    1 S1  GLY A   15  GLY A   20  0
+SSBOND   1 CYS A    5    CYS A   20
+ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
+ATOM      2  CA  ALA A   1       2.460   2.000   3.000  1.00  0.00           C
+END
+";
+
+    #[test]
+    fn test_biomolecular_topology_from_pdb() {
+        let topo = biomolecular_topology_from_pdb(
+            PDB_WITH_ANNOTATIONS,
+            &IngestOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(topo.molecule.graph.atom_count(), 2);
+        assert_eq!(topo.title, "TEST STRUCTURE WITH ANNOTATIONS");
+    }
+
+    #[test]
+    fn test_secondary_structure_parsing() {
+        let topo = biomolecular_topology_from_pdb(
+            PDB_WITH_ANNOTATIONS,
+            &IngestOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(topo.secondary_structure.len(), 2);
+        assert_eq!(topo.secondary_structure[0].kind, SecondaryStructureKind::AlphaHelix);
+        assert_eq!(topo.secondary_structure[0].start_seq, 3);
+        assert_eq!(topo.secondary_structure[0].end_seq, 10);
+        assert_eq!(topo.secondary_structure[1].kind, SecondaryStructureKind::BetaStrand);
+    }
+
+    #[test]
+    fn test_disulfide_bridge_parsing() {
+        let topo = biomolecular_topology_from_pdb(
+            PDB_WITH_ANNOTATIONS,
+            &IngestOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(topo.disulfide_bridges.len(), 1);
+        assert_eq!(topo.disulfide_bridges[0].chain_id_1, "A");
+        assert_eq!(topo.disulfide_bridges[0].seq_num_1, 5);
+        assert_eq!(topo.disulfide_bridges[0].seq_num_2, 20);
+    }
+
+    #[test]
+    fn test_no_residue_info_when_disabled() {
+        let opts = IngestOptions {
+            store_residue_info: false,
+            ..IngestOptions::default()
+        };
+        let mol = embedded_molecule_from_pdb(MINI_PDB, &opts).unwrap();
+        assert!(mol.graph.atoms[0].residue.is_none());
+    }
+
+    #[test]
+    fn test_chain_and_residue_counting() {
+        let mol = embedded_molecule_from_pdb(MINI_PDB, &IngestOptions::default()).unwrap();
+        assert_eq!(mol.graph.chain_ids(), vec!["A"]);
+        assert_eq!(mol.graph.residue_count(), 1); // all atoms are ALA A 1
+    }
+
+    #[test]
+    fn test_molecular_mass() {
+        let mol = embedded_molecule_from_pdb(MINI_PDB, &IngestOptions::default()).unwrap();
+        let mass = mol.graph.molecular_mass_daltons();
+        // N + 2C + O + C + H = 14.007 + 2*12.011 + 15.999 + 12.011 + 1.008 = 67.047
+        assert!(mass > 60.0 && mass < 75.0, "mass = {mass}");
+    }
+
+    // -- mmCIF tests --
 
     const MINI_MMCIF: &str = "\
 data_test
@@ -548,13 +828,14 @@ _atom_site.type_symbol
 _atom_site.label_atom_id
 _atom_site.label_comp_id
 _atom_site.label_asym_id
+_atom_site.auth_seq_id
 _atom_site.Cartn_x
 _atom_site.Cartn_y
 _atom_site.Cartn_z
-ATOM N  N   ALA A 1.000 2.000 3.000
-ATOM C  CA  ALA A 2.460 2.000 3.000
-ATOM C  C   ALA A 3.010 3.420 3.000
-ATOM O  O   ALA A 2.240 4.380 3.000
+ATOM N  N   ALA A 1 1.000 2.000 3.000
+ATOM C  CA  ALA A 1 2.460 2.000 3.000
+ATOM C  C   ALA A 1 3.010 3.420 3.000
+ATOM O  O   ALA A 1 2.240 4.380 3.000
 ";
 
     #[test]
@@ -567,12 +848,22 @@ ATOM O  O   ALA A 2.240 4.380 3.000
     }
 
     #[test]
+    fn test_mmcif_residue_annotation() {
+        let mol =
+            embedded_molecule_from_mmcif(MINI_MMCIF, &IngestOptions::default()).unwrap();
+        let res = mol.graph.atoms[0].residue.as_ref().unwrap();
+        assert_eq!(res.name, "ALA");
+        assert_eq!(res.chain_id, "A");
+        assert_eq!(res.seq_num, 1);
+    }
+
+    #[test]
     fn test_mmcif_bond_inference() {
         let mol =
             embedded_molecule_from_mmcif(MINI_MMCIF, &IngestOptions::default()).unwrap();
         assert!(
             mol.graph.bonds.len() >= 2,
-            "expected at least 2 bonds from distance inference, got {}",
+            "expected at least 2 bonds, got {}",
             mol.graph.bonds.len()
         );
     }

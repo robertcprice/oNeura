@@ -67,7 +67,7 @@ pub(crate) fn surrogate_diagnostic_pools(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
 

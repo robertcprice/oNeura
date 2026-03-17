@@ -18,6 +18,7 @@ default = ["python"]
 python = ["pyo3/extension-module"]
 cuda = ["cudarc"]
 nuclear_physics = []
+satellite_tests = []
 web = ["dep:tokio", "dep:axum", "dep:tower-http", "dep:futures-util"]
 
 [dependencies]

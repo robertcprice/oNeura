@@ -344,6 +344,9 @@ impl WholeCellSimulator {
             scheduler_state,
             md_translation_scale: 1.0,
             md_membrane_scale: 1.0,
+            stochastic_config: crate::whole_cell::stochastic_expression::StochasticExpressionConfig::default(),
+            stochastic_operon_states: Vec::new(),
+            stochastic_rng: crate::whole_cell::stochastic_expression::StochasticRng::new(42),
         };
         simulator.sync_from_lattice();
         simulator.chromosome_state = simulator.seeded_chromosome_state();

@@ -57,6 +57,7 @@ mod initialization;
 mod local_chemistry;
 mod membrane;
 mod spatial;
+mod stochastic_expression;
 #[cfg(test)]
 mod tests;
 
@@ -281,27 +282,27 @@ pub struct ObservableCalibrationResult {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct WholeCellProcessFluxes {
-    energy_capacity: f32,
-    transcription_capacity: f32,
-    translation_capacity: f32,
-    replication_capacity: f32,
-    segregation_capacity: f32,
-    membrane_capacity: f32,
-    constriction_capacity: f32,
+pub(crate) struct WholeCellProcessFluxes {
+    pub(crate) energy_capacity: f32,
+    pub(crate) transcription_capacity: f32,
+    pub(crate) translation_capacity: f32,
+    pub(crate) replication_capacity: f32,
+    pub(crate) segregation_capacity: f32,
+    pub(crate) membrane_capacity: f32,
+    pub(crate) constriction_capacity: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct WholeCellOrganismProcessScales {
-    energy_scale: f32,
-    transcription_scale: f32,
-    translation_scale: f32,
-    replication_scale: f32,
-    segregation_scale: f32,
-    membrane_scale: f32,
-    constriction_scale: f32,
-    amino_cost_scale: f32,
-    nucleotide_cost_scale: f32,
+pub(crate) struct WholeCellOrganismProcessScales {
+    pub(crate) energy_scale: f32,
+    pub(crate) transcription_scale: f32,
+    pub(crate) translation_scale: f32,
+    pub(crate) replication_scale: f32,
+    pub(crate) segregation_scale: f32,
+    pub(crate) membrane_scale: f32,
+    pub(crate) constriction_scale: f32,
+    pub(crate) amino_cost_scale: f32,
+    pub(crate) nucleotide_cost_scale: f32,
 }
 
 impl Default for WholeCellOrganismProcessScales {
@@ -758,6 +759,9 @@ pub struct WholeCellSimulator {
     scheduler_state: WholeCellSchedulerState,
     md_translation_scale: f32,
     md_membrane_scale: f32,
+    stochastic_config: stochastic_expression::StochasticExpressionConfig,
+    stochastic_operon_states: Vec<stochastic_expression::StochasticOperonState>,
+    stochastic_rng: stochastic_expression::StochasticRng,
 }
 
 impl WholeCellSimulator {
@@ -7042,6 +7046,46 @@ impl WholeCellSimulator {
     pub fn step(&mut self) {
         let base_dt = self.config.dt_ms;
         self.refresh_organism_expression_state();
+
+        // Stochastic gene expression overlay (opt-in).
+        if self.stochastic_config.enabled {
+            let dt_s = base_dt * 0.001;
+            let tu = &self.organism_expression.transcription_units;
+            if self.stochastic_operon_states.is_empty() && !tu.is_empty() {
+                let abundances: Vec<(f32, f32)> = tu
+                    .iter()
+                    .map(|u| (u.transcript_abundance, u.protein_abundance))
+                    .collect();
+                self.stochastic_operon_states =
+                    stochastic_expression::sync_deterministic_to_stochastic(&abundances);
+            }
+            let rates: Vec<(f32, f32)> = tu
+                .iter()
+                .map(|u| (u.transcript_synthesis_rate, u.transcript_turnover_rate))
+                .collect();
+            stochastic_expression::step_stochastic_expression(
+                &mut self.stochastic_operon_states,
+                &self.stochastic_config,
+                &rates,
+                dt_s,
+                &mut self.stochastic_rng,
+            );
+            let det_abundances: Vec<(f32, f32)> = tu
+                .iter()
+                .map(|u| (u.transcript_abundance, u.protein_abundance))
+                .collect();
+            let modifiers = stochastic_expression::sync_stochastic_to_deterministic(
+                &self.stochastic_operon_states,
+                &self.stochastic_config,
+                &det_abundances,
+            );
+            for (i, &(mrna_mod, _protein_mod)) in modifiers.iter().enumerate() {
+                if let Some(unit) = self.organism_expression.transcription_units.get_mut(i) {
+                    unit.effective_activity *= mrna_mod;
+                }
+            }
+        }
+
         self.refresh_multirate_scheduler();
         self.update_complex_assembly_state(base_dt);
 

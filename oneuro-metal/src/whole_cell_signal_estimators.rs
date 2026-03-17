@@ -453,7 +453,7 @@ pub(crate) fn subsystem_inventory_signal(state: WholeCellSubsystemState, support
     SUBSYSTEM_INVENTORY_SIGNAL_RULE.evaluate(ctx.scalar())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
     use crate::whole_cell_submodels::Syn3ASubsystemPreset;

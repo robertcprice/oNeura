@@ -376,6 +376,58 @@ pub struct WholeCellOperonSemanticSpec {
     pub subsystem_targets: Vec<Syn3ASubsystemPreset>,
 }
 
+/// Runtime state for an operon (populated during simulation).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WholeCellOperonState {
+    pub name: String,
+    #[serde(default)] pub promoter_bp: u32,
+    #[serde(default)] pub terminator_bp: u32,
+    #[serde(default)] pub gene_count: u32,
+    #[serde(default = "default_scale")] pub copy_gain: f32,
+    #[serde(default = "default_scale")] pub basal_activity: f32,
+    #[serde(default = "default_scale")] pub effective_activity: f32,
+    #[serde(default = "default_scale")] pub support_level: f32,
+    #[serde(default = "default_scale")] pub stress_penalty: f32,
+    #[serde(default = "default_scale")] pub fork_support: f32,
+    #[serde(default)] pub fork_pressure: f32,
+    #[serde(default = "default_scale")] pub promoter_accessibility: f32,
+    #[serde(default)] pub rnap_occupancy: f32,
+    #[serde(default)] pub elongation_occupancy: f32,
+    #[serde(default)] pub blockage_pressure: f32,
+    #[serde(default)] pub transcript_abundance: f32,
+    #[serde(default)] pub protein_abundance: f32,
+    #[serde(default)] pub transcript_synthesis_rate: f32,
+    #[serde(default)] pub protein_synthesis_rate: f32,
+    #[serde(default)] pub transcript_turnover_rate: f32,
+    #[serde(default)] pub protein_turnover_rate: f32,
+    #[serde(default)] pub strand_alignment: f32,
+}
+
+/// Aggregate process-occupancy channels.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WholeCellProcessOccupancyState {
+    #[serde(default)] pub current: WholeCellProcessWeights,
+    #[serde(default)] pub target: WholeCellProcessWeights,
+    #[serde(default)] pub assembly_rate: WholeCellProcessWeights,
+    #[serde(default)] pub degradation_rate: WholeCellProcessWeights,
+}
+
+impl WholeCellProcessOccupancyState {
+    pub fn add_projection(
+        &mut self,
+        weights: WholeCellProcessWeights,
+        current: f32,
+        target: f32,
+        assembly_rate: f32,
+        degradation_rate: f32,
+    ) {
+        self.current.add_weighted(weights, current);
+        self.target.add_weighted(weights, target);
+        self.assembly_rate.add_weighted(weights, assembly_rate);
+        self.degradation_rate.add_weighted(weights, degradation_rate);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WholeCellRnaProductSpec {
     pub id: String,
@@ -579,6 +631,8 @@ pub struct WholeCellSpeciesSpec {
     pub patch_domain: WholeCellPatchDomain,
     #[serde(default)]
     pub chromosome_domain: Option<String>,
+    #[serde(default)]
+    pub process_weights: WholeCellProcessWeights,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -610,6 +664,8 @@ pub struct WholeCellReactionSpec {
     pub patch_domain: WholeCellPatchDomain,
     #[serde(default)]
     pub chromosome_domain: Option<String>,
+    #[serde(default)]
+    pub process_weights: WholeCellProcessWeights,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -652,6 +708,8 @@ pub struct WholeCellSpeciesRuntimeState {
     pub synthesis_rate: f32,
     #[serde(default)]
     pub turnover_rate: f32,
+    #[serde(default)]
+    pub process_weights: WholeCellProcessWeights,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -685,6 +743,8 @@ pub struct WholeCellReactionRuntimeState {
     pub reactant_satisfaction: f32,
     #[serde(default = "default_scale")]
     pub catalyst_support: f32,
+    #[serde(default)]
+    pub process_weights: WholeCellProcessWeights,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -854,6 +914,7 @@ pub fn initialize_runtime_species_state(
             anchor_count: species.basal_abundance.max(0.0),
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         })
         .collect()
 }
@@ -882,6 +943,7 @@ pub fn initialize_runtime_reaction_state(
             cumulative_extent: 0.0,
             reactant_satisfaction: 1.0,
             catalyst_support: 1.0,
+            process_weights: WholeCellProcessWeights::default(),
         })
         .collect()
 }
@@ -3854,6 +3916,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: None,
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -3878,6 +3941,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: operon_domain(&rna.operon),
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -3907,6 +3971,7 @@ pub fn compile_genome_process_registry(
             patch_domain,
             chromosome_domain: gene_domain(&protein.gene)
                 .or_else(|| operon_domain(&protein.operon)),
+                process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -3941,6 +4006,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: operon_domain(&complex.operon),
+            process_weights: WholeCellProcessWeights::default(),
         });
         species.push(WholeCellSpeciesSpec {
             id: nucleation_id.clone(),
@@ -3957,6 +4023,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: operon_domain(&complex.operon),
+            process_weights: WholeCellProcessWeights::default(),
         });
         species.push(WholeCellSpeciesSpec {
             id: elongation_id.clone(),
@@ -3973,6 +4040,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: operon_domain(&complex.operon),
+            process_weights: WholeCellProcessWeights::default(),
         });
         species.push(WholeCellSpeciesSpec {
             id: mature_id.clone(),
@@ -3988,6 +4056,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: operon_domain(&complex.operon),
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -4019,6 +4088,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: registry_spatial_scope(asset_class, compartment, &[]),
             patch_domain,
             chromosome_domain: None,
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -4086,6 +4156,7 @@ pub fn compile_genome_process_registry(
                 spatial_scope: operon_spatial_scope,
                 patch_domain: operon_patch_domain,
                 chromosome_domain: operon_chromosome_domain.clone(),
+                process_weights: WholeCellProcessWeights::default(),
             });
         }
 
@@ -4154,6 +4225,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: operon_spatial_scope,
             patch_domain: operon_patch_domain,
             chromosome_domain: operon_chromosome_domain,
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -4210,6 +4282,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: protein_spatial_scope,
             patch_domain: protein_patch_domain,
             chromosome_domain: protein_chromosome_domain,
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -4256,6 +4329,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: rna_spatial_scope,
             patch_domain: rna_patch_domain,
             chromosome_domain: rna_chromosome_domain,
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -4309,6 +4383,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: protein_spatial_scope,
             patch_domain: protein_patch_domain,
             chromosome_domain: protein_chromosome_domain,
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -4400,6 +4475,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
             chromosome_domain: complex_chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
         let mut nucleation_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: subunit_pool_id.clone(),
@@ -4435,6 +4511,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
             chromosome_domain: complex_chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
         let mut elongation_reactants = vec![
             WholeCellReactionParticipantSpec {
@@ -4476,6 +4553,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
             chromosome_domain: complex_chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
         let mut maturation_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: elongation_id.clone(),
@@ -4513,6 +4591,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
             chromosome_domain: complex_chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
         let mut repair_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: subunit_pool_id.clone(),
@@ -4581,6 +4660,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
             chromosome_domain: complex_chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
         let mut turnover_reactants = vec![WholeCellReactionParticipantSpec {
             species_id: mature_id,
@@ -4616,6 +4696,7 @@ pub fn compile_genome_process_registry(
             spatial_scope: complex_spatial_scope,
             patch_domain: complex_patch_domain,
             chromosome_domain: complex_chromosome_domain,
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -4830,6 +4911,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
         reactions.push(WholeCellReactionSpec {
             id: format!(
@@ -4855,6 +4937,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
         reactions.push(WholeCellReactionSpec {
             id: format!(
@@ -4880,6 +4963,7 @@ pub fn compile_genome_process_registry(
             spatial_scope,
             patch_domain,
             chromosome_domain: chromosome_domain.clone(),
+            process_weights: WholeCellProcessWeights::default(),
         });
     }
 
@@ -10654,6 +10738,7 @@ mod tests {
             anchor_count: 8.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         }];
 
         let reparsed =
@@ -10703,6 +10788,7 @@ mod tests {
             anchor_count: 8.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         }];
 
         let reparsed = parse_saved_state_json(&saved_state_to_json(&saved).expect("saved json"))

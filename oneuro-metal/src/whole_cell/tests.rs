@@ -69,6 +69,7 @@ fn test_registry_transport_reaction_updates_authoritative_glucose_pool() {
         anchor_count: 24.0,
         synthesis_rate: 0.0,
         turnover_rate: 0.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
         id: "pool_glucose_transport".to_string(),
@@ -91,6 +92,7 @@ fn test_registry_transport_reaction_updates_authoritative_glucose_pool() {
         cumulative_extent: 0.0,
         reactant_satisfaction: 1.0,
         catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
 
     sim.update_runtime_process_reactions(1.0, 0.0, 0.0);
@@ -158,6 +160,7 @@ fn test_registry_degradation_reaction_returns_mass_to_nucleotide_lattice() {
             anchor_count: 3.2,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
         WholeCellSpeciesRuntimeState {
             id: "test_rna".to_string(),
@@ -177,6 +180,7 @@ fn test_registry_degradation_reaction_returns_mass_to_nucleotide_lattice() {
             anchor_count: 16.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
     ];
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
@@ -203,6 +207,7 @@ fn test_registry_degradation_reaction_returns_mass_to_nucleotide_lattice() {
         cumulative_extent: 0.0,
         reactant_satisfaction: 1.0,
         catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     let before_nucleotides = sim.lattice.mean_species(IntracellularSpecies::Nucleotides);
 
@@ -283,6 +288,7 @@ fn test_registry_stress_response_reduces_metabolic_load_and_operon_stress() {
         anchor_count: 28.0,
         synthesis_rate: 0.0,
         turnover_rate: 0.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
         id: "stress_operon_stress_response".to_string(),
@@ -305,6 +311,7 @@ fn test_registry_stress_response_reduces_metabolic_load_and_operon_stress() {
         cumulative_extent: 0.0,
         reactant_satisfaction: 1.0,
         catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     let before_load = sim.metabolic_load;
     let before_atp = sim.atp_mm;
@@ -377,6 +384,7 @@ fn test_registry_complex_repair_updates_named_complex_state() {
             anchor_count: 10.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
         WholeCellSpeciesRuntimeState {
             id: "test_complex_mature".to_string(),
@@ -396,6 +404,7 @@ fn test_registry_complex_repair_updates_named_complex_state() {
             anchor_count: 8.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
         WholeCellSpeciesRuntimeState {
             id: "pool_amino_acids".to_string(),
@@ -415,6 +424,7 @@ fn test_registry_complex_repair_updates_named_complex_state() {
             anchor_count: 32.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
     ];
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
@@ -447,6 +457,7 @@ fn test_registry_complex_repair_updates_named_complex_state() {
         cumulative_extent: 0.0,
         reactant_satisfaction: 1.0,
         catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
 
     sim.update_runtime_process_reactions(1.0, 0.0, 0.0);
@@ -1044,6 +1055,7 @@ fn test_membrane_band_zone_exceeds_poles_for_band_localized_drive() {
         anchor_count: 8.0,
         synthesis_rate: 0.0,
         turnover_rate: 0.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     sim.organism_reactions.clear();
     sim.refresh_spatial_fields();
@@ -1089,6 +1101,7 @@ fn test_localized_pool_transfer_moves_membrane_precursors_into_band_zone() {
             anchor_count: 48.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
         WholeCellSpeciesRuntimeState {
             id: "pool_membrane_band_membrane_precursors".to_string(),
@@ -1108,6 +1121,7 @@ fn test_localized_pool_transfer_moves_membrane_precursors_into_band_zone() {
             anchor_count: 2.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
     ];
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
@@ -1134,6 +1148,7 @@ fn test_localized_pool_transfer_moves_membrane_precursors_into_band_zone() {
         cumulative_extent: 0.0,
         reactant_satisfaction: 1.0,
         catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
 
     let before_band = sim.localized_membrane_band_precursor_pool_mm();
@@ -1175,6 +1190,7 @@ fn test_localized_pool_transfer_moves_nucleotides_into_nucleoid_track() {
             anchor_count: 42.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
         WholeCellSpeciesRuntimeState {
             id: "pool_nucleoid_track_nucleotides".to_string(),
@@ -1194,6 +1210,7 @@ fn test_localized_pool_transfer_moves_nucleotides_into_nucleoid_track() {
             anchor_count: 3.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
     ];
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
@@ -1220,6 +1237,7 @@ fn test_localized_pool_transfer_moves_nucleotides_into_nucleoid_track() {
         cumulative_extent: 0.0,
         reactant_satisfaction: 1.0,
         catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     let mut nucleotide_demand = vec![0.0; sim.lattice.total_voxels()];
     let nucleoid_weights = sim
@@ -1293,6 +1311,7 @@ fn test_localized_pool_transfer_preserves_compiled_chromosome_domain() {
                 anchor_count: 42.0,
                 synthesis_rate: 0.0,
                 turnover_rate: 0.0,
+                process_weights: WholeCellProcessWeights::default(),
             },
             WholeCellSpeciesRuntimeState {
                 id: "pool_nucleoid_track_nucleotides".to_string(),
@@ -1312,6 +1331,7 @@ fn test_localized_pool_transfer_preserves_compiled_chromosome_domain() {
                 anchor_count: 3.0,
                 synthesis_rate: 0.0,
                 turnover_rate: 0.0,
+                process_weights: WholeCellProcessWeights::default(),
             },
         ];
         sim.organism_reactions = vec![WholeCellReactionRuntimeState {
@@ -1338,6 +1358,7 @@ fn test_localized_pool_transfer_preserves_compiled_chromosome_domain() {
             cumulative_extent: 0.0,
             reactant_satisfaction: 1.0,
             catalyst_support: 1.0,
+            process_weights: WholeCellProcessWeights::default(),
         }];
         sim.refresh_spatial_fields();
         sim.refresh_rdme_drive_fields();
@@ -1388,6 +1409,7 @@ fn test_rdme_drive_fields_follow_compiled_scopes() {
             anchor_count: 24.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
         WholeCellSpeciesRuntimeState {
             id: "atp_band_complex_mature".to_string(),
@@ -1407,6 +1429,7 @@ fn test_rdme_drive_fields_follow_compiled_scopes() {
             anchor_count: 6.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         },
     ];
     sim.organism_reactions = vec![WholeCellReactionRuntimeState {
@@ -1430,6 +1453,7 @@ fn test_rdme_drive_fields_follow_compiled_scopes() {
         cumulative_extent: 0.0,
         reactant_satisfaction: 1.0,
         catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
 
     sim.refresh_spatial_fields();
@@ -1514,6 +1538,7 @@ fn test_rdme_drive_fields_follow_compiled_chromosome_domains() {
             anchor_count: 12.0,
             synthesis_rate: 0.0,
             turnover_rate: 0.0,
+            process_weights: WholeCellProcessWeights::default(),
         }];
         sim.organism_reactions = vec![WholeCellReactionRuntimeState {
             id: "domain_replication_drive".to_string(),
@@ -1536,6 +1561,7 @@ fn test_rdme_drive_fields_follow_compiled_chromosome_domains() {
             cumulative_extent: 0.0,
             reactant_satisfaction: 1.0,
             catalyst_support: 1.0,
+            process_weights: WholeCellProcessWeights::default(),
         }];
         sim.refresh_spatial_fields();
         sim.refresh_rdme_drive_fields();
@@ -2178,6 +2204,7 @@ fn test_runtime_pool_bulk_fields_backfill_from_registry_metadata() {
             spatial_scope: WholeCellSpatialScope::WellMixed,
             patch_domain: WholeCellPatchDomain::Distributed,
             chromosome_domain: None,
+            process_weights: WholeCellProcessWeights::default(),
         }],
         reactions: Vec::new(),
     });
@@ -2199,6 +2226,7 @@ fn test_runtime_pool_bulk_fields_backfill_from_registry_metadata() {
         anchor_count: 12.0,
         synthesis_rate: 0.0,
         turnover_rate: 0.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
 
     sim.normalize_runtime_species_bulk_fields();
@@ -5615,6 +5643,7 @@ fn test_quantum_auto_discovery_finds_translation() {
         spatial_scope: Default::default(), patch_domain: Default::default(),
         chromosome_domain: None, current_flux: 0.0,
         cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     sim.run_quantum_auto_discovery();
     assert_eq!(sim.discovered_quantum_reactions().len(), 1);
@@ -5635,6 +5664,7 @@ fn test_quantum_auto_discovery_energy_maps_oxphos() {
         spatial_scope: Default::default(), patch_domain: Default::default(),
         chromosome_domain: None, current_flux: 0.0,
         cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     sim.run_quantum_auto_discovery();
     assert_eq!(sim.discovered_quantum_reactions().len(), 1);
@@ -5655,6 +5685,7 @@ fn test_quantum_auto_discovery_ignores_ineligible() {
         spatial_scope: Default::default(), patch_domain: Default::default(),
         chromosome_domain: None, current_flux: 0.0,
         cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     sim.run_quantum_auto_discovery();
     assert!(sim.discovered_quantum_reactions().is_empty());
@@ -5674,6 +5705,7 @@ fn test_quantum_probe_refinement() {
         spatial_scope: Default::default(), patch_domain: Default::default(),
         chromosome_domain: None, current_flux: 0.0,
         cumulative_extent: 0.0, reactant_satisfaction: 1.0, catalyst_support: 1.0,
+        process_weights: WholeCellProcessWeights::default(),
     }];
     sim.run_quantum_auto_discovery();
     let probe = LocalMDProbeReport {

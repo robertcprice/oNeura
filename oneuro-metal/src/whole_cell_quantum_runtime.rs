@@ -7402,6 +7402,9 @@ mod tests {
                 reactants: Vec::new(),
                 products: Vec::new(),
                 subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
+                chromosome_domain: None,
+                patch_domain: Default::default(),
+                spatial_scope: Default::default(),
                 current_flux: 0.0,
                 cumulative_extent: 0.0,
                 reactant_satisfaction: 1.0,
@@ -7410,6 +7413,7 @@ mod tests {
         ];
         let registry = WholeCellGenomeProcessRegistry {
             organism: "test".to_string(),
+            chromosome_domains: Vec::new(),
             species: Vec::new(),
             reactions: Vec::new(),
         };
@@ -7439,6 +7443,9 @@ mod tests {
                 // Use RibosomePolysomeCluster with Energy+ComplexMaturation --
                 // this combo does NOT match any hardcoded kind.
                 subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
+                chromosome_domain: None,
+                patch_domain: Default::default(),
+                spatial_scope: Default::default(),
                 current_flux: 0.0,
                 cumulative_extent: 0.0,
                 reactant_satisfaction: 1.0,
@@ -7447,6 +7454,7 @@ mod tests {
         ];
         let registry = WholeCellGenomeProcessRegistry {
             organism: "test".to_string(),
+            chromosome_domains: Vec::new(),
             species: Vec::new(),
             reactions: Vec::new(),
         };

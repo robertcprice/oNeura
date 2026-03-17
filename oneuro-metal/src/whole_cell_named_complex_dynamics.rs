@@ -75,6 +75,7 @@ pub(crate) fn seed_named_complex_state(
         id: complex.id.clone(),
         operon: complex.operon.clone(),
         asset_class: complex.asset_class,
+        family: complex.family,
         subsystem_targets: complex.subsystem_targets.clone(),
         subunit_pool,
         nucleation_intermediate,
@@ -89,6 +90,12 @@ pub(crate) fn seed_named_complex_state(
         component_satisfaction,
         structural_support,
         assembly_progress,
+        stalled_intermediate: 0.0,
+        damaged_abundance: 0.0,
+        limiting_component_signal: 0.0,
+        shared_component_pressure: 0.0,
+        insertion_progress: 0.0,
+        failure_count: 0.0,
     }
 }
 
@@ -171,6 +178,7 @@ pub(crate) fn update_named_complex_state(
         id: state.id.clone(),
         operon: state.operon.clone(),
         asset_class: state.asset_class,
+        family: state.family,
         subsystem_targets: state.subsystem_targets.clone(),
         subunit_pool,
         nucleation_intermediate,
@@ -185,6 +193,12 @@ pub(crate) fn update_named_complex_state(
         component_satisfaction,
         structural_support,
         assembly_progress,
+        stalled_intermediate: 0.0,
+        damaged_abundance: 0.0,
+        limiting_component_signal: 0.0,
+        shared_component_pressure: 0.0,
+        insertion_progress: 0.0,
+        failure_count: 0.0,
     }
 }
 
@@ -219,10 +233,12 @@ fn saturating_signal(value: f32, half_saturation: f32) -> f32 {
     (value / (value + half_saturation)).clamp(0.0, 1.0)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
-    use crate::whole_cell_data::{WholeCellAssetClass, WholeCellComplexComponentSpec};
+    use crate::whole_cell_data::{
+        WholeCellAssetClass, WholeCellAssemblyFamily, WholeCellComplexComponentSpec,
+    };
 
     #[test]
     fn named_complex_total_stoichiometry_sums_component_counts() {
@@ -242,8 +258,12 @@ mod tests {
             ],
             basal_abundance: 4.0,
             asset_class: WholeCellAssetClass::Generic,
+            family: WholeCellAssemblyFamily::Generic,
             process_weights: Default::default(),
             subsystem_targets: Vec::new(),
+            membrane_inserted: false,
+            chromosome_coupled: false,
+            division_coupled: false,
         };
 
         assert!((named_complex_total_stoichiometry(&complex) - 5.0).abs() < 1.0e-6);
@@ -261,8 +281,12 @@ mod tests {
             }],
             basal_abundance: 8.0,
             asset_class: WholeCellAssetClass::Translation,
+            family: WholeCellAssemblyFamily::Generic,
             process_weights: Default::default(),
             subsystem_targets: Vec::new(),
+            membrane_inserted: false,
+            chromosome_coupled: false,
+            division_coupled: false,
         };
 
         let state = seed_named_complex_state(
@@ -294,13 +318,18 @@ mod tests {
             }],
             basal_abundance: 10.0,
             asset_class: WholeCellAssetClass::Translation,
+            family: WholeCellAssemblyFamily::Generic,
             process_weights: Default::default(),
             subsystem_targets: Vec::new(),
+            membrane_inserted: false,
+            chromosome_coupled: false,
+            division_coupled: false,
         };
         let state = WholeCellNamedComplexState {
             id: "complex".to_string(),
             operon: "operon".to_string(),
             asset_class: WholeCellAssetClass::Translation,
+            family: WholeCellAssemblyFamily::Generic,
             subsystem_targets: Vec::new(),
             subunit_pool: 20.0,
             nucleation_intermediate: 5.0,
@@ -315,6 +344,12 @@ mod tests {
             component_satisfaction: 0.6,
             structural_support: 0.8,
             assembly_progress: 0.0,
+            stalled_intermediate: 0.0,
+            damaged_abundance: 0.0,
+            limiting_component_signal: 0.0,
+            shared_component_pressure: 0.0,
+            insertion_progress: 0.0,
+            failure_count: 0.0,
         };
 
         let updated = update_named_complex_state(

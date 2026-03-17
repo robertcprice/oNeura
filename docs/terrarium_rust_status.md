@@ -83,10 +83,24 @@ All literature-grounded, all tested, all wired into the terrarium step loop:
 | `soil_fauna.rs` | 921 | 8 | Wired: earthworm bioturbation + nematode Lotka-Volterra guilds |
 | `plant_competition.rs` | 615 | 10 | Wired: Beer-Lambert asymmetric shading + root nutrient splitting |
 | `drosophila_population.rs` | 1133 | 7 | Wired: Sharpe-Schoolfield egg-to-adult lifecycle |
-| `fly_metabolism.rs` | 516 | 9 | Wired: 7-pool MM crop-to-ATP biochemistry |
+| `fly_metabolism.rs` | 516 | 10 | Wired: 7-pool MM crop-to-ATP biochemistry |
 | `field_coupling.rs` | 254 | 5 | Utility: 2D/3D Gaussian field deposit + mean-map |
 | `seed_cellular.rs` | 550 | 1 | Standalone: seed germination cellular metabolism |
 | `organism_metabolism.rs` | 49 | - | Trait: universal metabolic observation surface |
+
+## Whole-Cell Stochastic Gene Expression (2026-03-16)
+
+| Feature | Status |
+|---------|--------|
+| Gillespie tau-leaping stochastic stepping | Implemented |
+| Telegraph promoter model (ON/OFF states) | Implemented |
+| Configurable mRNA burst size | Implemented |
+| Protein noise with Fano factor > 1 | Implemented |
+| Deterministic↔stochastic bidirectional sync | Implemented |
+| Wired into WholeCellSimulator::step() | Wired (opt-in) |
+| 10 unit tests | All pass |
+
+Located in `oneuro-metal/src/whole_cell/stochastic_expression.rs`.
 
 ## Evolution Engine (2026-03-16)
 
@@ -98,19 +112,22 @@ All literature-grounded, all tested, all wired into the terrarium step loop:
 | Fly brain coevolution (PSC scale, neural steps) | Working |
 | WorldGenome seeding (plants/water/fruits/flies) | Working |
 | Telemetry export to JSON | Working |
-| Convergence: fitness 41 to 85 over 5 generations | Verified |
+| Convergence: fitness 62 to 85 over 5 generations | Verified |
 | 11 unit tests | All pass |
 
 ## Test Counts (2026-03-16)
 
-58 tests pass in comprehensive regression (0 failures):
+90 tests pass in comprehensive regression (0 failures):
+- terrarium_world: 14
 - terrarium_evolve: 11
+- stochastic_expression: 10
 - plant_competition: 10
-- fly_metabolism: 9
+- fly_metabolism: 10
 - soil_fauna: 8
 - drosophila_population: 7
 - field_coupling: 5
-- terrarium_world: 2
-- terrarium: 1
-- seed_cellular: 1
+- soil_atmosphere: 4
+- substrate_stays_bounded: 4
 - organism_metabolism: 4
+- guild_activity: 2
+- seed_cellular: 1

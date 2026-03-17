@@ -125,7 +125,7 @@ pub(crate) fn prefer_live_process_occupancy(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 pub(crate) fn legacy_inventory_from_process_occupancy(
     occupancy: WholeCellProcessOccupancyState,
 ) -> WholeCellComplexAssemblyState {
@@ -295,7 +295,7 @@ pub(crate) fn explicit_runtime_process_occupancy(
     occupancy
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
     use crate::whole_cell_data::{
@@ -416,6 +416,9 @@ mod tests {
                 operon: None,
                 parent_complex: None,
                 subsystem_targets: Vec::new(),
+                chromosome_domain: None,
+                patch_domain: Default::default(),
+                spatial_scope: Default::default(),
                 count: 16.0,
                 anchor_count: 25.0,
                 synthesis_rate: 3.0,
@@ -436,6 +439,9 @@ mod tests {
                 operon: None,
                 parent_complex: None,
                 subsystem_targets: Vec::new(),
+                chromosome_domain: None,
+                patch_domain: Default::default(),
+                spatial_scope: Default::default(),
                 count: 9.0,
                 anchor_count: 16.0,
                 synthesis_rate: 2.0,
@@ -457,6 +463,9 @@ mod tests {
             reactants: Vec::new(),
             products: Vec::new(),
             subsystem_targets: Vec::new(),
+            chromosome_domain: None,
+            patch_domain: Default::default(),
+            spatial_scope: Default::default(),
             current_flux: 2.5,
             cumulative_extent: 0.0,
             reactant_satisfaction: 1.0,

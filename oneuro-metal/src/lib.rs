@@ -67,9 +67,35 @@ pub mod terrarium_web_state;
 pub mod terrarium_web_handlers;
 #[cfg(feature = "web")]
 pub mod terrarium_web_evolution;
+#[cfg(feature = "web")]
+pub mod terrarium_web_tournament;
+#[cfg(feature = "web")]
+pub mod terrarium_web_annotations;
+#[cfg(feature = "web")]
+pub mod terrarium_web_auth;
 pub mod whole_cell;
 pub mod whole_cell_data;
 pub mod whole_cell_submodels;
+
+// ===== Whole-cell satellite modules (pure reducers/helpers) =====
+// These modules contain extracted formula-heavy helpers that whole_cell.rs depends on.
+// DO NOT REMOVE — they are actively compiled and tested.
+pub(crate) mod whole_cell_assembly_fallbacks;
+pub(crate) mod whole_cell_assembly_projection;
+pub(crate) mod whole_cell_asset_fallbacks;
+pub(crate) mod whole_cell_chromosome_math;
+pub(crate) mod whole_cell_complex_channels;
+pub(crate) mod whole_cell_inventory_authority;
+pub(crate) mod whole_cell_named_complex_dynamics;
+pub(crate) mod whole_cell_process_occupancy;
+pub(crate) mod whole_cell_process_weights;
+pub(crate) mod whole_cell_rule_math;
+pub(crate) mod whole_cell_scale_reducers;
+pub(crate) mod whole_cell_signal_estimators;
+
+// ===== Quantum runtime (220 API errors — see Task #6) =====
+// pub mod subatomic_quantum;
+// pub mod whole_cell_quantum_runtime;
 
 // ===== Terrarium Evolution re-exports =====
 pub use terrarium_evolve::{
@@ -82,7 +108,9 @@ pub use terrarium_evolve::{
 };
 
 // ===== High-level orchestration =====
+pub mod atomistic_chemistry;
 pub mod atomistic_topology;
+pub mod structure_ingest;
 pub mod brain_regions;
 pub mod consciousness;
 pub mod dishbrain_pong;

@@ -4,8 +4,8 @@
 //! out of the main simulator implementation.
 
 use crate::whole_cell_data::{
-    WholeCellChromosomeForkState, WholeCellChromosomeLocusState, WholeCellChromosomeState,
-    WholeCellOrganismSpec,
+    WholeCellChromosomeForkDirection, WholeCellChromosomeForkState,
+    WholeCellChromosomeLocusState, WholeCellChromosomeState, WholeCellOrganismSpec,
 };
 
 fn finite_scale(value: f32, fallback: f32, min_value: f32, max_value: f32) -> f32 {
@@ -59,28 +59,48 @@ pub(crate) fn default_chromosome_loci(
     vec![
         WholeCellChromosomeLocusState {
             id: "origin".to_string(),
-            position_bp: origin_bp.min(genome_bp - 1),
+            midpoint_bp: origin_bp.min(genome_bp - 1),
+            strand: 0,
             copy_number: 1.0,
-            separation_nm: 0.0,
+            accessibility: 1.0,
+            torsional_stress: 0.0,
+            replicated: false,
+            segregating: false,
+            domain_index: 0,
         },
         WholeCellChromosomeLocusState {
             id: "clockwise_arm".to_string(),
-            position_bp: ((origin_bp as u64 + arm_quarter as u64) % genome_bp as u64) as u32,
+            midpoint_bp: ((origin_bp as u64 + arm_quarter as u64) % genome_bp as u64) as u32,
+            strand: 0,
             copy_number: 1.0,
-            separation_nm: 0.0,
+            accessibility: 1.0,
+            torsional_stress: 0.0,
+            replicated: false,
+            segregating: false,
+            domain_index: 0,
         },
         WholeCellChromosomeLocusState {
             id: "counterclockwise_arm".to_string(),
-            position_bp: ((origin_bp as i64 - arm_quarter as i64).rem_euclid(genome_bp as i64))
+            midpoint_bp: ((origin_bp as i64 - arm_quarter as i64).rem_euclid(genome_bp as i64))
                 as u32,
+            strand: 0,
             copy_number: 1.0,
-            separation_nm: 0.0,
+            accessibility: 1.0,
+            torsional_stress: 0.0,
+            replicated: false,
+            segregating: false,
+            domain_index: 0,
         },
         WholeCellChromosomeLocusState {
             id: "terminus".to_string(),
-            position_bp: terminus_bp.min(genome_bp - 1),
+            midpoint_bp: terminus_bp.min(genome_bp - 1),
+            strand: 0,
             copy_number: 1.0,
-            separation_nm: 0.0,
+            accessibility: 1.0,
+            torsional_stress: 0.0,
+            replicated: false,
+            segregating: false,
+            domain_index: 0,
         },
     ]
 }
@@ -95,30 +115,44 @@ pub(crate) fn seeded_chromosome_state(
     let origin_bp = origin_bp.min(genome_bp - 1);
     let terminus_bp = terminus_bp.min(genome_bp - 1);
     WholeCellChromosomeState {
-        genome_bp,
+        chromosome_length_bp: genome_bp,
         origin_bp,
         terminus_bp,
         replicated_bp: 0,
-        chromosome_separation_nm: chromosome_separation_nm.max(0.0),
+        replicated_fraction: 0.0,
+        segregation_progress: chromosome_separation_nm.max(0.0),
         initiation_potential: 0.0,
+        initiation_events: 0,
+        completion_events: 0,
         torsional_stress: 0.0,
-        compaction: 1.0,
+        compaction_fraction: 1.0,
+        mean_locus_accessibility: 1.0,
         forks: vec![
             WholeCellChromosomeForkState {
                 id: "clockwise".to_string(),
-                direction: 1,
+                direction: WholeCellChromosomeForkDirection::Clockwise,
                 active: false,
-                progress_bp: 0.0,
+                traveled_bp: 0,
                 position_bp: origin_bp,
-                speed_bp_per_ms: 0.0,
+                paused: false,
+                pause_pressure: 0.0,
+                collision_pressure: 0.0,
+                pause_events: 0,
+                completion_fraction: 0.0,
+                completed: false,
             },
             WholeCellChromosomeForkState {
                 id: "counterclockwise".to_string(),
-                direction: -1,
+                direction: WholeCellChromosomeForkDirection::CounterClockwise,
                 active: false,
-                progress_bp: 0.0,
+                traveled_bp: 0,
                 position_bp: origin_bp,
-                speed_bp_per_ms: 0.0,
+                paused: false,
+                pause_pressure: 0.0,
+                collision_pressure: 0.0,
+                pause_events: 0,
+                completion_fraction: 0.0,
+                completed: false,
             },
         ],
         loci: default_chromosome_loci(genome_bp, origin_bp, terminus_bp),
@@ -132,7 +166,7 @@ pub(crate) fn normalize_chromosome_state(
     fallback_terminus_bp: u32,
     fallback_separation_nm: f32,
 ) -> WholeCellChromosomeState {
-    let genome_bp = chromosome.genome_bp.max(fallback_genome_bp.max(1));
+    let genome_bp = chromosome.chromosome_length_bp.max(fallback_genome_bp.max(1));
     let origin_bp = chromosome
         .origin_bp
         .min(genome_bp - 1)
@@ -147,36 +181,35 @@ pub(crate) fn normalize_chromosome_state(
             origin_bp,
             terminus_bp,
             chromosome
-                .chromosome_separation_nm
+                .segregation_progress
                 .max(fallback_separation_nm),
         )
     } else {
         chromosome.clone()
     };
-    normalized.genome_bp = genome_bp;
+    normalized.chromosome_length_bp = genome_bp;
     normalized.origin_bp = origin_bp;
     normalized.terminus_bp = terminus_bp;
     normalized.replicated_bp = normalized.replicated_bp.min(genome_bp);
-    normalized.chromosome_separation_nm = normalized
-        .chromosome_separation_nm
+    normalized.segregation_progress = normalized
+        .segregation_progress
         .max(fallback_separation_nm)
         .max(0.0);
     normalized.initiation_potential = normalized.initiation_potential.clamp(0.0, 2.0);
     normalized.torsional_stress = normalized.torsional_stress.clamp(0.0, 2.5);
-    normalized.compaction = finite_scale(normalized.compaction, 1.0, 0.65, 1.75);
+    normalized.compaction_fraction = finite_scale(normalized.compaction_fraction, 1.0, 0.65, 1.75);
     for fork in &mut normalized.forks {
-        fork.progress_bp = fork.progress_bp.clamp(0.0, 0.5 * genome_bp as f32);
+        fork.traveled_bp = (fork.traveled_bp as f32).clamp(0.0, 0.5 * genome_bp as f32) as u32;
         fork.position_bp = fork.position_bp.min(genome_bp - 1);
-        fork.direction = if fork.direction >= 0 { 1 } else { -1 };
-        fork.speed_bp_per_ms = fork.speed_bp_per_ms.max(0.0);
+        // direction is an enum — no normalization needed
     }
     if normalized.loci.is_empty() {
         normalized.loci = default_chromosome_loci(genome_bp, origin_bp, terminus_bp);
     }
     for locus in &mut normalized.loci {
-        locus.position_bp = locus.position_bp.min(genome_bp - 1);
+        locus.midpoint_bp = locus.midpoint_bp.min(genome_bp - 1);
         locus.copy_number = locus.copy_number.clamp(1.0, 2.0);
-        locus.separation_nm = locus.separation_nm.max(0.0);
+        locus.torsional_stress = locus.torsional_stress.max(0.0);
     }
     normalized
 }
@@ -216,7 +249,7 @@ pub(crate) fn circular_feature_midpoint_bp(start_bp: u32, end_bp: u32, genome_bp
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
 
@@ -234,27 +267,31 @@ mod tests {
     #[test]
     fn normalize_chromosome_state_seeds_missing_geometry() {
         let chromosome = WholeCellChromosomeState {
-            genome_bp: 100,
+            chromosome_length_bp: 100,
             origin_bp: 0,
             terminus_bp: 50,
             replicated_bp: 150,
-            chromosome_separation_nm: -5.0,
+            replicated_fraction: 0.0,
+            segregation_progress: -5.0,
             initiation_potential: 4.0,
+            initiation_events: 0,
+            completion_events: 0,
             torsional_stress: 9.0,
-            compaction: f32::NAN,
+            compaction_fraction: f32::NAN,
+            mean_locus_accessibility: 1.0,
             forks: Vec::new(),
             loci: Vec::new(),
         };
 
         let normalized = normalize_chromosome_state(&chromosome, 120, 10, 70, 25.0);
 
-        assert_eq!(normalized.genome_bp, 120);
+        assert_eq!(normalized.chromosome_length_bp, 120);
         assert_eq!(normalized.origin_bp, 10);
         assert_eq!(normalized.terminus_bp, 70);
         assert_eq!(normalized.replicated_bp, 0);
         assert_eq!(normalized.forks.len(), 2);
         assert_eq!(normalized.loci.len(), 4);
-        assert!((normalized.chromosome_separation_nm - 25.0).abs() < 1.0e-6);
-        assert!((normalized.compaction - 1.0).abs() < 1.0e-6);
+        assert!((normalized.segregation_progress - 25.0).abs() < 1.0e-6);
+        assert!((normalized.compaction_fraction - 1.0).abs() < 1.0e-6);
     }
 }

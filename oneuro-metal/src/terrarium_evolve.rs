@@ -303,6 +303,7 @@ pub enum FitnessObjective {
     MaxFruitProduction,
     MaxMicrobialHealth,
     MaxFlyEcosystem,
+    MaxFlyMetabolism,
 }
 
 impl Default for FitnessObjective {
@@ -321,6 +322,7 @@ impl std::fmt::Display for FitnessObjective {
             Self::MaxFruitProduction => write!(f, "MaxFruitProduction"),
             Self::MaxMicrobialHealth => write!(f, "MaxMicrobialHealth"),
             Self::MaxFlyEcosystem => write!(f, "MaxFlyEcosystem"),
+            Self::MaxFlyMetabolism => write!(f, "MaxFlyMetabolism"),
         }
     }
 }
@@ -361,6 +363,9 @@ pub fn evaluate_fitness(objective: FitnessObjective, snapshot: &TerrariumWorldSn
             let energy_frac = (snapshot.avg_fly_energy / 100.0).clamp(0.0, 1.0);
             snapshot.flies as f32 * 10.0 + snapshot.fruits as f32 * 2.0 + energy_frac * 5.0
         }
+        FitnessObjective::MaxFlyMetabolism => {
+            snapshot.avg_fly_energy_charge * 10.0 + snapshot.flies as f32 * 2.0
+        }
     }
 }
 
@@ -373,6 +378,7 @@ pub struct MultiObjectiveFitness {
     pub carbon: f32,
     pub fruit: f32,
     pub microbial: f32,
+    pub fly_metabolism: f32,
 }
 
 impl MultiObjectiveFitness {
@@ -385,6 +391,7 @@ impl MultiObjectiveFitness {
             carbon: evaluate_fitness(FitnessObjective::MaxCarbonSequestration, snapshot, periodic),
             fruit: evaluate_fitness(FitnessObjective::MaxFruitProduction, snapshot, periodic),
             microbial: evaluate_fitness(FitnessObjective::MaxMicrobialHealth, snapshot, periodic),
+            fly_metabolism: evaluate_fitness(FitnessObjective::MaxFlyMetabolism, snapshot, periodic),
         }
     }
 }
@@ -1156,14 +1163,16 @@ fn dominates(a: &MultiObjectiveFitness, b: &MultiObjectiveFitness) -> bool {
         && a.stability >= b.stability
         && a.carbon >= b.carbon
         && a.fruit >= b.fruit
-        && a.microbial >= b.microbial;
+        && a.microbial >= b.microbial
+        && a.fly_metabolism >= b.fly_metabolism;
 
     let strictly_better = a.biomass > b.biomass
         || a.biodiversity > b.biodiversity
         || a.stability > b.stability
         || a.carbon > b.carbon
         || a.fruit > b.fruit
-        || a.microbial > b.microbial;
+        || a.microbial > b.microbial
+        || a.fly_metabolism > b.fly_metabolism;
 
     better_or_equal && strictly_better
 }
@@ -1853,11 +1862,11 @@ mod tests {
     fn pareto_dominance_works() {
         let a = MultiObjectiveFitness {
             biomass: 10.0, biodiversity: 5.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0,
         };
         let b = MultiObjectiveFitness {
             biomass: 8.0, biodiversity: 5.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0,
         };
         // a dominates b (better in biomass, equal in others)
         assert!(dominates(&a, &b));
@@ -1866,7 +1875,7 @@ mod tests {
         // Non-dominated case
         let c = MultiObjectiveFitness {
             biomass: 12.0, biodiversity: 3.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0,
         };
         assert!(!dominates(&a, &c));
         assert!(!dominates(&c, &a));
@@ -1877,17 +1886,17 @@ mod tests {
         let mut results = vec![
             ParetoResult {
                 genome: WorldGenome::default_with_seed(1),
-                objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0 },
+                objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
             ParetoResult {
                 genome: WorldGenome::default_with_seed(2),
-                objectives: MultiObjectiveFitness { biomass: 8.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0 },
+                objectives: MultiObjectiveFitness { biomass: 8.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
             ParetoResult {
                 genome: WorldGenome::default_with_seed(3),
-                objectives: MultiObjectiveFitness { biomass: 12.0, biodiversity: 6.0, stability: 9.0, carbon: 4.0, fruit: 3.0, microbial: 5.0 },
+                objectives: MultiObjectiveFitness { biomass: 12.0, biodiversity: 6.0, stability: 9.0, carbon: 4.0, fruit: 3.0, microbial: 5.0, fly_metabolism: 4.0 },
                 rank: 99, crowding_distance: 0.0, wall_time_ms: 1.0,
             },
         ];
@@ -1907,7 +1916,7 @@ mod tests {
             pareto_front: vec![
                 ParetoResult {
                     genome: WorldGenome::default_with_seed(1),
-                    objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0 },
+                    objectives: MultiObjectiveFitness { biomass: 10.0, biodiversity: 5.0, stability: 8.0, carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0 },
                     rank: 0, crowding_distance: 1.0, wall_time_ms: 100.0,
                 },
             ],
@@ -1964,5 +1973,21 @@ mod tests {
                 // World construction may fail in test environment; that's OK
             }
         }
+    }
+
+    #[test]
+    fn fly_metabolism_fitness_evaluates() {
+        use crate::terrarium_world::TerrariumWorld;
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.run_frames(5).unwrap();
+        let snapshot = world.snapshot();
+        let fitness = evaluate_fitness(FitnessObjective::MaxFlyMetabolism, &snapshot, &[]);
+        // With flies present, fitness should be > 0 (energy_charge * 10 + flies * 2).
+        if snapshot.flies > 0 {
+            assert!(fitness > 0.0, "MaxFlyMetabolism should be > 0 with flies, got {fitness}");
+        }
+        // Multi-objective should include fly_metabolism.
+        let multi = MultiObjectiveFitness::evaluate(&snapshot, &[]);
+        assert!(multi.fly_metabolism >= 0.0, "fly_metabolism objective should be non-negative");
     }
 }

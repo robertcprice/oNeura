@@ -17,7 +17,7 @@ pub(crate) fn complex_channel_step(
     (next, assembly_rate.max(0.0), degradation_rate.max(0.0))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
 

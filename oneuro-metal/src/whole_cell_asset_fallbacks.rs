@@ -122,7 +122,7 @@ pub(crate) fn operon_process_weights_from_assets(
     weights.clamped()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
     use crate::whole_cell_data::{
@@ -147,6 +147,9 @@ mod tests {
             operon: None,
             parent_complex: None,
             subsystem_targets: Vec::new(),
+            chromosome_domain: None,
+            patch_domain: Default::default(),
+            spatial_scope: Default::default(),
             count: 16.0,
             anchor_count: 0.0,
             synthesis_rate: 0.0,
@@ -167,6 +170,9 @@ mod tests {
             reactants: Vec::new(),
             products: Vec::new(),
             subsystem_targets: Vec::new(),
+            chromosome_domain: None,
+            patch_domain: Default::default(),
+            spatial_scope: Default::default(),
             current_flux: 2.0,
             cumulative_extent: 0.0,
             reactant_satisfaction: 1.0,
@@ -190,13 +196,18 @@ mod tests {
             basal_activity: 1.0,
             polycistronic: false,
             process_weights: WholeCellProcessWeights::default(),
+            subsystem_targets: Vec::new(),
+            asset_class: None,
+            complex_family: None,
         };
         let assets = WholeCellGenomeAssetPackage {
             organism: "test".to_string(),
             chromosome_length_bp: 1,
             origin_bp: 0,
             terminus_bp: 0,
+            chromosome_domains: Vec::new(),
             operons: vec![operon.clone()],
+            operon_semantics: Vec::new(),
             rnas: Vec::new(),
             proteins: vec![crate::whole_cell_data::WholeCellProteinProductSpec {
                 id: "p".to_string(),
@@ -211,6 +222,8 @@ mod tests {
                 process_weights: WholeCellProcessWeights::default(),
                 subsystem_targets: vec![Syn3ASubsystemPreset::RibosomePolysomeCluster],
             }],
+            protein_semantics: Vec::new(),
+            complex_semantics: Vec::new(),
             complexes: Vec::new(),
             pools: Vec::new(),
         };

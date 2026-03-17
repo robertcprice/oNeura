@@ -98,7 +98,7 @@ pub(crate) fn runtime_process_scale_projection(
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
 

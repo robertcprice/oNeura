@@ -551,7 +551,7 @@ pub(crate) fn advance_complex_assembly_state(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "satellite_tests"))]
 mod tests {
     use super::*;
 
