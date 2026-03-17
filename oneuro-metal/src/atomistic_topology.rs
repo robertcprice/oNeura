@@ -154,6 +154,56 @@ impl AtomisticAssemblyTemplate {
         )
     }
 
+    /// Convert this atomistic template into an [`EmbeddedMolecule`] from the
+    /// `atomistic_chemistry` module for quantum-runtime consumption.
+    pub fn to_embedded_molecule(
+        &self,
+    ) -> Result<crate::atomistic_chemistry::EmbeddedMolecule, String> {
+        use crate::atomistic_chemistry::{
+            AtomNode, BondOrder, EmbeddedMolecule, MoleculeGraph, PeriodicElement,
+        };
+
+        let map_element = |e: &Element| -> PeriodicElement {
+            match e {
+                Element::H => PeriodicElement::H,
+                Element::C => PeriodicElement::C,
+                Element::N => PeriodicElement::N,
+                Element::O => PeriodicElement::O,
+                Element::S => PeriodicElement::S,
+                Element::P => PeriodicElement::P,
+                Element::Fe => PeriodicElement::Fe,
+                Element::Ca => PeriodicElement::Ca,
+                Element::Mg => PeriodicElement::Mg,
+                Element::Na => PeriodicElement::Na,
+                Element::K => PeriodicElement::K,
+                Element::Cl => PeriodicElement::Cl,
+            }
+        };
+
+        let mut graph = MoleculeGraph::new(&self.name);
+        for element in &self.elements {
+            graph.add_atom_node(AtomNode::new(map_element(element)));
+        }
+        for bond in &self.bonds {
+            graph
+                .add_bond(bond.i, bond.j, BondOrder::Single)
+                .map_err(|e| format!("atomistic template bond: {e}"))?;
+        }
+
+        let n = self.atom_count();
+        let mut positions = Vec::with_capacity(n);
+        for i in 0..n {
+            let i3 = i * 3;
+            positions.push([
+                self.positions_angstrom[i3],
+                self.positions_angstrom[i3 + 1],
+                self.positions_angstrom[i3 + 2],
+            ]);
+        }
+
+        EmbeddedMolecule::new(graph, positions)
+    }
+
     pub fn centered_positions(&self, box_size_angstrom: f32) -> Vec<f32> {
         let atom_count = self.atom_count().max(1);
         let mut centroid = [0.0f32; 3];

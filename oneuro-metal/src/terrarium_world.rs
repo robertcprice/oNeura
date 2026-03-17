@@ -145,7 +145,7 @@ impl AtomisticProbe {
         let mut md = GPUMolecularDynamics::new(n, "cpu");
 
         // Transfer positions.
-        let flat_pos: Vec<f32> = mol.positions.iter().flat_map(|p| p.iter().copied()).collect();
+        let flat_pos: Vec<f32> = mol.positions_angstrom.iter().flat_map(|p| p.iter().copied()).collect();
         md.set_positions(&flat_pos);
 
         // Transfer masses and LJ params from element types.
@@ -166,8 +166,8 @@ impl AtomisticProbe {
         // Transfer bonds.
         for bond in &mol.graph.bonds {
             let r0 = {
-                let pi = mol.positions[bond.i];
-                let pj = mol.positions[bond.j];
+                let pi = mol.positions_angstrom[bond.i];
+                let pj = mol.positions_angstrom[bond.j];
                 let dx = pi[0] - pj[0];
                 let dy = pi[1] - pj[1];
                 let dz = pi[2] - pj[2];
@@ -645,6 +645,7 @@ pub struct TerrariumWorldSnapshot {
     pub fly_altitude_mean: f32,
     pub fly_o2_gradient_correlation: f32,
     pub owned_fraction: f32,
+    pub atomistic_probes: usize,
     pub substrate_backend: &'static str,
     pub substrate_steps: u64,
     pub substrate_time_ms: f32,
@@ -719,6 +720,10 @@ pub struct TerrariumWorld {
     nematode_guilds: Vec<NematodeGuild>,
     /// Telemetry events emitted during the current step batch.
     ecology_events: Vec<EcologyTelemetryEvent>,
+    /// Atomistic/MD probes embedded in the terrarium grid.
+    atomistic_probes: Vec<AtomisticProbe>,
+    /// Next probe ID for spawn_probe().
+    next_probe_id: u32,
     /// Per-cell ownership map — determines which biology is authoritative.
     ownership: Vec<SoilOwnershipCell>,
     /// Cached ownership diagnostics, refreshed on `rebuild_ownership()`.
@@ -931,6 +936,8 @@ impl TerrariumWorld {
             soil_structure,
             fly_food_total: 0.0,
             ecology_events: Vec::new(),
+            atomistic_probes: Vec::new(),
+            next_probe_id: 0,
             fly_metabolisms: Vec::new(),
             fly_pop: FlyPopulation::new(config.seed.wrapping_add(99)),
             earthworms: EarthwormPopulation::new(config.width, config.height, &organic_matter),
@@ -2457,6 +2464,80 @@ impl TerrariumWorld {
         &self.ecology_events
     }
 
+    // ===== Atomistic Probe Methods =====
+
+    /// Spawn an MD probe from an `EmbeddedMolecule` at the given grid cell.
+    ///
+    /// Claims a square footprint (side = 2*radius+1) via `AtomisticProbeRegion`.
+    /// Returns the probe id, or `Err` if the footprint is out of bounds.
+    pub fn spawn_probe(
+        &mut self,
+        mol: &crate::atomistic_chemistry::EmbeddedMolecule,
+        grid_x: usize,
+        grid_y: usize,
+        footprint_radius: usize,
+    ) -> Result<u32, String> {
+        let w = self.config.width;
+        let h = self.config.height;
+        if grid_x >= w || grid_y >= h {
+            return Err(format!("probe center ({grid_x},{grid_y}) out of bounds ({w}x{h})"));
+        }
+        let id = self.next_probe_id;
+        self.next_probe_id += 1;
+
+        // Claim ownership cells.
+        let r = footprint_radius;
+        let x_lo = grid_x.saturating_sub(r);
+        let x_hi = (grid_x + r + 1).min(w);
+        let y_lo = grid_y.saturating_sub(r);
+        let y_hi = (grid_y + r + 1).min(h);
+        for cy in y_lo..y_hi {
+            for cx in x_lo..x_hi {
+                self.claim_ownership(cx, cy, SoilOwnershipClass::AtomisticProbeRegion { probe_id: id }, 1.0);
+            }
+        }
+
+        let probe = AtomisticProbe::from_embedded_molecule(id, mol, grid_x, grid_y, footprint_radius);
+        self.atomistic_probes.push(probe);
+        Ok(id)
+    }
+
+    /// Remove a probe by id. Releases its ownership cells.
+    pub fn remove_probe(&mut self, probe_id: u32) -> bool {
+        let idx = self.atomistic_probes.iter().position(|p| p.id == probe_id);
+        if let Some(i) = idx {
+            // Release ownership cells claimed by this probe.
+            for cell in &mut self.ownership {
+                if matches!(cell.owner, SoilOwnershipClass::AtomisticProbeRegion { probe_id: pid } if pid == probe_id) {
+                    *cell = SoilOwnershipCell::default();
+                }
+            }
+            self.atomistic_probes.swap_remove(i);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Step all atomistic probes. Each probe advances its MD engine.
+    fn step_atomistic_probes(&mut self) {
+        // 10 MD steps per terrarium frame (~10 fs of molecular time per ecology frame).
+        const MD_STEPS_PER_FRAME: usize = 10;
+        for probe in &mut self.atomistic_probes {
+            probe.step(MD_STEPS_PER_FRAME);
+        }
+    }
+
+    /// Number of active atomistic probes.
+    pub fn probe_count(&self) -> usize {
+        self.atomistic_probes.len()
+    }
+
+    /// Read-only access to the probes.
+    pub fn probes(&self) -> &[AtomisticProbe] {
+        &self.atomistic_probes
+    }
+
     pub fn step_frame(&mut self) -> Result<(), String> {
         self.ecology_events.clear();
         let eco_dt = self.config.world_dt_s * self.config.time_warp;
@@ -2475,6 +2556,7 @@ impl TerrariumWorld {
             self.step_fly_population(eco_dt);
             self.step_food_patches_native(eco_dt)?;
             self.step_seeds_native(eco_dt)?;
+            self.step_atomistic_probes();
             self.time_s += eco_dt;
         }
         Ok(())
@@ -2635,6 +2717,7 @@ impl TerrariumWorld {
             fly_altitude_mean: avg_altitude,
             fly_o2_gradient_correlation,
             owned_fraction: self.ownership_diagnostics.owned_fraction,
+            atomistic_probes: self.atomistic_probes.len(),
             substrate_backend: self.substrate.backend().as_str(),
             substrate_steps: self.substrate.step_count(),
             substrate_time_ms: self.substrate.time_ms(),
@@ -2642,6 +2725,50 @@ impl TerrariumWorld {
         }
     }
 }
+
+// ── Orphaned submodules (14k lines) ──────────────────────────────────────────
+// These files were written for a more advanced version of TerrariumWorld that
+// includes explicit microbial guilds, soil_broad secondary banks, substrate
+// coupling, and full scene-query rendering. They are feature-gated until their
+// upstream dependencies (soil_broad, terrarium_render, terrarium_scene_query,
+// substrate_coupling, ExplicitMicrobeCohort, etc.) are implemented.
+
+// Ecosystem simulation modules — need soil_broad types, SubstrateKinetics,
+// explicit microbial guild system, advanced plant/soil/snapshot fields.
+#[cfg(feature = "terrarium_advanced")]
+mod genotype;
+#[cfg(feature = "terrarium_advanced")]
+mod packet;
+#[cfg(feature = "terrarium_advanced")]
+mod calibrator;
+#[cfg(feature = "terrarium_advanced")]
+mod flora;
+#[cfg(feature = "terrarium_advanced")]
+mod soil;
+#[cfg(feature = "terrarium_advanced")]
+mod snapshot;
+#[cfg(feature = "terrarium_advanced")]
+mod biomechanics;
+#[cfg(feature = "terrarium_advanced")]
+mod explicit_microbe_impl;
+
+// Rendering modules — need crate::terrarium_render, terrarium_scene_query,
+// and full render pipeline types.
+#[cfg(feature = "terrarium_render")]
+mod render_utils;
+#[cfg(feature = "terrarium_render")]
+mod mesh;
+#[cfg(feature = "terrarium_render")]
+mod render_impl;
+#[cfg(feature = "terrarium_render")]
+mod render_stateful;
+
+// Integration tests spanning both advanced + render features.
+// Uses path attribute to avoid conflict with the inline `mod tests` block below.
+#[cfg(all(feature = "terrarium_advanced", feature = "terrarium_render"))]
+#[cfg(test)]
+#[path = "terrarium_world/tests.rs"]
+mod advanced_tests;
 
 #[cfg(test)]
 mod tests {
@@ -3032,5 +3159,111 @@ mod tests {
         // Plants produce O2 via inverse CO2 flux, so atmospheric O2 should stay >= 0.19.
         assert!(snap.mean_atmospheric_o2 >= 0.19,
             "Plant O2 production should maintain atmosphere >= 0.19, got {:.4}", snap.mean_atmospheric_o2);
+    }
+
+    // ===== Atomistic Probe Tests =====
+
+    #[test]
+    fn spawn_probe_claims_ownership_cells() {
+        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement, BondOrder};
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+
+        // Build a tiny 3-atom water-like molecule.
+        let mut graph = MoleculeGraph::new("water");
+        graph.add_element(PeriodicElement::O);
+        graph.add_element(PeriodicElement::H);
+        graph.add_element(PeriodicElement::H);
+        graph.add_bond(0, 1, BondOrder::Single).unwrap();
+        graph.add_bond(0, 2, BondOrder::Single).unwrap();
+        let positions = vec![[0.0, 0.0, 0.0], [0.9572, 0.0, 0.0], [-0.2399, 0.9266, 0.0]];
+        let mol = EmbeddedMolecule::new(graph, positions).unwrap();
+
+        let id = world.spawn_probe(&mol, 5, 5, 1).unwrap();
+        assert_eq!(world.probe_count(), 1);
+        assert_eq!(world.probes()[0].n_atoms, 3);
+
+        // Verify ownership was claimed in a 3x3 footprint (radius=1 → 4..7 × 4..7).
+        let factor = world.broad_biology_factor(5, 5);
+        assert!(factor < 0.5, "Center cell should be suppressed, got {factor}");
+
+        // Snapshot should report the probe.
+        world.rebuild_ownership_diagnostics();
+        let snap = world.snapshot();
+        assert_eq!(snap.atomistic_probes, 1);
+        assert!(snap.owned_fraction > 0.0);
+
+        // Remove it.
+        assert!(world.remove_probe(id));
+        assert_eq!(world.probe_count(), 0);
+        let factor_after = world.broad_biology_factor(5, 5);
+        assert!((factor_after - 1.0).abs() < 0.01, "Ownership should be released");
+    }
+
+    #[test]
+    fn probe_md_runs_and_energy_bounded() {
+        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement, BondOrder};
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+
+        let mut graph = MoleculeGraph::new("water");
+        graph.add_element(PeriodicElement::O);
+        graph.add_element(PeriodicElement::H);
+        graph.add_element(PeriodicElement::H);
+        graph.add_bond(0, 1, BondOrder::Single).unwrap();
+        graph.add_bond(0, 2, BondOrder::Single).unwrap();
+        let positions = vec![[0.0, 0.0, 0.0], [0.9572, 0.0, 0.0], [-0.2399, 0.9266, 0.0]];
+        let mol = EmbeddedMolecule::new(graph, positions).unwrap();
+
+        world.spawn_probe(&mol, 3, 3, 0).unwrap();
+
+        // Run several frames — MD should integrate without blowing up.
+        world.run_frames(5).unwrap();
+        let energy = world.probes()[0].total_energy();
+        assert!(energy.is_finite(), "MD energy should stay finite, got {energy}");
+        // With only bond restraints (no angle terms), a 3-atom molecule at 300K
+        // can accumulate moderate energy. Just check it doesn't diverge to infinity.
+        assert!(energy.abs() < 1e12, "MD energy should be bounded, got {energy}");
+    }
+
+    #[test]
+    fn probe_out_of_bounds_returns_error() {
+        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement};
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        let mut graph = MoleculeGraph::new("h");
+        graph.add_element(PeriodicElement::H);
+        let mol = EmbeddedMolecule::new(graph, vec![[0.0, 0.0, 0.0]]).unwrap();
+
+        let result = world.spawn_probe(&mol, 999, 999, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn multiple_probes_coexist() {
+        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement, BondOrder};
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+
+        let make_water = || {
+            let mut graph = MoleculeGraph::new("water");
+            graph.add_element(PeriodicElement::O);
+            graph.add_element(PeriodicElement::H);
+            graph.add_element(PeriodicElement::H);
+            graph.add_bond(0, 1, BondOrder::Single).unwrap();
+            graph.add_bond(0, 2, BondOrder::Single).unwrap();
+            EmbeddedMolecule::new(graph, vec![[0.0, 0.0, 0.0], [0.9572, 0.0, 0.0], [-0.2399, 0.9266, 0.0]]).unwrap()
+        };
+
+        let mol1 = make_water();
+        let mol2 = make_water();
+        let id1 = world.spawn_probe(&mol1, 2, 2, 0).unwrap();
+        let id2 = world.spawn_probe(&mol2, 8, 8, 0).unwrap();
+        assert_eq!(world.probe_count(), 2);
+
+        world.run_frames(3).unwrap();
+        assert!(world.probes()[0].total_energy().is_finite());
+        assert!(world.probes()[1].total_energy().is_finite());
+
+        // Remove first, second should remain.
+        world.remove_probe(id1);
+        assert_eq!(world.probe_count(), 1);
+        assert_eq!(world.probes()[0].id, id2);
     }
 }

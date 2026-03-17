@@ -181,6 +181,39 @@ impl PeriodicElement {
     }
 }
 
+impl PeriodicElement {
+    /// Atomic number (number of protons).
+    pub fn atomic_number(self) -> u8 {
+        match self {
+            Self::H => 1,
+            Self::B => 5,
+            Self::C => 6,
+            Self::N => 7,
+            Self::O => 8,
+            Self::F => 9,
+            Self::Si => 14,
+            Self::P => 15,
+            Self::S => 16,
+            Self::Cl => 17,
+            Self::K => 19,
+            Self::Ca => 20,
+            Self::Mn => 25,
+            Self::Fe => 26,
+            Self::Co => 27,
+            Self::Ni => 28,
+            Self::Cu => 29,
+            Self::Zn => 30,
+            Self::Se => 34,
+            Self::Br => 35,
+            Self::Mo => 42,
+            Self::I => 53,
+            Self::W => 74,
+            Self::Na => 11,
+            Self::Mg => 12,
+        }
+    }
+}
+
 impl std::fmt::Display for PeriodicElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.symbol())
@@ -200,6 +233,18 @@ pub enum BondOrder {
     Aromatic,
 }
 
+impl BondOrder {
+    /// Numeric bond order (1.0 for single, 2.0 for double, etc.).
+    pub fn bond_order(self) -> f32 {
+        match self {
+            Self::Single => 1.0,
+            Self::Double => 2.0,
+            Self::Triple => 3.0,
+            Self::Aromatic => 1.5,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Atom node
 // ---------------------------------------------------------------------------
@@ -214,6 +259,36 @@ pub struct AtomNode {
     /// Residue annotation, if this atom belongs to a biomolecular chain.
     #[serde(default)]
     pub residue: Option<ResidueInfo>,
+    /// Formal charge on this atom (e.g. -1 for carboxylate O, +1 for ammonium N).
+    #[serde(default)]
+    pub formal_charge: i8,
+    /// Isotope mass number override (e.g. 13 for 13C). If `None`, use the natural
+    /// abundance mass rounded to the nearest integer.
+    #[serde(default)]
+    pub isotope_mass_number: Option<u16>,
+}
+
+impl AtomNode {
+    /// Create a minimal atom node from just an element (no residue, no charge).
+    pub fn new(element: PeriodicElement) -> Self {
+        Self {
+            element,
+            atom_name: String::new(),
+            residue: None,
+            formal_charge: 0,
+            isotope_mass_number: None,
+        }
+    }
+
+    /// Atomic mass in daltons as f64 (uses isotope override if present,
+    /// otherwise falls back to the element's natural abundance mass).
+    pub fn atomic_mass(&self) -> f64 {
+        if let Some(mass_number) = self.isotope_mass_number {
+            f64::from(mass_number)
+        } else {
+            f64::from(self.element.mass_daltons())
+        }
+    }
 }
 
 /// Residue-level annotation for an atom.
@@ -301,22 +376,31 @@ impl MoleculeGraph {
         }
     }
 
-    /// Add an atom with element only (no residue annotation).
-    pub fn add_element(&mut self, element: PeriodicElement) {
-        self.atoms.push(AtomNode {
-            element,
-            atom_name: String::new(),
-            residue: None,
-        });
+    /// Add an atom with element only (no residue annotation). Returns the atom index.
+    pub fn add_element(&mut self, element: PeriodicElement) -> usize {
+        let idx = self.atoms.len();
+        self.atoms.push(AtomNode::new(element));
+        idx
+    }
+
+    /// Add a fully constructed [`AtomNode`] and return its index.
+    pub fn add_atom_node(&mut self, node: AtomNode) -> usize {
+        let idx = self.atoms.len();
+        self.atoms.push(node);
+        idx
     }
 
     /// Add an atom with full biomolecular annotation.
-    pub fn add_atom(&mut self, element: PeriodicElement, atom_name: &str, residue: Option<ResidueInfo>) {
+    pub fn add_atom(&mut self, element: PeriodicElement, atom_name: &str, residue: Option<ResidueInfo>) -> usize {
+        let idx = self.atoms.len();
         self.atoms.push(AtomNode {
             element,
             atom_name: atom_name.to_string(),
             residue,
+            formal_charge: 0,
+            isotope_mass_number: None,
         });
+        idx
     }
 
     /// Add a bond between atoms i and j.
@@ -382,6 +466,38 @@ impl MoleculeGraph {
             *counts.entry(atom.element).or_insert(0) += 1;
         }
         counts
+    }
+
+    // -----------------------------------------------------------------------
+    // Representative molecule stubs for quantum-runtime mapping
+    // -----------------------------------------------------------------------
+
+    /// Stub ATP graph (adenosine triphosphate).
+    pub fn representative_atp() -> Self { Self::new("ATP") }
+    /// Stub ADP graph (adenosine diphosphate).
+    pub fn representative_adp() -> Self { Self::new("ADP") }
+    /// Stub orthophosphoric acid graph (Pi / H3PO4).
+    pub fn representative_orthophosphoric_acid() -> Self { Self::new("Pi") }
+    /// Stub glucose graph.
+    pub fn representative_glucose() -> Self { Self::new("glucose") }
+    /// Stub O2 graph.
+    pub fn representative_oxygen_gas() -> Self { Self::new("O2") }
+    /// Stub amino-acid pool graph.
+    pub fn representative_amino_acid_pool() -> Self { Self::new("amino_acid_pool") }
+    /// Stub nucleotide pool graph.
+    pub fn representative_nucleotide_pool() -> Self { Self::new("nucleotide_pool") }
+    /// Stub membrane precursor pool graph.
+    pub fn representative_membrane_precursor_pool() -> Self { Self::new("membrane_precursor_pool") }
+    /// Stub NAD+ (oxidized) graph.
+    pub fn representative_nad_oxidized() -> Self { Self::new("NAD_oxidized") }
+    /// Stub NADH (reduced) graph.
+    pub fn representative_nad_reduced() -> Self { Self::new("NAD_reduced") }
+    /// Stub coenzyme A graph.
+    pub fn representative_coenzyme_a() -> Self { Self::new("CoA") }
+
+    /// Sum of all formal charges on atoms in the graph.
+    pub fn net_charge(&self) -> i32 {
+        self.atoms.iter().map(|a| i32::from(a.formal_charge)).sum()
     }
 }
 
@@ -461,6 +577,18 @@ impl EmbeddedMolecule {
         Self {
             graph: new_graph,
             positions_angstrom: new_positions,
+        }
+    }
+
+    /// Return a copy of this molecule with all positions shifted by `delta`.
+    pub fn translated(&self, delta: [f32; 3]) -> Self {
+        Self {
+            graph: self.graph.clone(),
+            positions_angstrom: self
+                .positions_angstrom
+                .iter()
+                .map(|p| [p[0] + delta[0], p[1] + delta[1], p[2] + delta[2]])
+                .collect(),
         }
     }
 
@@ -593,6 +721,137 @@ pub fn nucleotide_backbone_bonds() -> &'static [(&'static str, &'static str, Bon
         ("C1'", "C2'", BondOrder::Single),
     ]
 }
+
+// ---------------------------------------------------------------------------
+// Scoped atom reference (for structural reactions across reactant molecules)
+// ---------------------------------------------------------------------------
+
+/// Reference to a specific atom within a multi-reactant reaction context.
+/// `reactant_idx` selects which reactant molecule, `atom_idx` selects the atom
+/// within that molecule's graph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ScopedAtomRef {
+    pub reactant_idx: usize,
+    pub atom_idx: usize,
+}
+
+impl ScopedAtomRef {
+    pub fn new(reactant_idx: usize, atom_idx: usize) -> Self {
+        Self {
+            reactant_idx,
+            atom_idx,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Structural reaction edit operations
+// ---------------------------------------------------------------------------
+
+/// An elementary topological edit in a structural reaction: break a bond,
+/// form a bond, change bond order, or set a formal charge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum StructuralReactionEdit {
+    BreakBond {
+        a: ScopedAtomRef,
+        b: ScopedAtomRef,
+    },
+    FormBond {
+        a: ScopedAtomRef,
+        b: ScopedAtomRef,
+        order: BondOrder,
+    },
+    ChangeBondOrder {
+        a: ScopedAtomRef,
+        b: ScopedAtomRef,
+        order: BondOrder,
+    },
+    SetFormalCharge {
+        atom: ScopedAtomRef,
+        formal_charge: i8,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Structural reaction template
+// ---------------------------------------------------------------------------
+
+/// A named template describing a multi-reactant structural reaction:
+/// a set of reactant molecule graphs and a sequence of topological edits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StructuralReactionTemplate {
+    pub name: String,
+    pub reactants: Vec<MoleculeGraph>,
+    pub edits: Vec<StructuralReactionEdit>,
+}
+
+impl StructuralReactionTemplate {
+    pub fn new(
+        name: &str,
+        reactants: Vec<MoleculeGraph>,
+        edits: Vec<StructuralReactionEdit>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            reactants,
+            edits,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Embedded material mixture
+// ---------------------------------------------------------------------------
+
+/// A named collection of embedded molecules, each with an associated amount
+/// (e.g. moles or a concentration proxy). Used by the quantum runtime to
+/// represent multi-component microdomains.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmbeddedMaterialMixtureComponent {
+    pub molecule: EmbeddedMolecule,
+    pub amount: f64,
+}
+
+/// A named mixture of embedded molecules for microdomain quantum chemistry.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmbeddedMaterialMixture {
+    pub name: String,
+    pub components: Vec<EmbeddedMaterialMixtureComponent>,
+}
+
+impl EmbeddedMaterialMixture {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            components: Vec::new(),
+        }
+    }
+
+    pub fn add_component(&mut self, molecule: EmbeddedMolecule, amount: f64) {
+        self.components.push(EmbeddedMaterialMixtureComponent {
+            molecule,
+            amount,
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Embedded material structural reaction error
+// ---------------------------------------------------------------------------
+
+/// Error type for structural-reaction operations on embedded material mixtures.
+#[derive(Debug, Clone)]
+pub struct EmbeddedMaterialStructuralReactionError {
+    pub message: String,
+}
+
+impl std::fmt::Display for EmbeddedMaterialStructuralReactionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "structural reaction error: {}", self.message)
+    }
+}
+
+impl std::error::Error for EmbeddedMaterialStructuralReactionError {}
 
 // ---------------------------------------------------------------------------
 // Tests

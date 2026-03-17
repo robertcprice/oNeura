@@ -1417,7 +1417,7 @@ impl WholeCellRuntimeQuantumProcessState {
                     after_result.spatial_orbital_atom_indices.iter().enumerate()
                 {
                     if atom_owner < n_atoms {
-                        per_atom[atom_owner] += raw_occ.get(orb_idx).copied().unwrap_or(0.0);
+                        per_atom[atom_owner] += raw_occ.get(orb_idx).copied().unwrap_or(0.0_f64);
                     }
                 }
                 per_atom
@@ -2218,31 +2218,31 @@ fn runtime_quantum_context_support_bulk_fields(
 ) -> &'static [WholeCellBulkField] {
     const TRANSLATION_FIELDS: [WholeCellBulkField; 3] = [
         WholeCellBulkField::AminoAcids,
-        WholeCellBulkField::Atp,
-        WholeCellBulkField::Adp,
+        WholeCellBulkField::ATP,
+        WholeCellBulkField::ADP,
     ];
     const ENERGY_FIELDS: [WholeCellBulkField; 4] = [
-        WholeCellBulkField::Adp,
-        WholeCellBulkField::Atp,
+        WholeCellBulkField::ADP,
+        WholeCellBulkField::ATP,
         WholeCellBulkField::Glucose,
         WholeCellBulkField::Oxygen,
     ];
     const NUCLEOTIDE_FIELDS: [WholeCellBulkField; 4] = [
         WholeCellBulkField::Nucleotides,
-        WholeCellBulkField::Atp,
-        WholeCellBulkField::Adp,
+        WholeCellBulkField::ATP,
+        WholeCellBulkField::ADP,
         WholeCellBulkField::Glucose,
     ];
     const MEMBRANE_FIELDS: [WholeCellBulkField; 5] = [
         WholeCellBulkField::MembranePrecursors,
-        WholeCellBulkField::Atp,
-        WholeCellBulkField::Adp,
+        WholeCellBulkField::ATP,
+        WholeCellBulkField::ADP,
         WholeCellBulkField::Glucose,
         WholeCellBulkField::Oxygen,
     ];
     const PROTON_TRANSFER_FIELDS: [WholeCellBulkField; 3] = [
-        WholeCellBulkField::Atp,
-        WholeCellBulkField::Adp,
+        WholeCellBulkField::ATP,
+        WholeCellBulkField::ADP,
         WholeCellBulkField::Pi,
     ];
     const GTP_HYDROLYSIS_FIELDS: [WholeCellBulkField; 3] = [
@@ -2269,8 +2269,8 @@ fn runtime_quantum_representative_graph_for_bulk_field(
     bulk_field: WholeCellBulkField,
 ) -> MoleculeGraph {
     match bulk_field {
-        WholeCellBulkField::Atp => MoleculeGraph::representative_atp(),
-        WholeCellBulkField::Adp => MoleculeGraph::representative_adp(),
+        WholeCellBulkField::ATP => MoleculeGraph::representative_atp(),
+        WholeCellBulkField::ADP => MoleculeGraph::representative_adp(),
         WholeCellBulkField::Glucose => MoleculeGraph::representative_glucose(),
         WholeCellBulkField::Oxygen => MoleculeGraph::representative_oxygen_gas(),
         WholeCellBulkField::AminoAcids => MoleculeGraph::representative_amino_acid_pool(),
@@ -2316,7 +2316,7 @@ pub(crate) fn runtime_quantum_bulk_field_supports_canonical_reactant(
         WholeCellRuntimeQuantumProcessKind::AtpBandEnergyPhosphorylation => {
             matches!(
                 bulk_field,
-                WholeCellBulkField::Adp | WholeCellBulkField::Atp
+                WholeCellBulkField::ADP | WholeCellBulkField::ATP
             )
         }
         WholeCellRuntimeQuantumProcessKind::ReplisomeNucleotidePhosphorylation => {
@@ -2330,7 +2330,7 @@ pub(crate) fn runtime_quantum_bulk_field_supports_canonical_reactant(
         | WholeCellRuntimeQuantumProcessKind::AtpBandElectronTransfer => {
             matches!(
                 bulk_field,
-                WholeCellBulkField::Atp | WholeCellBulkField::Adp
+                WholeCellBulkField::ATP | WholeCellBulkField::ADP
             )
         }
         WholeCellRuntimeQuantumProcessKind::SeptumGtpHydrolysis => {
@@ -3389,17 +3389,17 @@ fn extract_site_quantum_fragment(
     selected: &[usize],
 ) -> EmbeddedMolecule {
     let mut index_map = std::collections::BTreeMap::new();
-    let mut graph = MoleculeGraph::new(format!("{}_quantum_fragment", scaffold.graph.name));
+    let mut graph = MoleculeGraph::new(&format!("{}_quantum_fragment", scaffold.graph.name));
     let mut positions = Vec::with_capacity(selected.len());
 
     for (new_idx, old_idx) in selected.iter().copied().enumerate() {
         index_map.insert(old_idx, new_idx);
-        graph.add_atom(scaffold.graph.atoms[old_idx].clone());
+        graph.add_atom_node(scaffold.graph.atoms[old_idx].clone());
         positions.push(scaffold.positions_angstrom[old_idx]);
     }
 
     for bond in &scaffold.graph.bonds {
-        if let (Some(&a), Some(&b)) = (index_map.get(&bond.a), index_map.get(&bond.b)) {
+        if let (Some(&a), Some(&b)) = (index_map.get(&bond.i), index_map.get(&bond.j)) {
             graph
                 .add_bond(a, b, bond.order)
                 .expect("site quantum fragment bonds stay valid");
@@ -3543,7 +3543,7 @@ fn runtime_quantum_support_bulk_fields_for_reactant(
     const EMPTY_FIELDS: [WholeCellBulkField; 0] = [];
     const AMINO_FIELDS: [WholeCellBulkField; 1] = [WholeCellBulkField::AminoAcids];
     const ADENOSINE_PHOSPHATE_FIELDS: [WholeCellBulkField; 2] =
-        [WholeCellBulkField::Adp, WholeCellBulkField::Atp];
+        [WholeCellBulkField::ADP, WholeCellBulkField::ATP];
     const NUCLEOTIDE_FIELDS: [WholeCellBulkField; 1] = [WholeCellBulkField::Nucleotides];
     const MEMBRANE_FIELDS: [WholeCellBulkField; 1] = [WholeCellBulkField::MembranePrecursors];
 
@@ -3747,8 +3747,8 @@ fn ranked_runtime_quantum_scaffold_components_from_mixture(
 fn scaffold_adjacency(scaffold: &EmbeddedMolecule) -> Vec<Vec<(usize, BondOrder)>> {
     let mut adjacency = vec![Vec::new(); scaffold.graph.atom_count()];
     for bond in &scaffold.graph.bonds {
-        adjacency[bond.a].push((bond.b, bond.order));
-        adjacency[bond.b].push((bond.a, bond.order));
+        adjacency[bond.i].push((bond.j, bond.order));
+        adjacency[bond.j].push((bond.i, bond.order));
     }
     for neighbors in &mut adjacency {
         neighbors.sort_by_key(|(idx, _)| *idx);
@@ -4558,7 +4558,7 @@ fn solved_fragment_dipoles(
             .graph
             .bonds
             .iter()
-            .map(|bond| result.atom_pair_density_response(bond.a, bond.b))
+            .map(|bond| result.atom_pair_density_response(bond.i, bond.j))
             .collect::<Vec<_>>(),
     );
     dipoles.push(QuantumEmbeddingDipole::new(
@@ -4585,7 +4585,7 @@ fn solved_fragment_orbital_response_fields(
         .graph
         .bonds
         .iter()
-        .map(|bond| result.atom_pair_density_response(bond.a, bond.b))
+        .map(|bond| result.atom_pair_density_response(bond.i, bond.j))
         .collect::<Vec<_>>();
     let mut fields = molecule_bond_orbital_response_fields(
         molecule,
@@ -4618,8 +4618,8 @@ fn molecule_bond_polarization_dipoles(
         .iter()
         .zip(bond_response_strengths.iter().copied())
         .map(|(bond, response_strength)| {
-            let position_a = molecule.positions_angstrom[bond.a];
-            let position_b = molecule.positions_angstrom[bond.b];
+            let position_a = molecule.positions_angstrom[bond.i];
+            let position_b = molecule.positions_angstrom[bond.j];
             let displacement = [
                 f64::from(position_b[0] - position_a[0]),
                 f64::from(position_b[1] - position_a[1]),
@@ -4630,11 +4630,11 @@ fn molecule_bond_polarization_dipoles(
                 + 0.30 * response_strength.sqrt())
             .clamp(0.2, 2.5);
             let charge_skew =
-                0.5 * (atom_effective_charges[bond.b] - atom_effective_charges[bond.a]);
+                0.5 * (atom_effective_charges[bond.j] - atom_effective_charges[bond.i]);
             let screening_radius = bond_embedding_screening_radius_angstrom(
                 molecule,
-                bond.a,
-                bond.b,
+                bond.i,
+                bond.j,
                 vector_norm_f64(displacement),
             );
             QuantumEmbeddingDipole::new(
@@ -4669,8 +4669,8 @@ fn molecule_bond_orbital_response_fields(
         .iter()
         .zip(bond_response_strengths.iter().copied())
         .filter_map(|(bond, response_strength)| {
-            let position_a = molecule.positions_angstrom[bond.a];
-            let position_b = molecule.positions_angstrom[bond.b];
+            let position_a = molecule.positions_angstrom[bond.i];
+            let position_b = molecule.positions_angstrom[bond.j];
             let displacement = [
                 f64::from(position_b[0] - position_a[0]),
                 f64::from(position_b[1] - position_a[1]),
@@ -4680,9 +4680,9 @@ fn molecule_bond_orbital_response_fields(
             if bond_length <= 1.0e-6 {
                 return None;
             }
-            let charge_skew =
-                0.5 * (atom_effective_charges[bond.b] - atom_effective_charges[bond.a]);
-            let direction_sign = if charge_skew >= 0.0 { 1.0 } else { -1.0 };
+            let charge_skew: f64 =
+                0.5 * (atom_effective_charges[bond.j] - atom_effective_charges[bond.i]);
+            let direction_sign: f64 = if charge_skew >= 0.0 { 1.0 } else { -1.0 };
             let axis = [
                 direction_sign * displacement[0] / bond_length,
                 direction_sign * displacement[1] / bond_length,
@@ -4700,7 +4700,7 @@ fn molecule_bond_orbital_response_fields(
                 bond_midpoint_angstrom(position_a, position_b),
                 axis,
                 coupling_ev,
-                bond_embedding_screening_radius_angstrom(molecule, bond.a, bond.b, bond_length),
+                bond_embedding_screening_radius_angstrom(molecule, bond.i, bond.j, bond_length),
             ))
         })
         .collect()
@@ -4817,14 +4817,14 @@ fn embedded_atom_point_charges(molecule: &EmbeddedMolecule) -> Vec<f64> {
         .collect::<Vec<_>>();
 
     for bond in &molecule.graph.bonds {
-        let left = molecule.graph.atoms[bond.a].element;
-        let right = molecule.graph.atoms[bond.b].element;
+        let left = molecule.graph.atoms[bond.i].element;
+        let right = molecule.graph.atoms[bond.j].element;
         let left_en = left.pauling_electronegativity().unwrap_or(2.0);
         let right_en = right.pauling_electronegativity().unwrap_or(2.0);
         let polarization =
             0.10 * f64::from(bond.order.bond_order()) * (right_en - left_en).clamp(-2.5, 2.5);
-        charges[bond.a] += polarization;
-        charges[bond.b] -= polarization;
+        charges[bond.i] += polarization;
+        charges[bond.j] -= polarization;
     }
 
     charges
@@ -5990,11 +5990,11 @@ fn disconnected_scaffold_source(name: &str, fragments: &[EmbeddedMolecule]) -> E
     let mut atom_offset = 0usize;
     for fragment in fragments {
         for atom in &fragment.graph.atoms {
-            graph.add_atom(atom.clone());
+            graph.add_atom_node(atom.clone());
         }
         for bond in &fragment.graph.bonds {
             graph
-                .add_bond(atom_offset + bond.a, atom_offset + bond.b, bond.order)
+                .add_bond(atom_offset + bond.i, atom_offset + bond.j, bond.order)
                 .expect("disconnected scaffold source bonds stay valid");
         }
         positions.extend(fragment.positions_angstrom.iter().copied());
@@ -6788,14 +6788,14 @@ mod tests {
             &scaffold,
             &[
                 WholeCellBulkField::AminoAcids,
-                WholeCellBulkField::Atp,
-                WholeCellBulkField::Adp,
+                WholeCellBulkField::ATP,
+                WholeCellBulkField::ADP,
             ],
         ) {
             let amount = match bulk_field {
                 WholeCellBulkField::AminoAcids => 21.0,
-                WholeCellBulkField::Atp => 7.0,
-                WholeCellBulkField::Adp => 4.0,
+                WholeCellBulkField::ATP => 7.0,
+                WholeCellBulkField::ADP => 4.0,
                 _ => 0.0,
             };
             microdomain.add_component(support_molecule, amount);
@@ -7819,14 +7819,14 @@ mod tests {
             // All bonds in the fragment should reference valid atom indices
             for bond in &scaffold.scaffold.graph.bonds {
                 assert!(
-                    bond.a < scaffold.scaffold.graph.atom_count(),
-                    "bond.a ({}) out of range",
-                    bond.a,
+                    bond.i < scaffold.scaffold.graph.atom_count(),
+                    "bond.i ({}) out of range",
+                    bond.i,
                 );
                 assert!(
-                    bond.b < scaffold.scaffold.graph.atom_count(),
-                    "bond.b ({}) out of range",
-                    bond.b,
+                    bond.j < scaffold.scaffold.graph.atom_count(),
+                    "bond.j ({}) out of range",
+                    bond.j,
                 );
             }
         }

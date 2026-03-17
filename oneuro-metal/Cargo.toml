@@ -19,6 +19,8 @@ python = ["pyo3/extension-module"]
 cuda = ["cudarc"]
 nuclear_physics = []
 satellite_tests = []
+terrarium_advanced = []
+terrarium_render = []
 web = ["dep:tokio", "dep:axum", "dep:tower-http", "dep:futures-util"]
 
 [dependencies]

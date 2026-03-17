@@ -1131,6 +1131,14 @@ impl WholeCellSimulator {
                 Some(WholeCellBulkField::Oxygen) => {
                     self.oxygen_mm = concentration;
                 }
+                Some(WholeCellBulkField::Pi)
+                | Some(WholeCellBulkField::Gtp)
+                | Some(WholeCellBulkField::Gdp)
+                | Some(WholeCellBulkField::NadOxidized)
+                | Some(WholeCellBulkField::NadReduced)
+                | Some(WholeCellBulkField::CoA) => {
+                    // Extended cofactors — tracked by name only, no dedicated field yet.
+                }
                 None => {}
             }
         }
@@ -2979,7 +2987,10 @@ impl WholeCellSimulator {
             WholeCellBulkField::MembranePrecursors => {
                 Some(IntracellularSpecies::MembranePrecursors)
             }
-            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => {
+            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen
+            | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+            | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+            | WholeCellBulkField::CoA => {
                 None
             }
         }
@@ -2994,6 +3005,12 @@ impl WholeCellSimulator {
             WholeCellBulkField::AminoAcids => 64.0,
             WholeCellBulkField::Nucleotides => 64.0,
             WholeCellBulkField::MembranePrecursors => 52.0,
+            WholeCellBulkField::Pi => 44.0,
+            WholeCellBulkField::Gtp => 48.0,
+            WholeCellBulkField::Gdp => 46.0,
+            WholeCellBulkField::NadOxidized => 42.0,
+            WholeCellBulkField::NadReduced => 42.0,
+            WholeCellBulkField::CoA => 38.0,
         }
     }
 
@@ -3006,6 +3023,12 @@ impl WholeCellSimulator {
             WholeCellBulkField::AminoAcids => 4,
             WholeCellBulkField::Nucleotides => 5,
             WholeCellBulkField::MembranePrecursors => 6,
+            WholeCellBulkField::Pi => 7,
+            WholeCellBulkField::Gtp => 8,
+            WholeCellBulkField::Gdp => 9,
+            WholeCellBulkField::NadOxidized => 10,
+            WholeCellBulkField::NadReduced => 11,
+            WholeCellBulkField::CoA => 12,
         }
     }
 
@@ -3028,6 +3051,9 @@ impl WholeCellSimulator {
             WholeCellBulkField::AminoAcids => amino_acids_mm,
             WholeCellBulkField::Nucleotides => nucleotides_mm,
             WholeCellBulkField::MembranePrecursors => membrane_precursors_mm,
+            WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+            | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+            | WholeCellBulkField::CoA => 0.0,
         }
     }
 
@@ -3261,7 +3287,10 @@ impl WholeCellSimulator {
             WholeCellBulkField::AminoAcids => 0.44,
             WholeCellBulkField::Nucleotides => 0.40,
             WholeCellBulkField::MembranePrecursors => 0.36,
-            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => {
+            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen
+            | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+            | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+            | WholeCellBulkField::CoA => {
                 0.40
             }
         }
@@ -3437,7 +3466,10 @@ impl WholeCellSimulator {
                 0.16,
                 2.6,
             ),
-            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => {
+            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen
+            | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+            | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+            | WholeCellBulkField::CoA => {
                 (0.0, 0.0, 0.10, 1.8)
             }
         };
@@ -3501,7 +3533,10 @@ impl WholeCellSimulator {
                 patch_domain,
                 chromosome_domain.as_deref(),
             ),
-            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => {
+            WholeCellBulkField::ADP | WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen
+            | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+            | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+            | WholeCellBulkField::CoA => {
                 0.0
             }
         };
@@ -4140,6 +4175,12 @@ impl WholeCellSimulator {
             }
             WholeCellBulkField::Oxygen => {
                 self.oxygen_mm = (self.oxygen_mm + delta_mm).max(0.0);
+                false
+            }
+            WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+            | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+            | WholeCellBulkField::CoA => {
+                // Extended cofactors — no dedicated concentration field yet.
                 false
             }
         }

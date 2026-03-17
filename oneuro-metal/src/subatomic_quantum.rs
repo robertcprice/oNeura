@@ -1779,8 +1779,8 @@ fn build_atom_bond_order_matrix(graph: &MoleculeGraph) -> Vec<f64> {
             BondOrder::Triple => 3.0,
             BondOrder::Aromatic => 1.5,
         };
-        matrix[matrix_index(bond.a, bond.b, atom_count)] = order;
-        matrix[matrix_index(bond.b, bond.a, atom_count)] = order;
+        matrix[matrix_index(bond.i, bond.j, atom_count)] = order;
+        matrix[matrix_index(bond.j, bond.i, atom_count)] = order;
     }
     matrix
 }
@@ -2371,7 +2371,7 @@ fn apply_reaction_edit(
             let before = graph.bonds.len();
             graph
                 .bonds
-                .retain(|bond| !((bond.a == a && bond.b == b) || (bond.a == b && bond.b == a)));
+                .retain(|bond| !((bond.i == a && bond.j == b) || (bond.i == b && bond.j == a)));
             if graph.bonds.len() == before {
                 return Err(QuantumMicrodomainError::BondMissing { a, b });
             }
@@ -2380,7 +2380,7 @@ fn apply_reaction_edit(
         QuantumReactionEdit::ChangeBondOrder { a, b, order } => {
             let mut changed = false;
             for bond in &mut graph.bonds {
-                if (bond.a == a && bond.b == b) || (bond.a == b && bond.b == a) {
+                if (bond.i == a && bond.j == b) || (bond.i == b && bond.j == a) {
                     bond.order = order;
                     changed = true;
                     break;
@@ -2444,17 +2444,17 @@ mod tests {
 
     fn hydrogen_graph() -> MoleculeGraph {
         let mut graph = MoleculeGraph::new("h2");
-        graph.add_atom(AtomNode::new(PeriodicElement::H));
-        graph.add_atom(AtomNode::new(PeriodicElement::H));
+        graph.add_atom_node(AtomNode::new(PeriodicElement::H));
+        graph.add_atom_node(AtomNode::new(PeriodicElement::H));
         graph.add_bond(0, 1, BondOrder::Single).unwrap();
         graph
     }
 
     fn water_graph() -> MoleculeGraph {
         let mut graph = MoleculeGraph::new("water");
-        let o = graph.add_atom(AtomNode::new(PeriodicElement::O));
-        let h1 = graph.add_atom(AtomNode::new(PeriodicElement::H));
-        let h2 = graph.add_atom(AtomNode::new(PeriodicElement::H));
+        let o = graph.add_atom_node(AtomNode::new(PeriodicElement::O));
+        let h1 = graph.add_atom_node(AtomNode::new(PeriodicElement::H));
+        let h2 = graph.add_atom_node(AtomNode::new(PeriodicElement::H));
         graph.add_bond(o, h1, BondOrder::Single).unwrap();
         graph.add_bond(o, h2, BondOrder::Single).unwrap();
         graph
@@ -2602,13 +2602,13 @@ mod tests {
     #[test]
     fn bond_topology_increases_hopping_coupling() {
         let mut bonded = MoleculeGraph::new("h2");
-        bonded.add_atom(AtomNode::new(PeriodicElement::H));
-        bonded.add_atom(AtomNode::new(PeriodicElement::H));
+        bonded.add_atom_node(AtomNode::new(PeriodicElement::H));
+        bonded.add_atom_node(AtomNode::new(PeriodicElement::H));
         bonded.add_bond(0, 1, BondOrder::Single).unwrap();
 
         let mut unbonded = MoleculeGraph::new("h_h");
-        unbonded.add_atom(AtomNode::new(PeriodicElement::H));
-        unbonded.add_atom(AtomNode::new(PeriodicElement::H));
+        unbonded.add_atom_node(AtomNode::new(PeriodicElement::H));
+        unbonded.add_atom_node(AtomNode::new(PeriodicElement::H));
 
         let positions = [[0.0, 0.0, -0.37], [0.0, 0.0, 0.37]];
         let bonded_active =
@@ -2634,7 +2634,7 @@ mod tests {
     #[test]
     fn same_atom_orbitals_do_not_gain_artificial_hopping() {
         let mut oxygen = MoleculeGraph::new("oxygen_atom");
-        oxygen.add_atom(AtomNode::new(PeriodicElement::O));
+        oxygen.add_atom_node(AtomNode::new(PeriodicElement::O));
         let positions = [[0.0, 0.0, 0.0]];
         let active = oxygen.quantum_active_space(&positions, None).unwrap();
         let n = active.num_spatial_orbitals();

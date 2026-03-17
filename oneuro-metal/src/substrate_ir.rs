@@ -153,6 +153,29 @@ pub struct ReactionFlux {
     pub target_total: f32,
 }
 
+/// Summary of quantum-chemical energy changes across a reaction event.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ReactionQuantumSummary {
+    /// Number of reaction events this summary aggregates.
+    pub event_count: u32,
+    /// Change in electronic ground-state energy (eV).
+    pub ground_state_energy_delta_ev: f32,
+    /// Change in nuclear-nuclear repulsion energy (eV).
+    pub nuclear_repulsion_delta_ev: f32,
+    /// Change in total net formal charge (elementary charges).
+    pub net_formal_charge_delta: i32,
+}
+
+impl ReactionQuantumSummary {
+    /// Accumulate another summary into this one (additive merge).
+    pub fn accumulate(&mut self, other: Self) {
+        self.event_count = self.event_count.saturating_add(other.event_count);
+        self.ground_state_energy_delta_ev += other.ground_state_energy_delta_ev;
+        self.nuclear_repulsion_delta_ev += other.nuclear_repulsion_delta_ev;
+        self.net_formal_charge_delta += other.net_formal_charge_delta;
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AssemblyComponent {
     pub species: TerrariumSpecies,

@@ -153,6 +153,7 @@ pub struct Dihedral {
 }
 
 /// GPU-accelerated molecular dynamics simulation.
+#[derive(Debug)]
 pub struct GPUMolecularDynamics {
     /// Number of atoms.
     n_atoms: usize,

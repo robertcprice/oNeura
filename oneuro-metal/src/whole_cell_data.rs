@@ -336,6 +336,18 @@ pub enum WholeCellBulkField {
     AminoAcids,
     Nucleotides,
     MembranePrecursors,
+    /// Inorganic phosphate (H₃PO₄ / Pi).
+    Pi,
+    /// Guanosine triphosphate.
+    Gtp,
+    /// Guanosine diphosphate.
+    Gdp,
+    /// NAD⁺ (oxidized nicotinamide adenine dinucleotide).
+    NadOxidized,
+    /// NADH (reduced nicotinamide adenine dinucleotide).
+    NadReduced,
+    /// Coenzyme A.
+    CoA,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -2851,6 +2863,9 @@ fn transport_asset_class_for_bulk_field(field: WholeCellBulkField) -> WholeCellA
         WholeCellBulkField::AminoAcids => WholeCellAssetClass::Translation,
         WholeCellBulkField::Nucleotides => WholeCellAssetClass::Replication,
         WholeCellBulkField::MembranePrecursors => WholeCellAssetClass::Membrane,
+        WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+        | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+        | WholeCellBulkField::CoA => WholeCellAssetClass::Energy,
     }
 }
 
@@ -2872,7 +2887,10 @@ fn bulk_field_transport_rate(field: WholeCellBulkField) -> f32 {
         WholeCellBulkField::AminoAcids => 0.08,
         WholeCellBulkField::Nucleotides => 0.07,
         WholeCellBulkField::MembranePrecursors => 0.05,
-        WholeCellBulkField::ATP | WholeCellBulkField::ADP => 0.0,
+        WholeCellBulkField::ATP | WholeCellBulkField::ADP
+        | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+        | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+        | WholeCellBulkField::CoA => 0.0,
     }
 }
 
@@ -2949,7 +2967,10 @@ fn localized_pool_transfer_rate(field: WholeCellBulkField) -> f32 {
         WholeCellBulkField::AminoAcids => 0.072,
         WholeCellBulkField::Nucleotides => 0.066,
         WholeCellBulkField::MembranePrecursors => 0.058,
-        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
+        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen
+        | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+        | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+        | WholeCellBulkField::CoA => 0.0,
     }
 }
 
@@ -2960,7 +2981,10 @@ fn localized_pool_turnover_rate(field: WholeCellBulkField) -> f32 {
         WholeCellBulkField::AminoAcids => 0.025,
         WholeCellBulkField::Nucleotides => 0.022,
         WholeCellBulkField::MembranePrecursors => 0.020,
-        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
+        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen
+        | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+        | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+        | WholeCellBulkField::CoA => 0.0,
     }
 }
 
@@ -2971,7 +2995,10 @@ fn localized_pool_basal_scale(field: WholeCellBulkField) -> f32 {
         WholeCellBulkField::AminoAcids => 0.09,
         WholeCellBulkField::Nucleotides => 0.08,
         WholeCellBulkField::MembranePrecursors => 0.07,
-        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen => 0.0,
+        WholeCellBulkField::Glucose | WholeCellBulkField::Oxygen
+        | WholeCellBulkField::Pi | WholeCellBulkField::Gtp | WholeCellBulkField::Gdp
+        | WholeCellBulkField::NadOxidized | WholeCellBulkField::NadReduced
+        | WholeCellBulkField::CoA => 0.0,
     }
 }
 
@@ -2984,6 +3011,12 @@ fn bulk_field_fragment(field: WholeCellBulkField) -> &'static str {
         WholeCellBulkField::AminoAcids => "amino_acids",
         WholeCellBulkField::Nucleotides => "nucleotides",
         WholeCellBulkField::MembranePrecursors => "membrane_precursors",
+        WholeCellBulkField::Pi => "pi",
+        WholeCellBulkField::Gtp => "gtp",
+        WholeCellBulkField::Gdp => "gdp",
+        WholeCellBulkField::NadOxidized => "nad_oxidized",
+        WholeCellBulkField::NadReduced => "nad_reduced",
+        WholeCellBulkField::CoA => "coa",
     }
 }
 
@@ -2996,6 +3029,12 @@ fn bulk_field_display_name(field: WholeCellBulkField) -> &'static str {
         WholeCellBulkField::AminoAcids => "amino acids",
         WholeCellBulkField::Nucleotides => "nucleotides",
         WholeCellBulkField::MembranePrecursors => "membrane precursors",
+        WholeCellBulkField::Pi => "inorganic phosphate",
+        WholeCellBulkField::Gtp => "GTP",
+        WholeCellBulkField::Gdp => "GDP",
+        WholeCellBulkField::NadOxidized => "NAD+",
+        WholeCellBulkField::NadReduced => "NADH",
+        WholeCellBulkField::CoA => "coenzyme A",
     }
 }
 
@@ -4833,6 +4872,12 @@ pub fn compile_genome_process_registry(
                 WholeCellBulkField::AminoAcids => 4usize,
                 WholeCellBulkField::Nucleotides => 5usize,
                 WholeCellBulkField::MembranePrecursors => 6usize,
+                WholeCellBulkField::Pi => 7usize,
+                WholeCellBulkField::Gtp => 8usize,
+                WholeCellBulkField::Gdp => 9usize,
+                WholeCellBulkField::NadOxidized => 10usize,
+                WholeCellBulkField::NadReduced => 11usize,
+                WholeCellBulkField::CoA => 12usize,
             },
             match spatial_scope {
                 WholeCellSpatialScope::WellMixed => 0usize,
@@ -9212,6 +9257,29 @@ pub type WholeCellCheckpoint = WholeCellSavedState;
 
 pub fn default_syn3a_seed_spec() -> Result<WholeCellProgramSpec, String> {
     bundled_syn3a_program_spec()
+}
+
+// ---------------------------------------------------------------------------
+// Saved runtime quantum process (snapshot for save/restore)
+// ---------------------------------------------------------------------------
+
+/// Serialized snapshot of a single quantum-runtime process state for
+/// save/restore across sessions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WholeCellSavedRuntimeQuantumProcess {
+    pub kind: String,
+    #[serde(default)]
+    pub site_anchor_atom_idx: Option<usize>,
+    pub mixture: crate::atomistic_chemistry::EmbeddedMaterialMixture,
+    pub reactants: Vec<crate::atomistic_chemistry::EmbeddedMolecule>,
+    pub reaction: crate::atomistic_chemistry::StructuralReactionTemplate,
+    pub quantum: crate::subatomic_quantum::QuantumChemistryConfig,
+    #[serde(default)]
+    pub boundary_replenish_amount: f64,
+    #[serde(default)]
+    pub scaffold_boundary_replenish_amount: Option<f64>,
+    #[serde(default)]
+    pub reactive_boundary_replenish_amount: Option<f64>,
 }
 
 #[cfg(test)]

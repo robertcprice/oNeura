@@ -44,6 +44,7 @@ fn parse_args() -> Args {
                     "fruit" => FitnessObjective::MaxFruitProduction,
                     "microbial" => FitnessObjective::MaxMicrobialHealth,
                     "fly" => FitnessObjective::MaxFlyEcosystem,
+                    "metabolism" | "fly_metabolism" => FitnessObjective::MaxFlyMetabolism,
                     _ => FitnessObjective::MaxBiomass,
                 };
                 i += 1;
