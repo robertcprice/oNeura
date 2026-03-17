@@ -9,8 +9,8 @@ use crate::constants::clamp;
 use super::genotype::SecondaryCatalogBankEntry;
 
 // Phase 4: Genotype-ID packet population constants
-pub(crate) const GENOTYPE_PACKET_MAX_PER_CELL: usize = 12;
-pub(crate) const GENOTYPE_PACKET_POPULATION_MAX_CELLS: usize = 128;
+pub(super) const GENOTYPE_PACKET_MAX_PER_CELL: usize = 12;
+pub(super) const GENOTYPE_PACKET_POPULATION_MAX_CELLS: usize = 128;
 const GENOTYPE_PACKET_MIN_ACTIVITY: f32 = 0.01;
 const GENOTYPE_PACKET_GROWTH_RATE: f32 = 5.0e-4;
 const GENOTYPE_PACKET_DECAY_RATE: f32 = 3.0e-4;
@@ -25,41 +25,41 @@ const GENOTYPE_PACKET_PROMOTION_ENERGY: f32 = 0.7;
 /// microbial state in an owned cell.
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Scaffolding for genotype-level microbial tracking
-pub(crate) struct GenotypePacket {
+pub(super) struct GenotypePacket {
     /// Index into the per-guild secondary catalog bank.
-    pub(crate) catalog_slot: u32,
+    pub(super) catalog_slot: u32,
     /// Genotype identity for lineage tracking.
-    pub(crate) genotype_id: u32,
+    pub(super) genotype_id: u32,
     /// Lineage identity for phylogenetic tracking.
-    pub(crate) lineage_id: u32,
+    pub(super) lineage_id: u32,
     /// Number of real cells this packet represents.
-    pub(crate) represented_cells: f32,
+    pub(super) represented_cells: f32,
     /// Current metabolic activity [0..1]. High activity packets are
     /// candidates for promotion to full WholeCellSimulator.
-    pub(crate) activity: f32,
+    pub(super) activity: f32,
     /// Dormancy level [0..1]. Dormant packets consume less but also
     /// produce less flux.
-    pub(crate) dormancy: f32,
+    pub(super) dormancy: f32,
     /// Energy reserve [0..1]. Drives growth when high, triggers
     /// dormancy when low.
-    pub(crate) reserve: f32,
+    pub(super) reserve: f32,
     /// Accumulated damage [0..1]. Irreversible above a threshold;
     /// kills the packet at 1.0.
-    pub(crate) damage: f32,
+    pub(super) damage: f32,
     /// Cumulative glucose uptake since packet creation.
-    pub(crate) cumulative_glucose_draw: f32,
+    pub(super) cumulative_glucose_draw: f32,
     /// Cumulative oxygen uptake since packet creation.
-    pub(crate) cumulative_oxygen_draw: f32,
+    pub(super) cumulative_oxygen_draw: f32,
     /// Cumulative CO2 released since packet creation.
-    pub(crate) cumulative_co2_release: f32,
+    pub(super) cumulative_co2_release: f32,
     /// Cumulative ammonium uptake for nitrogen metabolism.
-    pub(crate) cumulative_ammonium_draw: f32,
+    pub(super) cumulative_ammonium_draw: f32,
     /// Cumulative proton release from metabolic acidification.
-    pub(crate) cumulative_proton_release: f32,
+    pub(super) cumulative_proton_release: f32,
 }
 
 impl GenotypePacket {
-    pub(crate) fn new(catalog_slot: u32, genotype_id: u32, lineage_id: u32, represented_cells: f32) -> Self {
+    pub(super) fn new(catalog_slot: u32, genotype_id: u32, lineage_id: u32, represented_cells: f32) -> Self {
         Self {
             catalog_slot,
             genotype_id,
@@ -77,13 +77,13 @@ impl GenotypePacket {
         }
     }
 
-    pub(crate) fn is_alive(&self) -> bool {
+    pub(super) fn is_alive(&self) -> bool {
         self.damage < 1.0 && self.represented_cells > 0.1
     }
 
     /// Whether this packet qualifies for promotion to a full
     /// WholeCellSimulator instance (Phase 5 hook).
-    pub(crate) fn qualifies_for_promotion(&self) -> bool {
+    pub(super) fn qualifies_for_promotion(&self) -> bool {
         self.activity >= GENOTYPE_PACKET_PROMOTION_ACTIVITY
             && self.reserve >= GENOTYPE_PACKET_PROMOTION_ENERGY
             && self.dormancy < 0.1
@@ -92,7 +92,7 @@ impl GenotypePacket {
 
     /// Lightweight per-step metabolism. Reads local chemistry signals
     /// and updates packet state without a full WholeCellSimulator.
-    pub(crate) fn step(&mut self, dt: f32, local_glucose: f32, local_oxygen: f32, local_stress: f32) {
+    pub(super) fn step(&mut self, dt: f32, local_glucose: f32, local_oxygen: f32, local_stress: f32) {
         let active_fraction = (1.0 - self.dormancy).max(0.0);
 
         // Energy intake: proportional to local resources and activity
@@ -171,21 +171,21 @@ impl GenotypePacket {
 /// A population of genotype-ID packets at a single owned cell position.
 /// This replaces the coarse microbial aggregate state for that cell.
 #[derive(Debug, Clone)]
-pub(crate) struct GenotypePacketPopulation {
+pub(super) struct GenotypePacketPopulation {
     /// Grid position.
-    pub(crate) x: usize,
-    pub(crate) y: usize,
-    pub(crate) z: usize,
+    pub(super) x: usize,
+    pub(super) y: usize,
+    pub(super) z: usize,
     /// Owned packets, sorted by activity (descending) after each step.
-    pub(crate) packets: Vec<GenotypePacket>,
+    pub(super) packets: Vec<GenotypePacket>,
     /// Total represented cells across all packets (cached).
-    pub(crate) total_cells: f32,
+    pub(super) total_cells: f32,
     /// Age of this population in simulation seconds.
-    pub(crate) age_s: f32,
+    pub(super) age_s: f32,
 }
 
 impl GenotypePacketPopulation {
-    pub(crate) fn new(x: usize, y: usize, z: usize) -> Self {
+    pub(super) fn new(x: usize, y: usize, z: usize) -> Self {
         Self {
             x,
             y,
@@ -196,12 +196,12 @@ impl GenotypePacketPopulation {
         }
     }
 
-    pub(crate) fn is_alive(&self) -> bool {
+    pub(super) fn is_alive(&self) -> bool {
         !self.packets.is_empty() && self.total_cells > 0.5
     }
 
     #[allow(dead_code)]
-    pub(crate) fn add_packet(&mut self, packet: GenotypePacket) {
+    pub(super) fn add_packet(&mut self, packet: GenotypePacket) {
         if self.packets.len() < GENOTYPE_PACKET_MAX_PER_CELL {
             self.packets.push(packet);
             self.recompute_total();
@@ -209,7 +209,7 @@ impl GenotypePacketPopulation {
     }
 
     /// Seed population from the coarse secondary bank state at a cell.
-    pub(crate) fn seed_from_secondary_bank(
+    pub(super) fn seed_from_secondary_bank(
         &mut self,
         bank_entries: &[SecondaryCatalogBankEntry],
         total_coarse_cells: f32,
@@ -234,7 +234,7 @@ impl GenotypePacketPopulation {
     }
 
     /// Step all packets with shared local chemistry signals.
-    pub(crate) fn step(&mut self, dt: f32, local_glucose: f32, local_oxygen: f32, local_stress: f32) {
+    pub(super) fn step(&mut self, dt: f32, local_glucose: f32, local_oxygen: f32, local_stress: f32) {
         self.age_s += dt;
 
         // Per-packet share of local resources (competition)
@@ -257,22 +257,22 @@ impl GenotypePacketPopulation {
     }
 
     /// Total glucose draw this step across all packets.
-    pub(crate) fn total_glucose_draw(&self) -> f32 {
+    pub(super) fn total_glucose_draw(&self) -> f32 {
         self.packets.iter().map(|p| p.cumulative_glucose_draw).sum()
     }
 
     /// Total CO2 release this step across all packets.
-    pub(crate) fn total_co2_release(&self) -> f32 {
+    pub(super) fn total_co2_release(&self) -> f32 {
         self.packets.iter().map(|p| p.cumulative_co2_release).sum()
     }
 
     /// Total oxygen draw this step across all packets.
-    pub(crate) fn total_oxygen_draw(&self) -> f32 {
+    pub(super) fn total_oxygen_draw(&self) -> f32 {
         self.packets.iter().map(|p| p.cumulative_oxygen_draw).sum()
     }
 
     /// Total ammonium draw this step across all packets.
-    pub(crate) fn total_ammonium_draw(&self) -> f32 {
+    pub(super) fn total_ammonium_draw(&self) -> f32 {
         self.packets
             .iter()
             .map(|p| p.cumulative_ammonium_draw)
@@ -280,7 +280,7 @@ impl GenotypePacketPopulation {
     }
 
     /// Total proton release this step across all packets.
-    pub(crate) fn total_proton_release(&self) -> f32 {
+    pub(super) fn total_proton_release(&self) -> f32 {
         self.packets
             .iter()
             .map(|p| p.cumulative_proton_release)
@@ -288,7 +288,7 @@ impl GenotypePacketPopulation {
     }
 
     /// Mean activity across packets.
-    pub(crate) fn mean_activity(&self) -> f32 {
+    pub(super) fn mean_activity(&self) -> f32 {
         if self.packets.is_empty() {
             return 0.0;
         }
@@ -296,7 +296,7 @@ impl GenotypePacketPopulation {
     }
 
     /// Mean dormancy across packets.
-    pub(crate) fn mean_dormancy(&self) -> f32 {
+    pub(super) fn mean_dormancy(&self) -> f32 {
         if self.packets.is_empty() {
             return 0.0;
         }
@@ -304,7 +304,7 @@ impl GenotypePacketPopulation {
     }
 
     /// Count of packets that qualify for promotion to WholeCellSimulator.
-    pub(crate) fn promotion_candidates(&self) -> usize {
+    pub(super) fn promotion_candidates(&self) -> usize {
         self.packets
             .iter()
             .filter(|p| p.qualifies_for_promotion())
@@ -317,7 +317,7 @@ impl GenotypePacketPopulation {
 
     /// Try to bud a new packet into a neighboring cell.
     /// Returns `Some((target_x, target_y, new_packet))` if budding occurs.
-    pub(crate) fn try_bud(&mut self, width: usize, height: usize) -> Option<(usize, usize, GenotypePacket)> {
+    pub(super) fn try_bud(&mut self, width: usize, height: usize) -> Option<(usize, usize, GenotypePacket)> {
         // Find the first packet with high activity, high reserve, sufficient
         // cells, and low dormancy.
         let bud_idx = self.packets.iter().position(|p| {

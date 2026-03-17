@@ -33,7 +33,7 @@ use crate::enzyme_engineering::{EnzymeVariant, EvolutionConfig, FitnessTarget, d
 // ---------------------------------------------------------------------------
 
 /// Types of soil contaminants.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ContaminantClass {
     /// Polycyclic aromatic hydrocarbons (PAHs) from combustion/petroleum.
     PAH,
@@ -422,7 +422,7 @@ pub fn remediation_plan(profile: &SoilContaminationProfile, seed: u64) -> Remedi
 /// Evolve remediation enzymes for better performance in the specific soil conditions.
 fn evolve_remediation_cocktail(
     enzymes: &[RemediationEnzyme],
-    profile: &SoilContaminationProfile,
+    _profile: &SoilContaminationProfile,
     seed: u64,
 ) -> Vec<EnzymeVariant> {
     enzymes.iter().enumerate().map(|(i, enzyme)| {

@@ -21,9 +21,30 @@
 
 use crate::enzyme_engineering::{
     EnzymeVariant, EvolutionConfig, EvolutionResult, FitnessTarget,
-    directed_evolution, compute_fitness,
+    directed_evolution,
 };
 use crate::probe_coupling::soil_enzyme_fitness;
+
+/// Compute fitness for an enzyme variant based on its target.
+///
+/// Mirrors the private `enzyme_engineering::compute_fitness` using the
+/// same multi-objective weighting: 40% catalytic efficiency, 30% stability,
+/// 30% expression.
+fn compute_variant_fitness(variant: &EnzymeVariant, target: FitnessTarget) -> f64 {
+    match target {
+        FitnessTarget::Kcat => variant.kcat,
+        FitnessTarget::Km => if variant.km_um > 0.0 { 1.0 / variant.km_um } else { 0.0 },
+        FitnessTarget::CatalyticEfficiency => variant.kcat_over_km,
+        FitnessTarget::Stability => -variant.stability_score, // more negative = more stable = higher fitness
+        FitnessTarget::Expression => variant.expression_level,
+        FitnessTarget::MultiObjective => {
+            let cat_eff = (variant.kcat_over_km / 100.0).min(1.0);
+            let stab = (-variant.stability_score / 50.0).clamp(0.0, 1.0);
+            let expr = variant.expression_level.clamp(0.0, 1.0);
+            0.4 * cat_eff + 0.3 * stab + 0.3 * expr
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Soil-Contextualized Enzyme Variants
@@ -156,8 +177,8 @@ fn score_variant_in_soil(
     variant: &EnzymeVariant,
     config: &SoilEnzymeEvolutionConfig,
 ) -> f64 {
-    // Base kinetic fitness from enzyme_engineering
-    let base_fitness = compute_fitness(variant, config.base_config.fitness_target);
+    // Base kinetic fitness
+    let base_fitness = compute_variant_fitness(variant, config.base_config.fitness_target);
 
     // Soil-specific fitness from probe_coupling
     let soil_fit = soil_enzyme_fitness(
