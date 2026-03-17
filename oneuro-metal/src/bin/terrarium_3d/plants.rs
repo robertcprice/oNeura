@@ -4,14 +4,15 @@ use oneuro_metal::TerrariumPlant;
 use super::math::v3;
 use super::color::plant_color_v3;
 use super::mesh::{Triangle, EntityTag, make_billboard_quad, make_diamond, tag_all};
-use super::{CELL_SIZE, HEIGHT_SCALE};
+use super::terrain::terrain_height;
+use super::CELL_SIZE;
 
-pub fn build_plant_meshes(plants: &[TerrariumPlant], gw: usize, gh: usize, moisture: &[f32]) -> Vec<Triangle> {
+pub fn build_plant_meshes(plants: &[TerrariumPlant], gw: usize, gh: usize, moisture: &[f32], seed: u64) -> Vec<Triangle> {
     let mut tris = Vec::with_capacity(plants.len() * 10);
     for (i, plant) in plants.iter().enumerate() {
         let gx = plant.x.min(gw - 1);
         let gy = plant.y.min(gh - 1);
-        let base_y = terrain_y(gx, gy, gw, gh, moisture);
+        let base_y = terrain_height(gx, gy, gw, gh, moisture, seed);
         let wx = gx as f32 * CELL_SIZE;
         let wz = gy as f32 * CELL_SIZE;
         let plant_h = (plant.physiology.height_mm() * 0.15).clamp(0.3, 2.5);
@@ -24,9 +25,4 @@ pub fn build_plant_meshes(plants: &[TerrariumPlant], gw: usize, gh: usize, moist
         tris.extend(plant_tris);
     }
     tris
-}
-
-fn terrain_y(gx: usize, gy: usize, gw: usize, gh: usize, moisture: &[f32]) -> f32 {
-    let mi = gy.min(gh - 1) * gw + gx.min(gw - 1);
-    (if mi < moisture.len() { moisture[mi] } else { 0.3 }) * HEIGHT_SCALE
 }

@@ -3,15 +3,16 @@
 use oneuro_metal::TerrariumFruitPatch;
 use super::math::{v3, lerp3};
 use super::mesh::{Triangle, EntityTag, make_diamond, tag_all};
-use super::{CELL_SIZE, HEIGHT_SCALE};
+use super::terrain::terrain_height;
+use super::CELL_SIZE;
 
-pub fn build_fruit_meshes(fruits: &[TerrariumFruitPatch], gw: usize, gh: usize, moisture: &[f32]) -> Vec<Triangle> {
+pub fn build_fruit_meshes(fruits: &[TerrariumFruitPatch], gw: usize, gh: usize, moisture: &[f32], seed: u64) -> Vec<Triangle> {
     let mut tris = Vec::with_capacity(fruits.len() * 8);
     for (i, fruit) in fruits.iter().enumerate() {
         if fruit.source.alive && fruit.source.sugar_content > 0.01 {
             let gx = fruit.source.x.min(gw - 1);
             let gy = fruit.source.y.min(gh - 1);
-            let base_y = terrain_y(gx, gy, gw, gh, moisture);
+            let base_y = terrain_height(gx, gy, gw, gh, moisture, seed);
             let wx = gx as f32 * CELL_SIZE;
             let wz = gy as f32 * CELL_SIZE;
             let ripe = fruit.source.ripeness.clamp(0.0, 1.0);
@@ -22,9 +23,4 @@ pub fn build_fruit_meshes(fruits: &[TerrariumFruitPatch], gw: usize, gh: usize, 
         }
     }
     tris
-}
-
-fn terrain_y(gx: usize, gy: usize, gw: usize, gh: usize, moisture: &[f32]) -> f32 {
-    let mi = gy.min(gh - 1) * gw + gx.min(gw - 1);
-    (if mi < moisture.len() { moisture[mi] } else { 0.3 }) * HEIGHT_SCALE
 }

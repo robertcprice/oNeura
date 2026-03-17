@@ -52,8 +52,6 @@ pub(crate) use genotype::{
 };
 pub(crate) use packet::{GenotypePacket, GenotypePacketPopulation, GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS};
 pub(crate) use calibrator::{SubstrateKinetics, MolecularRateCalibrator};
-pub(crate) use crate::guild_latent::{step_latent_guild_banks, LatentGuildState, LatentGuildConfig, LatentGuildResult};
-
 
 
 // ===== Microdomain Ownership Infrastructure =====
@@ -278,14 +276,6 @@ pub const EXPLICIT_MICROBE_RADIUS_EXPAND_2_CELLS: f32 = 5000.0;
 pub const EXPLICIT_MICROBE_RADIUS_EXPAND_2_ENERGY: f32 = 0.8;
 pub const EXPLICIT_MICROBE_RECRUITMENT_MIN_SCORE: f32 = 0.3;
 pub const EXPLICIT_MICROBE_RECRUITMENT_SPACING: usize = 3;
-// ── Constants for advanced submodules ──
-pub(crate) const NITRIFIER_PACKET_TARGET_CELLS: f32 = 500.0;
-pub(crate) const DENITRIFIER_PACKET_TARGET_CELLS: f32 = 500.0;
-pub(crate) const HENRY_O2: f32 = 1.3e-3;   // mol/(L·atm) at 25°C
-pub(crate) const HENRY_CO2: f32 = 3.4e-2;   // mol/(L·atm) at 25°C
-pub(crate) const ATMOS_PRESSURE_BASELINE_KPA: f32 = 101.325;
-pub(crate) const ATMOS_DENSITY_BASELINE_KG_M3: f32 = 1.225;
-
 pub const INTERACTIVE_MICROBES_PER_FRAME: usize = 4;
 pub const MICROBIAL_PACKET_TARGET_CELLS: f32 = 500.0;
 pub const STOICH_RESPIRATION_CO2_PER_GLUCOSE: f32 = 6.0;
@@ -953,24 +943,6 @@ pub struct WholeCellSnapshot {
     pub division_progress: f32,
     pub local_chemistry: Option<LocalChemistryReport>,
 }
-
-impl WholeCellSnapshot {
-    /// Convert from the full crate::whole_cell::WholeCellSnapshot to the local simplified version.
-    pub(crate) fn from_whole_cell(snap: &crate::whole_cell::WholeCellSnapshot) -> Self {
-        Self {
-            atp_mm: snap.atp_mm,
-            glucose_mm: snap.glucose_mm,
-            oxygen_mm: snap.oxygen_mm,
-            amino_acids_mm: snap.amino_acids_mm,
-            nucleotides_mm: snap.nucleotides_mm,
-            membrane_precursors_mm: snap.membrane_precursors_mm,
-            metabolic_load: snap.active_ribosomes * 0.3 + snap.active_rnap * 0.2,
-            division_progress: snap.division_progress,
-            local_chemistry: None,
-        }
-    }
-}
-
 
 #[derive(Debug, Clone, Copy, Default)]
 #[allow(dead_code)]
@@ -2415,9 +2387,232 @@ impl TerrariumWorld {
         &mut self.atomistic_probes
     }
 
-    // snapshot() is provided by the snapshot submodule (terrarium_world/snapshot.rs)
+    /// Generate a snapshot of the current world state.
+    pub fn snapshot(&self) -> TerrariumWorldSnapshot {
+        let live_fruits = self.fruits.iter().filter(|f| f.source.alive && f.source.sugar_content > 0.01).count();
+        let food_remaining: f32 = self.fruits.iter().filter(|f| f.source.alive).map(|f| f.source.sugar_content.max(0.0)).sum();
+        let n_flies = self.flies.len() as f32;
+        let avg_fly_energy = if self.flies.is_empty() { 0.0 } else {
+            self.flies.iter().map(|f| f.body_state().energy).sum::<f32>() / n_flies
+        };
+        let avg_altitude = if self.flies.is_empty() { 0.0 } else {
+            self.flies.iter().map(|f| f.body_state().z).sum::<f32>() / n_flies
+        };
+        let avg_fly_energy_charge = if self.fly_metabolisms.is_empty() { 0.0 } else {
+            use crate::organism_metabolism::OrganismMetabolism;
+            self.fly_metabolisms.iter().map(|m| m.energy_charge()).sum::<f32>() / self.fly_metabolisms.len() as f32
+        };
+        let w = self.config.width;
+        let h = self.config.height;
+        let n_cells = (w * h) as f32;
+        let mean_soil_moisture = if n_cells > 0.0 { self.moisture.iter().sum::<f32>() / n_cells } else { 0.0 };
+        let mean_soil_glucose = if n_cells > 0.0 { self.dissolved_nutrients.iter().sum::<f32>() / n_cells } else { 0.0 };
+        let mean_soil_oxygen = if n_cells > 0.0 { self.mineral_nitrogen.iter().sum::<f32>() / n_cells * 0.21 } else { 0.0 };
+        let mean_soil_ammonium = if n_cells > 0.0 { self.mineral_nitrogen.iter().sum::<f32>() / n_cells * 0.1 } else { 0.0 };
+        let mean_soil_redox = if n_cells > 0.0 {
+            self.dissolved_nutrients.iter().zip(self.mineral_nitrogen.iter())
+                .map(|(dn, mn)| (dn - mn).clamp(-1.0, 1.0)).sum::<f32>() / n_cells
+        } else { 0.0 };
+        let owned_cells = self.ownership.iter().filter(|c| !matches!(c.owner, SoilOwnershipClass::Background)).count();
+        let owned_fraction = if n_cells > 0.0 { owned_cells as f32 / n_cells } else { 0.0 };
+        let fly_plant_proximity_mean = if self.flies.is_empty() || self.plants.is_empty() { 0.0 } else {
+            let mut total_dist = 0.0f32;
+            for fly in &self.flies {
+                let fb = fly.body_state();
+                let min_dist = self.plants.iter().map(|p| {
+                    let dx = fb.x - p.x as f32;
+                    let dy = fb.y - p.y as f32;
+                    (dx * dx + dy * dy).sqrt()
+                }).fold(f32::MAX, f32::min);
+                total_dist += min_dist;
+            }
+            total_dist / n_flies
+        };
+        let fly_altitude_mean = avg_altitude;
+
+        TerrariumWorldSnapshot {
+            plants: self.plants.len(),
+            fruits: live_fruits,
+            seeds: 0,
+            flies: self.flies.len(),
+            food_remaining,
+            fly_food_total: self.fruits.iter().map(|f| f.source.sugar_content.max(0.0)).sum(),
+            avg_fly_energy,
+            avg_altitude,
+            light: self.time_s.rem_euclid(DAY_LENGTH_S) / DAY_LENGTH_S,
+            temperature: self.temperature.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
+            humidity: self.humidity.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
+            mean_soil_moisture,
+            mean_deep_moisture: mean_soil_moisture * 0.8,
+            mean_microbes: self.microbial_biomass.iter().sum::<f32>() / n_cells.max(1.0),
+            mean_symbionts: 0.0,
+            mean_canopy: 0.0,
+            mean_root_density: 0.0,
+            total_plant_cells: self.plants.len() as f32,
+            mean_cell_vitality: 0.8,
+            mean_cell_energy: 0.5,
+            mean_division_pressure: 0.0,
+            mean_soil_glucose,
+            mean_soil_oxygen,
+            mean_soil_ammonium,
+            mean_soil_nitrate: mean_soil_ammonium * 0.5,
+            mean_soil_redox,
+            mean_soil_atp_flux: 0.0,
+            mean_atmospheric_co2: 400.0,
+            mean_atmospheric_o2: 0.21,
+            ecology_event_count: self.ecology_events.len(),
+            avg_fly_energy_charge,
+            fly_plant_proximity_mean,
+            fly_altitude_mean,
+            fly_o2_gradient_correlation: 0.0,
+            owned_fraction,
+            substrate_backend: String::from("cpu"),
+            substrate_steps: 0,
+            substrate_time_ms: 0.0,
+            time_s: self.time_s,
+            atomistic_probes: self.atomistic_probes.len(),
+            avg_fly_hunger: 0.0,
+            avg_fly_trehalose_mm: 0.0,
+            avg_fly_atp_mm: 0.0,
+            fly_population_eggs: 0,
+            fly_population_embryos: 0,
+            fly_population_larvae: 0,
+            fly_population_pupae: 0,
+            fly_population_adults: self.flies.len() as u32,
+            fly_population_total: self.flies.len() as u32,
+            mean_air_pressure_kpa: 101.3,
+            mean_microbial_cells: 0.0,
+            mean_microbial_packets: 0.0,
+            mean_microbial_copiotroph_packets: 0.0,
+            mean_microbial_shadow_packets: 0.0,
+            mean_microbial_variant_packets: 0.0,
+            mean_microbial_novel_packets: 0.0,
+            mean_microbial_latent_packets: 0.0,
+            mean_microbial_oligotroph_packets: 0.0,
+            mean_microbial_packet_load: 0.0,
+            mean_microbial_copiotroph_fraction: 0.0,
+            mean_microbial_shadow_fraction: 0.0,
+            mean_microbial_variant_fraction: 0.0,
+            mean_microbial_novel_fraction: 0.0,
+            mean_microbial_bank_simpson_diversity: 0.0,
+            mean_microbial_strain_yield: 0.0,
+            mean_microbial_strain_stress_tolerance: 0.0,
+            mean_microbial_gene_catabolic: 0.0,
+            mean_microbial_gene_stress_response: 0.0,
+            mean_microbial_gene_dormancy_maintenance: 0.0,
+            mean_microbial_gene_extracellular_scavenging: 0.0,
+            mean_microbial_genotype_divergence: 0.0,
+            mean_microbial_catalog_generation: 0.0,
+            mean_microbial_catalog_novelty: 0.0,
+            mean_microbial_local_catalog_share: 0.0,
+            mean_microbial_catalog_bank_dominance: 0.0,
+            mean_microbial_catalog_bank_richness: 0.0,
+            mean_microbial_lineage_generation: 0.0,
+            mean_microbial_lineage_novelty: 0.0,
+            mean_microbial_packet_mutation_flux: 0.0,
+            mean_microbial_vitality: 0.0,
+            mean_microbial_dormancy: 0.0,
+            mean_microbial_reserve: 0.0,
+            mean_nitrifiers: 0.0,
+            mean_nitrifier_cells: 0.0,
+            mean_nitrifier_packets: 0.0,
+            mean_nitrifier_aerobic_packets: 0.0,
+            mean_nitrifier_shadow_packets: 0.0,
+            mean_nitrifier_variant_packets: 0.0,
+            mean_nitrifier_novel_packets: 0.0,
+            mean_nitrifier_latent_packets: 0.0,
+            mean_nitrifier_facultative_packets: 0.0,
+            mean_nitrifier_packet_load: 0.0,
+            mean_nitrifier_aerobic_fraction: 0.0,
+            mean_nitrifier_shadow_fraction: 0.0,
+            mean_nitrifier_variant_fraction: 0.0,
+            mean_nitrifier_novel_fraction: 0.0,
+            mean_nitrifier_bank_simpson_diversity: 0.0,
+            mean_nitrifier_strain_oxygen_affinity: 0.0,
+            mean_nitrifier_strain_ammonium_affinity: 0.0,
+            mean_nitrifier_gene_oxygen_respiration: 0.0,
+            mean_nitrifier_gene_ammonium_transport: 0.0,
+            mean_nitrifier_gene_stress_persistence: 0.0,
+            mean_nitrifier_gene_redox_efficiency: 0.0,
+            mean_nitrifier_genotype_divergence: 0.0,
+            mean_nitrifier_catalog_generation: 0.0,
+            mean_nitrifier_catalog_novelty: 0.0,
+            mean_nitrifier_local_catalog_share: 0.0,
+            mean_nitrifier_catalog_bank_dominance: 0.0,
+            mean_nitrifier_catalog_bank_richness: 0.0,
+            mean_nitrifier_lineage_generation: 0.0,
+            mean_nitrifier_lineage_novelty: 0.0,
+            mean_nitrifier_packet_mutation_flux: 0.0,
+            mean_nitrifier_vitality: 0.0,
+            mean_nitrifier_dormancy: 0.0,
+            mean_nitrifier_reserve: 0.0,
+            mean_nitrification_potential: 0.0,
+            mean_denitrifiers: 0.0,
+            mean_denitrifier_cells: 0.0,
+            mean_denitrifier_packets: 0.0,
+            mean_denitrifier_anoxic_packets: 0.0,
+            mean_denitrifier_shadow_packets: 0.0,
+            mean_denitrifier_variant_packets: 0.0,
+            mean_denitrifier_novel_packets: 0.0,
+            mean_denitrifier_latent_packets: 0.0,
+            mean_denitrifier_facultative_packets: 0.0,
+            mean_denitrifier_packet_load: 0.0,
+            mean_denitrifier_anoxic_fraction: 0.0,
+            mean_denitrifier_shadow_fraction: 0.0,
+            mean_denitrifier_variant_fraction: 0.0,
+            mean_denitrifier_novel_fraction: 0.0,
+            mean_denitrifier_bank_simpson_diversity: 0.0,
+            mean_denitrifier_strain_anoxia_affinity: 0.0,
+            mean_denitrifier_strain_nitrate_affinity: 0.0,
+            mean_denitrifier_gene_anoxia_respiration: 0.0,
+            mean_denitrifier_gene_nitrate_transport: 0.0,
+            mean_denitrifier_gene_stress_persistence: 0.0,
+            mean_denitrifier_gene_reductive_flexibility: 0.0,
+            mean_denitrifier_genotype_divergence: 0.0,
+            mean_denitrifier_catalog_generation: 0.0,
+            mean_denitrifier_catalog_novelty: 0.0,
+            mean_denitrifier_local_catalog_share: 0.0,
+            mean_denitrifier_catalog_bank_dominance: 0.0,
+            mean_denitrifier_catalog_bank_richness: 0.0,
+            mean_denitrifier_lineage_generation: 0.0,
+            mean_denitrifier_lineage_novelty: 0.0,
+            mean_denitrifier_packet_mutation_flux: 0.0,
+            mean_denitrifier_vitality: 0.0,
+            mean_denitrifier_dormancy: 0.0,
+            mean_denitrifier_reserve: 0.0,
+            mean_denitrification_potential: 0.0,
+            explicit_microbes: 0,
+            explicit_microbe_represented_cells: 0.0,
+            explicit_microbe_represented_packets: 0.0,
+            explicit_microbe_owned_fraction: 0.0,
+            explicit_microbe_max_authority: 0.0,
+            mean_explicit_microbe_activity: 0.0,
+            mean_explicit_microbe_atp_mm: 0.0,
+            mean_explicit_microbe_glucose_mm: 0.0,
+            mean_explicit_microbe_oxygen_mm: 0.0,
+            mean_explicit_microbe_division_progress: 0.0,
+            mean_explicit_microbe_local_co2: 0.0,
+            mean_explicit_microbe_translation_support: 0.0,
+            mean_explicit_microbe_energy_state: 0.0,
+            mean_explicit_microbe_stress_state: 0.0,
+            mean_explicit_microbe_genotype_divergence: 0.0,
+            mean_explicit_microbe_catalog_novelty: 0.0,
+            mean_explicit_microbe_local_catalog_share: 0.0,
+            packet_population_count: 0,
+            packet_population_total_cells: 0.0,
+            packet_population_mean_activity: 0.0,
+            packet_population_mean_dormancy: 0.0,
+            packet_population_total_packets: 0,
+            packet_population_promotion_candidates: 0,
+            plant_species_count: 0,
+            plant_species_ids: Vec::new(),
+            ecology_events: Vec::new(),
+            ..Default::default()
+        }
+    }
 
 
+    #[cfg(feature = "terrarium_advanced")]
     pub(crate) fn add_explicit_microbe(&mut self, x: usize, y: usize, z: usize, represented_cells: f32) -> Result<(), String> {
         let flat = idx2(self.config.width, x, y);
         let identity = self.explicit_microbe_identity_at(flat);
@@ -2487,17 +2682,23 @@ mod packet;
 mod calibrator;
 mod flora;
 #[cfg(feature = "terrarium_advanced")]
-#[cfg(feature = "terrarium_advanced")]
 mod soil;
+#[cfg(feature = "terrarium_advanced")]
 mod snapshot;
+#[cfg(feature = "terrarium_advanced")]
 mod biomechanics;
+#[cfg(feature = "terrarium_advanced")]
 mod explicit_microbe_impl;
 
 // Rendering modules — need crate::terrarium_render, terrarium_scene_query,
 // and full render pipeline types.
+#[cfg(feature = "terrarium_render")]
 mod render_utils;
+#[cfg(feature = "terrarium_render")]
 mod mesh;
+#[cfg(feature = "terrarium_render")]
 mod render_impl;
+#[cfg(feature = "terrarium_render")]
 mod render_stateful;
 
 // Integration tests spanning both advanced + render features.

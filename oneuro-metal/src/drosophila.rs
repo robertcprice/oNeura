@@ -293,6 +293,12 @@ pub struct BodyState {
     pub proboscis_extended: bool,
     /// Wing-beat frequency in Hz.
     pub wing_beat_freq: f32,
+    /// Aerodynamic load factor for collision radius scaling.
+    pub air_load: f32,
+    /// Roll angle in radians.
+    pub roll: f32,
+    /// Yaw slip for asymmetric contact response.
+    pub yaw_slip: f32,
 }
 
 impl BodyState {
@@ -311,6 +317,9 @@ impl BodyState {
             vertical_velocity: 0.0,
             proboscis_extended: false,
             wing_beat_freq: FLY_WING_BEAT_HZ,
+            air_load: 0.0,
+            roll: 0.0,
+            yaw_slip: 0.0,
         }
     }
 
@@ -1883,6 +1892,11 @@ impl DrosophilaSim {
     /// Get current body state.
     pub fn body_state(&self) -> &BodyState {
         &self.body
+    }
+
+    /// Get mutable body state for collision resolution.
+    pub fn body_state_mut(&mut self) -> &mut BodyState {
+        &mut self.body
     }
 
     /// Override body state for integration with an external world.

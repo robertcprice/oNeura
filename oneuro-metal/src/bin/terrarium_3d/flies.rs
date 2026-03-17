@@ -3,15 +3,16 @@
 use oneuro_metal::drosophila::DrosophilaSim;
 use super::math::v3;
 use super::mesh::{Triangle, EntityTag, make_diamond, tag_all};
-use super::{CELL_SIZE, HEIGHT_SCALE};
+use super::terrain::terrain_height;
+use super::CELL_SIZE;
 
-pub fn build_fly_meshes(flies: &[DrosophilaSim], gw: usize, gh: usize, moisture: &[f32], frame: usize) -> Vec<Triangle> {
+pub fn build_fly_meshes(flies: &[DrosophilaSim], gw: usize, gh: usize, moisture: &[f32], seed: u64, frame: usize) -> Vec<Triangle> {
     let mut tris = Vec::with_capacity(flies.len() * 8);
     for (i, fly) in flies.iter().enumerate() {
         let b = fly.body_state();
         let gx = b.x.round().clamp(0.0, (gw - 1) as f32) as usize;
         let gy = b.y.round().clamp(0.0, (gh - 1) as f32) as usize;
-        let base_y = terrain_y(gx, gy, gw, gh, moisture);
+        let base_y = terrain_height(gx, gy, gw, gh, moisture, seed);
         let wx = b.x.clamp(0.0, (gw - 1) as f32) * CELL_SIZE;
         let wz = b.y.clamp(0.0, (gh - 1) as f32) * CELL_SIZE;
         let alt = if b.is_flying { b.z.clamp(0.0, 4.0) * 0.4 } else { 0.05 };
@@ -23,9 +24,4 @@ pub fn build_fly_meshes(flies: &[DrosophilaSim], gw: usize, gh: usize, moisture:
         tris.extend(fly_tris);
     }
     tris
-}
-
-fn terrain_y(gx: usize, gy: usize, gw: usize, gh: usize, moisture: &[f32]) -> f32 {
-    let mi = gy.min(gh - 1) * gw + gx.min(gw - 1);
-    (if mi < moisture.len() { moisture[mi] } else { 0.3 }) * HEIGHT_SCALE
 }
