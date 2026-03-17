@@ -2413,7 +2413,7 @@ impl TerrariumWorld {
             self.dissolved_nutrients.iter().zip(self.mineral_nitrogen.iter())
                 .map(|(dn, mn)| (dn - mn).clamp(-1.0, 1.0)).sum::<f32>() / n_cells
         } else { 0.0 };
-        let owned_cells = self.ownership.iter().filter(|&&o| o != SoilOwnershipClass::Background).count();
+        let owned_cells = self.ownership.iter().filter(|c| !matches!(c.owner, SoilOwnershipClass::Background)).count();
         let owned_fraction = if n_cells > 0.0 { owned_cells as f32 / n_cells } else { 0.0 };
         let fly_plant_proximity_mean = if self.flies.is_empty() || self.plants.is_empty() { 0.0 } else {
             let mut total_dist = 0.0f32;
@@ -2579,6 +2579,26 @@ impl TerrariumWorld {
             mean_denitrifier_vitality: 0.0,
             mean_denitrifier_dormancy: 0.0,
             mean_denitrifier_reserve: 0.0,
+            mean_denitrification_potential: 0.0,
+            explicit_microbes: 0,
+            explicit_microbe_represented_cells: 0.0,
+            explicit_microbe_represented_packets: 0.0,
+            explicit_microbe_owned_fraction: 0.0,
+            explicit_microbe_max_authority: 0.0,
+            mean_explicit_microbe_activity: 0.0,
+            mean_explicit_microbe_atp_mm: 0.0,
+            mean_explicit_microbe_glucose_mm: 0.0,
+            mean_explicit_microbe_oxygen_mm: 0.0,
+            mean_explicit_microbe_division_progress: 0.0,
+            mean_explicit_microbe_local_co2: 0.0,
+            mean_explicit_microbe_translation_support: 0.0,
+            mean_explicit_microbe_energy_state: 0.0,
+            mean_explicit_microbe_stress_state: 0.0,
+            mean_explicit_microbe_genotype_divergence: 0.0,
+            mean_explicit_microbe_catalog_novelty: 0.0,
+            mean_explicit_microbe_local_catalog_share: 0.0,
+            packet_population_count: 0,
+            packet_population_total_cells: 0.0,
             packet_population_mean_activity: 0.0,
             packet_population_mean_dormancy: 0.0,
             packet_population_total_packets: 0,

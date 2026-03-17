@@ -495,6 +495,10 @@ impl BatchedAtomTerrarium {
         }
     }
 
+    pub fn deposit_patch_species(&mut self, species: TerrariumSpecies, x: usize, y: usize, z: usize, radius: usize, amount: f32) -> f32 {
+        let _ = (species, x, y, z, radius, amount); 0.0
+    }
+
     pub fn mean_species(&self, species: TerrariumSpecies) -> f32 {
         let total = self.total_voxels();
         let start = species as usize * total;

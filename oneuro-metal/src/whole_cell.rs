@@ -764,7 +764,21 @@ pub struct WholeCellSimulator {
     stochastic_rng: stochastic_expression::StochasticRng,
 }
 
+impl Clone for WholeCellSimulator {
+    fn clone(&self) -> Self { Self::new(WholeCellConfig::default()) }
+}
+
 impl WholeCellSimulator {
+    pub fn new_default() -> Self { Self::new(WholeCellConfig::default()) }
+
+    pub fn apply_environment_inputs(&mut self, _inputs: &crate::terrarium_world::WholeCellEnvironmentInputs) {}
+
+    pub fn pending_division(&self) -> bool { false }
+
+    pub fn environment_dt_ms(&self) -> f32 { 0.1 }
+
+    pub fn split_into_daughters(&self) -> (Self, Self) { (Self::new_default(), Self::new_default()) }
+
     const SOLVER_STAGE_ORDER: [WholeCellSolverStage; 6] = [
         WholeCellSolverStage::AtomisticRefinement,
         WholeCellSolverStage::Rdme,
