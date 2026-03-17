@@ -740,6 +740,12 @@ pub struct TerrariumWorldSnapshot {
     pub substrate_steps: u64,
     pub substrate_time_ms: f32,
     pub time_s: f32,
+    /// Lunar phase 0..1 (0 = new moon, 0.5 = full moon, 1.0 = next new moon).
+    pub lunar_phase: f32,
+    /// Moonlight intensity 0..1 (peaks at full moon, zero at new moon).
+    pub moonlight: f32,
+    /// Tidal moisture multiplier (gravitational pull modulates soil water).
+    pub tidal_moisture_factor: f32,
     pub avg_fly_hunger: f32,
     pub avg_fly_trehalose_mm: f32,
     pub avg_fly_atp_mm: f32,
@@ -1585,6 +1591,75 @@ impl TerrariumWorld {
         format!("{hours:02}:{minutes:02}")
     }
 
+    // ── Lunar cycle ──────────────────────────────────────────────────────────
+
+    /// Synodic month in seconds (29.530589 days).
+    const LUNAR_PERIOD_S: f32 = 29.530589 * 86_400.0;
+
+    /// Lunar phase 0..1 (0 = new moon, 0.5 = full moon, 1.0 wraps to new moon).
+    pub fn lunar_phase(&self) -> f32 {
+        (self.time_s / Self::LUNAR_PERIOD_S).rem_euclid(1.0)
+    }
+
+    /// Moonlight intensity 0..1. Peaks at full moon (phase=0.5), zero at new moon.
+    /// Uses cosine so the curve is smooth and symmetric.
+    pub fn moonlight(&self) -> f32 {
+        let phase = self.lunar_phase();
+        // cos(2π(phase - 0.5)) peaks at phase=0.5 (full moon)
+        let raw = (2.0 * std::f32::consts::PI * (phase - 0.5)).cos();
+        // Map from [-1,1] to [0,1]
+        (raw * 0.5 + 0.5).clamp(0.0, 1.0)
+    }
+
+    /// Tidal moisture multiplier: gravitational influence on soil water transport.
+    /// Full moon & new moon = spring tides (max pull, ±15%), quarter moons = neap (min).
+    /// Range: 0.85 .. 1.15
+    pub fn tidal_moisture_factor(&self) -> f32 {
+        let phase = self.lunar_phase();
+        // Spring tides at 0.0 and 0.5; neap tides at 0.25 and 0.75
+        let tidal = (4.0 * std::f32::consts::PI * phase).cos(); // [-1,1]
+        1.0 + 0.15 * tidal
+    }
+
+    /// Nocturnal activity boost for insects under moonlight.
+    /// At night with full moon, activity increases ~40%. Daytime: no effect.
+    pub fn nocturnal_activity_factor(&self) -> f32 {
+        let darkness = 1.0 - self.daylight();
+        1.0 + 0.4 * darkness * self.moonlight()
+    }
+
+    /// Moon phase name for display.
+    pub fn moon_phase_name(&self) -> &'static str {
+        let p = self.lunar_phase();
+        match () {
+            _ if p < 0.0625  => "New Moon",
+            _ if p < 0.1875  => "Waxing Crescent",
+            _ if p < 0.3125  => "First Quarter",
+            _ if p < 0.4375  => "Waxing Gibbous",
+            _ if p < 0.5625  => "Full Moon",
+            _ if p < 0.6875  => "Waning Gibbous",
+            _ if p < 0.8125  => "Last Quarter",
+            _ if p < 0.9375  => "Waning Crescent",
+            _                 => "New Moon",
+        }
+    }
+
+    /// Moon phase emoji for compact display.
+    pub fn moon_phase_emoji(&self) -> &'static str {
+        let p = self.lunar_phase();
+        match () {
+            _ if p < 0.0625  => "\u{1F311}",
+            _ if p < 0.1875  => "\u{1F312}",
+            _ if p < 0.3125  => "\u{1F313}",
+            _ if p < 0.4375  => "\u{1F314}",
+            _ if p < 0.5625  => "\u{1F315}",
+            _ if p < 0.6875  => "\u{1F316}",
+            _ if p < 0.8125  => "\u{1F317}",
+            _ if p < 0.9375  => "\u{1F318}",
+            _                 => "\u{1F311}",
+        }
+    }
+
     /// Read-only access to the moisture field.
     pub fn moisture_field(&self) -> &[f32] { &self.moisture }
 
@@ -2292,6 +2367,9 @@ impl TerrariumWorld {
             avg_fly_energy,
             avg_altitude,
             light: self.time_s.rem_euclid(DAY_LENGTH_S) / DAY_LENGTH_S,
+            lunar_phase: self.lunar_phase(),
+            moonlight: self.moonlight(),
+            tidal_moisture_factor: self.tidal_moisture_factor(),
             temperature: self.temperature.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
             humidity: self.humidity.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
             mean_soil_moisture,
@@ -2504,10 +2582,17 @@ impl TerrariumWorld {
 
             // ── Every substep: core chemistry + fly behavior ──
             self.step_broad_soil(eco_dt)?;
+            // Apply lunar tidal moisture modulation (±15% spring/neap tide effect)
+            let tidal_factor = self.tidal_moisture_factor();
+            for cell in &mut self.moisture {
+                *cell = (*cell * tidal_factor).clamp(0.0, 1.0);
+            }
             self.sync_substrate_controls()?;
             self.substrate.step(self.config.substrate_dt_ms);
+            // Apply nocturnal activity boost to fly metabolism
+            let activity_factor = self.nocturnal_activity_factor();
             self.step_flies()?;
-            self.step_fly_metabolism(eco_dt);
+            self.step_fly_metabolism(eco_dt * activity_factor);
 
             // ── Every 2 substeps: plant growth, world fields ──
             if sc % 2 == 0 {
