@@ -2405,6 +2405,9 @@ impl TerrariumWorld {
         self.atomistic_probes.len()
     }
 
+    /// Read-only access to fly metabolism states.
+    pub fn fly_metabolisms(&self) -> &[FlyMetabolism] { &self.fly_metabolisms }
+
     /// Read-only access to the probes.
     pub fn probes(&self) -> &[AtomisticProbe] {
         &self.atomistic_probes
@@ -2431,7 +2434,7 @@ impl TerrariumWorld {
             smoothed_energy: 0.5, smoothed_stress: 0.2,
             radius: EXPLICIT_MICROBE_PATCH_RADIUS, patch_radius: EXPLICIT_MICROBE_PATCH_RADIUS,
             age_steps: 0, age_s: 0.0, idx,
-            material_inventory: RegionalMaterialInventory::new(),
+            material_inventory: RegionalMaterialInventory::new(String::new()),
             cumulative_glucose_draw: 0.0, cumulative_oxygen_draw: 0.0, cumulative_co2_release: 0.0,
             cumulative_ammonium_draw: 0.0, cumulative_nitrate_draw: 0.0, cumulative_proton_release: 0.0,
         });
