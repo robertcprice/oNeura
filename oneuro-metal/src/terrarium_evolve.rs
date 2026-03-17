@@ -3881,7 +3881,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(1),
                 objectives: MultiObjectiveFitness {
                     biomass: 10.0, biodiversity: 5.0, stability: 8.0,
-                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.5,
+                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.5, enzyme_efficacy: 0.0,
                 },
                 rank: 0,
                 crowding_distance: 1.0,
@@ -3909,11 +3909,11 @@ mod tests {
     fn pareto_dominance_works() {
         let a = MultiObjectiveFitness {
             biomass: 10.0, biodiversity: 5.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
         };
         let b = MultiObjectiveFitness {
             biomass: 8.0, biodiversity: 5.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
         };
         // a dominates b (better in biomass, equal in others)
         assert!(dominates(&a, &b));
@@ -3922,7 +3922,7 @@ mod tests {
         // Non-dominated case
         let c = MultiObjectiveFitness {
             biomass: 12.0, biodiversity: 3.0, stability: 8.0,
-            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0,
+            carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
         };
         assert!(!dominates(&a, &c));
         assert!(!dominates(&c, &a));
@@ -4225,7 +4225,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(1),
                 objectives: MultiObjectiveFitness {
                     biomass: 10.0, biodiversity: 5.0, stability: 8.0,
-                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.0,
+                    carbon: 3.0, fruit: 2.0, microbial: 4.0, fly_metabolism: 1.0, enzyme_efficacy: 0.0,
                 },
                 rank: 0, crowding_distance: 1.0, wall_time_ms: 10.0,
             },
@@ -4233,7 +4233,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(2),
                 objectives: MultiObjectiveFitness {
                     biomass: 8.0, biodiversity: 7.0, stability: 6.0,
-                    carbon: 5.0, fruit: 4.0, microbial: 3.0, fly_metabolism: 2.0,
+                    carbon: 5.0, fruit: 4.0, microbial: 3.0, fly_metabolism: 2.0, enzyme_efficacy: 0.0,
                 },
                 rank: 0, crowding_distance: 0.5, wall_time_ms: 12.0,
             },
@@ -4241,7 +4241,7 @@ mod tests {
                 genome: WorldGenome::default_with_seed(3),
                 objectives: MultiObjectiveFitness {
                     biomass: 6.0, biodiversity: 9.0, stability: 4.0,
-                    carbon: 7.0, fruit: 1.0, microbial: 5.0, fly_metabolism: 3.0,
+                    carbon: 7.0, fruit: 1.0, microbial: 5.0, fly_metabolism: 3.0, enzyme_efficacy: 0.0,
                 },
                 rank: 1, crowding_distance: 0.8, wall_time_ms: 11.0,
             },
