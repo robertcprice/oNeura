@@ -2116,18 +2116,13 @@ impl TerrariumWorld {
 
 // Ecosystem simulation modules — need soil_broad types, SubstrateKinetics,
 // explicit microbial guild system, advanced plant/soil/snapshot fields.
-#[cfg(feature = "terrarium_advanced")]
 mod genotype;
-#[cfg(feature = "terrarium_advanced")]
 mod packet;
-#[cfg(feature = "terrarium_advanced")]
 mod calibrator;
 mod flora;
-#[cfg(feature = "terrarium_advanced")]
 mod soil;
 #[cfg(feature = "terrarium_advanced")]
 mod snapshot;
-#[cfg(feature = "terrarium_advanced")]
 mod biomechanics;
 #[cfg(feature = "terrarium_advanced")]
 mod explicit_microbe_impl;
