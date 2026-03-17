@@ -42,7 +42,7 @@ use lighting::{sun_direction, sun_color};
 use particles::ParticleSystem;
 use rasterizer::Rasterizer;
 use selection::Selection;
-use terrain::{build_terrain_mesh, build_terrain_mesh_overlay};
+use terrain::build_terrain_mesh_overlay;
 use export::{export_snapshot, TimeLapse};
 use plants::build_plant_meshes;
 use flies::build_fly_meshes;
@@ -145,13 +145,6 @@ fn main() -> ExitCode {
         if window.is_key_pressed(Key::Key4, KeyRepeat::No) { overlay_mode = OverlayMode::Organic; }
         if window.is_key_pressed(Key::Key5, KeyRepeat::No) { overlay_mode = OverlayMode::Chemistry; }
         if window.is_key_pressed(Key::Key6, KeyRepeat::No) { overlay_mode = OverlayMode::Elevation; }
-        // CSV export (E key)
-        if window.is_key_pressed(Key::E, KeyRepeat::No) {
-            match export_snapshot(&world, &snapshot, frame_idx) {
-                Ok(dir) => { screenshot_msg = format!("Exported: {}", dir); screenshot_timer = 120; }
-                Err(e) => { screenshot_msg = format!("Export error: {}", e); screenshot_timer = 120; }
-            }
-        }
         // Time-lapse recording toggle (V key)
         if window.is_key_pressed(Key::V, KeyRepeat::No) {
             screenshot_msg = timelapse.toggle();
@@ -272,6 +265,13 @@ fn main() -> ExitCode {
 
         // Build scene geometry (varies by zoom level)
         let snapshot = world.snapshot();
+        // CSV export (E key) — needs snapshot in scope
+        if window.is_key_pressed(Key::E, KeyRepeat::No) {
+            match export_snapshot(&world, &snapshot, frame_idx) {
+                Ok(dir) => { screenshot_msg = format!("Exported: {}", dir); screenshot_timer = 120; }
+                Err(e) => { screenshot_msg = format!("Export error: {}", e); screenshot_timer = 120; }
+            }
+        }
         let gw = world.config.width;
         let gh = world.config.height;
         let moisture = world.moisture_field();
