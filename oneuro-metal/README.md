@@ -4,7 +4,7 @@
 
 Not a neural network. A complete molecular brain where every behavior — learning, memory, drug response, consciousness, sleep — *emerges* from biochemistry simulated on Apple Silicon GPU.
 
-**148,000+ lines of Rust** | **214+ regression tests** | **177 source files** | **11 standalone binaries**
+**148,000+ lines of Rust** | **216+ regression tests (825+ total)** | **161 source files** | **23 standalone binaries** | **[Nature Methods paper draft](docs/METHODS_MULTISCALE_PAPER.md)**
 
 ## What is this?
 
@@ -107,7 +107,7 @@ The crate compiles on any platform with Rust. Without Metal, all compute falls b
 
 ## Standalone Binaries
 
-oNeura-Metal ships 11 standalone binaries covering visualization, evolution, ecology, and synthetic biology:
+oNeura-Metal ships 23 standalone binaries covering visualization, evolution, ecology, and synthetic biology:
 
 ### 3D Terrarium Viewer — `terrarium_3d` (2,257 lines, 18 modules)
 
@@ -273,9 +273,9 @@ A complete soil-plant-insect ecosystem where every chemical reaction uses litera
 | calibrator.rs | 242 | Unconditional | Arrhenius/Eyring MD→reaction rate bridge |
 | flora.rs | 761 | Unconditional | Advanced plant stepping, asymmetric competition |
 | soil.rs | 799 | Unconditional | Guild-aware soil stepping + gas exchange |
-| biomechanics.rs | 561 | Feature-gated | Wind/pose biomechanics |
-| snapshot.rs | 1,284 | Feature-gated | Full ecosystem snapshot |
-| explicit_microbe_impl.rs | 2,107 | Feature-gated | Explicit microbial cohort model |
+| biomechanics.rs | ~14 | Unconditional | Wind/pose biomechanics (stubbed) |
+| snapshot.rs | 1,285 | Unconditional | Full ecosystem snapshot |
+| explicit_microbe_impl.rs | ~220 | Unconditional | Explicit microbial cohort model (stubbed) |
 | mesh.rs | 403 | Feature-gated | 3D mesh generation |
 | render_utils.rs | 444 | Feature-gated | Rendering utilities |
 | render_impl.rs | 2,525 | Feature-gated | Core render implementation |
@@ -447,10 +447,10 @@ NeuronArrays (~80 f32 per neuron):
 
 ## Tests
 
-**214+ regression tests** covering core terrarium, biology subsystems, evolution engine, ecosystem modules, and synbio tools — all passing.
+**216+ regression tests** (825+ total) covering core terrarium, biology subsystems, evolution engine, ecosystem modules, quantum chemistry, and synbio tools — all passing, 0 failures.
 
 ```bash
-# Quick regression suite (214 tests)
+# Quick regression suite (216 tests, ~32s)
 cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
   soil_atmosphere terrarium_evolve drosophila_population plant_competition \
   soil_fauna fly_metabolism field_coupling seed_cellular terrarium_world \
@@ -460,7 +460,7 @@ cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity
   ecoli circuit enzyme_ bioremediation probe_coupling probe_snapshot \
   drug_enzyme soil_enzyme temperature_coupling remediation guild_latent
 
-# Full test suite (includes whole-cell, quantum, commercial modules)
+# Full test suite (825+ tests including whole-cell, quantum, commercial modules)
 cargo test --no-default-features --lib
 ```
 
@@ -509,6 +509,32 @@ CARGO_TARGET_DIR=/tmp/oneuro-build cargo build --profile fast --no-default-featu
 
 # Eco-evolutionary feedback lab
 ./target/fast/evolution_lab
+```
+
+## Research Documentation
+
+| Document | Description |
+|----------|-------------|
+| [`docs/METHODS_MULTISCALE_PAPER.md`](docs/METHODS_MULTISCALE_PAPER.md) | Nature Methods paper draft (2,127 lines) — full manuscript with Introduction, Methods, Results, Discussion |
+| [`docs/REPRODUCING_RESULTS.md`](docs/REPRODUCING_RESULTS.md) | Step-by-step guide to reproduce every result in the paper |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture, module dependency graph, data flow between scales |
+| [`docs/CRATE_EXTRACTION_PLAN.md`](docs/CRATE_EXTRACTION_PLAN.md) | Plan for extracting standalone `oneura-terrarium` crate |
+| [`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md) | Complete roadmap with priority ordering |
+| [`NOVEL_OPPORTUNITIES.md`](NOVEL_OPPORTUNITIES.md) | Publication strategy, products, monetization, IP |
+
+### Citing oNeura
+
+If you use oNeura in your research, please cite:
+
+```bibtex
+@article{price2026oneura,
+  title={oNeura Terrarium: A Multi-Scale Biological Simulation Framework
+         Bridging Quantum Chemistry to Evolutionary Ecology},
+  author={Price, Bobby},
+  journal={Nature Methods (in preparation)},
+  year={2026},
+  note={Software available at https://github.com/robertcprice/oNeura}
+}
 ```
 
 ## License
