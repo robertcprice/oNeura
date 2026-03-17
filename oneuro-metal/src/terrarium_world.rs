@@ -34,7 +34,6 @@ use crate::terrarium_field::TerrariumSensoryField;
 // These items are pub(super) in their source modules, so re-export is only valid
 // within the same module tree. Gated behind terrarium_advanced because only
 // snapshot.rs and explicit_microbe_impl.rs (both gated) use them.
-#[cfg(feature = "terrarium_advanced")]
 pub(crate) use genotype::{
     SHADOW_BANK_IDX, VARIANT_BANK_IDX, NOVEL_BANK_IDX,
     PUBLIC_STRAIN_BANKS, INTERNAL_SECONDARY_GENOTYPE_AXES,
@@ -54,12 +53,10 @@ pub(crate) use genotype::{
     DENITRIFIER_GENE_ANOXIA_RESPIRATION_WEIGHTS, DENITRIFIER_GENE_NITRATE_TRANSPORT_WEIGHTS,
     DENITRIFIER_GENE_STRESS_PERSISTENCE_WEIGHTS, DENITRIFIER_GENE_REDUCTIVE_FLEXIBILITY_WEIGHTS,
 };
-#[cfg(feature = "terrarium_advanced")]
 pub(crate) use packet::{
     GenotypePacket, GenotypePacketPopulation,
     GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS,
 };
-#[cfg(feature = "terrarium_advanced")]
 pub(crate) use calibrator::{SubstrateKinetics, MolecularRateCalibrator};
 
 
