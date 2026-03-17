@@ -69,6 +69,13 @@ pub fn draw_panel(
 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "LIGHT", rgb(210, 214, 220)); y += 10;
     draw_bar(buffer, TOTAL_W, TOTAL_H, x, y, PANEL_W - 28, 8, snapshot.light, rgb(230, 200, 88)); y += 18;
+
+    // Moon phase display (emoji + name, moonlight bar, tidal factor)
+    let moon_label = format!("{} {}", world.moon_phase_emoji(), world.moon_phase_name());
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &moon_label, rgb(200, 210, 230)); y += 12;
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &format!("moon  {:.0}%", snapshot.moonlight * 100.0), rgb(180, 190, 210)); y += 11;
+    draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &format!("tide   {:.0}%", snapshot.tidal_moisture_factor * 100.0), rgb(150, 180, 210)); y += 14;
+
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "HUMIDITY", rgb(210, 214, 220)); y += 10;
     draw_bar(buffer, TOTAL_W, TOTAL_H, x, y, PANEL_W - 28, 8, snapshot.humidity, rgb(80, 156, 228)); y += 18;
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, "VITALITY", rgb(210, 214, 220)); y += 10;

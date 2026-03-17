@@ -25,6 +25,7 @@ mod particles;
 mod screenshot;
 mod zoom;
 mod export;
+mod sky;
 
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 use oneuro_metal::TerrariumWorld;
@@ -42,6 +43,7 @@ use lighting::{sun_direction, sun_color};
 use particles::ParticleSystem;
 use rasterizer::Rasterizer;
 use selection::Selection;
+use sky::StarField;
 use terrain::{build_terrain_mesh, build_terrain_mesh_overlay};
 use export::{export_snapshot, TimeLapse};
 use plants::build_plant_meshes;
@@ -134,17 +136,20 @@ fn main() -> ExitCode {
 
     let terrain_seed = world.config.width as u64 * 31 + world.config.height as u64;
 
-    let mut window = match Window::new("oNeura Terrarium 3D", TOTAL_W, TOTAL_H, WindowOptions { resize: false, ..WindowOptions::default() }) {
+    let mut window = match Window::new("oNeura Terrarium 3D", TOTAL_W, TOTAL_H, WindowOptions { resize: true, ..WindowOptions::default() }) {
         Ok(w) => w,
         Err(e) => { eprintln!("failed to open window: {e}"); return ExitCode::FAILURE; }
     };
 
+    // Track window size for resize handling
+    let mut last_size = (TOTAL_W, TOTAL_H);
     let mut buffer = vec![0u32; TOTAL_W * TOTAL_H];
     let mut raster = Rasterizer::new(VIEWPORT_W, VIEWPORT_H);
     let mut cam = Camera::new();
     let mut input_state = InputState::new();
     let mut sel = Selection::new();
     let mut particle_sys = ParticleSystem::new();
+    let star_field = StarField::new(150, seed.wrapping_mul(0x5DEECE66D)); // Deterministic stars from seed
     let mut paused = false;
     let mut realistic = true;
     let mut frame_idx = 0usize;
@@ -164,6 +169,21 @@ fn main() -> ExitCode {
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let started = Instant::now();
+
+        // Handle window resize
+        let cur_size = window.get_size();
+        if cur_size != last_size {
+            let (w, h) = cur_size;
+            if w > 0 && h > 0 {
+                let panel_w = 280;
+                let viewport_w = w.saturating_sub(panel_w);
+                if viewport_w > 0 {
+                    buffer = vec![0u32; w * h];
+                    raster = Rasterizer::new(viewport_w, h);
+                    last_size = (w, h);
+                }
+            }
+        }
 
         // Toggle keys
         if window.is_key_pressed(Key::Space, KeyRepeat::No) { paused = !paused; }
@@ -418,12 +438,32 @@ fn main() -> ExitCode {
         raster.rasterize(&terrain_tris, &mvp, cam_eye, sun_d, sun_c, realistic);
         raster.rasterize(&entity_tris, &mvp, cam_eye, sun_d, sun_c, realistic);
         if realistic && zoom != ZoomLevel::Molecular {
-            raster.shadow_pass(&world, sun_d);
+            raster.shadow_pass(&moisture, gw, gh, sun_d);
             raster.ssao_pass();
         }
         if zoom != ZoomLevel::Molecular {
             raster.fog_pass(cam_eye, snapshot.light);
         }
+
+        // Render moon and stars on the rasterizer's color buffer (night sky)
+        sky::render_moon(
+            &mut raster.color_buf,
+            raster.width,
+            raster.height,
+            snapshot.light,
+            snapshot.lunar_phase,
+            snapshot.moonlight,
+            cam.yaw,
+        );
+        sky::render_stars(
+            &mut raster.color_buf,
+            raster.width,
+            raster.height,
+            snapshot.light,
+            snapshot.moonlight,
+            cam.yaw,
+            star_field.stars(),
+        );
 
         // Selection outline
         if sel.is_selected() {
