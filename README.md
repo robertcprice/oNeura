@@ -364,14 +364,20 @@ bash scripts/vast_deploy.sh all <id> medium # run everything
 
 # Rust/Metal terrarium ecosystem + evolution engine
 cd oneuro-metal
-cargo build --profile fast --no-default-features --bin terrarium_evolve --bin terrarium_native
+cargo build --profile fast --no-default-features --bin terrarium_evolve --bin terrarium_native --bin terrarium_ascii
 ./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
 
-# Run 109-test regression suite (includes bet-hedging, persisters, stochastic)
-cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
+# 3D ASCII terrarium renderer (isometric, top-down, or split view)
+./target/fast/terrarium_ascii --mode iso --fps 15
+./target/fast/terrarium_ascii --mode split --fps 12 --frames 200
+
+# Run 136-test regression suite (includes env engine, spatial zones, drug optimizer, gene circuit)
+CARGO_BUILD_JOBS=4 cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
   soil_atmosphere terrarium_evolve drosophila_population plant_competition soil_fauna \
   fly_metabolism field_coupling seed_cellular terrarium_world organism_metabolism \
-  stochastic phenotypic persister bet_hedging benchmark
+  stochastic phenotypic persister bet_hedging benchmark seasonal drought tropical \
+  arid spatial zone plant_noise microbial_noise multi_species single_drug pulsed \
+  combination protocol ecoli circuit
 ```
 
 ## How dONNs Differ from ANNs

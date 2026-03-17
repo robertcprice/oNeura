@@ -117,13 +117,34 @@ Located in `oneuro-metal/src/whole_cell/stochastic_expression.rs`.
 | Persister cell antibiotic survival modeling | Working |
 | Per-fly phenotypic noise from stochastic expression | Working |
 | Biphasic kill curve detection | Working |
-| 22 unit tests | All pass |
+| Environmental variability engine (seasons/drought/weather) | Working |
+| Spatial heterogeneity zones (6 zone types) | Working |
+| Multi-species bet-hedging (plants + microbes) | Working |
+| Drug protocol optimizer (single/pulsed/combination) | Working |
+| E. coli persistence validation against literature | Working |
+| Synthetic biology gene circuit noise designer | Working |
+| 3D ASCII isometric terrarium renderer | Working |
+| 49 unit tests | All pass |
+
+## 3D ASCII Renderer (2026-03-16)
+
+| Feature | Status |
+|---------|--------|
+| Isometric projection with Unicode block characters | Working |
+| ANSI truecolor gradient terrain rendering | Working |
+| Enhanced top-down colored view | Working |
+| Split-screen mode (iso + top-down) | Working |
+| Real-time at 15-30 FPS in terminal | Working |
+| Animated water, plant canopy, flying insects | Working |
+
+Binary: `cargo run --profile fast --no-default-features --bin terrarium_ascii`
 
 ## Test Counts (2026-03-16)
 
-109 tests pass in comprehensive regression (0 failures):
-- terrarium_world: 14
-- terrarium_evolve: 22
+136 tests pass in comprehensive regression (0 failures):
+- terrarium_evolve: 49
+- terrarium_world: 22
+- whole_cell: 3
 - stochastic_expression: 10
 - plant_competition: 10
 - fly_metabolism: 10
@@ -134,4 +155,5 @@ Located in `oneuro-metal/src/whole_cell/stochastic_expression.rs`.
 - substrate_stays_bounded: 4
 - organism_metabolism: 4
 - guild_activity: 2
+- dishbrain_pong: 1
 - seed_cellular: 1
