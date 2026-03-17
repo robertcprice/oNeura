@@ -2143,7 +2143,7 @@ mod render_stateful;
 // Integration tests spanning both advanced + render features.
 // Uses path attribute to avoid conflict with the inline `mod tests` block below.
 #[cfg(all(feature = "terrarium_advanced", feature = "terrarium_render"))]
-#[cfg(test)]
+#[cfg(all(test, feature = "terrarium_advanced"))]
 #[path = "terrarium_world/tests.rs"]
 mod advanced_tests;
 
