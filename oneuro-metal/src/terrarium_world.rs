@@ -99,6 +99,126 @@ pub struct OwnershipDiagnostics {
     pub overlap_count: u32,
 }
 
+// ===== Atomistic Probe Infrastructure =====
+
+/// An atomistic / molecular-dynamics probe region embedded in the terrarium grid.
+///
+/// Each probe owns a small `GPUMolecularDynamics` simulation that runs AMBER-style
+/// force-field integration on the probe molecule. The probe claims a rectangular
+/// patch of soil ownership cells (`AtomisticProbeRegion`) so that coarse
+/// broad-soil biology is suppressed in its footprint.
+#[derive(Debug)]
+pub struct AtomisticProbe {
+    /// Unique probe identifier.
+    pub id: u32,
+    /// The MD engine running this probe's atoms.
+    pub md: crate::molecular_dynamics::GPUMolecularDynamics,
+    /// Grid position (center cell) of the probe in the terrarium.
+    pub grid_x: usize,
+    pub grid_y: usize,
+    /// Radius (in grid cells) of the ownership footprint.
+    pub footprint_radius: usize,
+    /// Number of atoms in the probe molecule.
+    pub n_atoms: usize,
+    /// Timestep for MD integration (femtoseconds).
+    pub dt_fs: f32,
+    /// Temperature setpoint (Kelvin).
+    pub temperature_k: f32,
+    /// Accumulated MD statistics from the last step.
+    pub last_stats: crate::molecular_dynamics::MDStats,
+}
+
+impl AtomisticProbe {
+    /// Create a probe from an `EmbeddedMolecule` at a grid position.
+    ///
+    /// This bridges `atomistic_chemistry::EmbeddedMolecule` (the parsed PDB/mmCIF
+    /// representation) into a live `GPUMolecularDynamics` simulation.
+    pub fn from_embedded_molecule(
+        id: u32,
+        mol: &crate::atomistic_chemistry::EmbeddedMolecule,
+        grid_x: usize,
+        grid_y: usize,
+        footprint_radius: usize,
+    ) -> Self {
+        use crate::molecular_dynamics::{Element, GPUMolecularDynamics};
+        let n = mol.graph.atom_count();
+        let mut md = GPUMolecularDynamics::new(n, "cpu");
+
+        // Transfer positions.
+        let flat_pos: Vec<f32> = mol.positions.iter().flat_map(|p| p.iter().copied()).collect();
+        md.set_positions(&flat_pos);
+
+        // Transfer masses and LJ params from element types.
+        let mut masses = Vec::with_capacity(n);
+        let mut sigma = Vec::with_capacity(n);
+        let mut epsilon = Vec::with_capacity(n);
+        for atom in &mol.graph.atoms {
+            let sym = atom.element.symbol();
+            let md_elem = Element::from_name(sym).unwrap_or(Element::C);
+            masses.push(md_elem.mass());
+            let (s, e) = md_elem.lj_params();
+            sigma.push(s);
+            epsilon.push(e);
+        }
+        md.set_masses(&masses);
+        md.set_lj_params(&sigma, &epsilon);
+
+        // Transfer bonds.
+        for bond in &mol.graph.bonds {
+            let r0 = {
+                let pi = mol.positions[bond.i];
+                let pj = mol.positions[bond.j];
+                let dx = pi[0] - pj[0];
+                let dy = pi[1] - pj[1];
+                let dz = pi[2] - pj[2];
+                (dx * dx + dy * dy + dz * dz).sqrt()
+            };
+            // Use a standard harmonic spring constant (kcal/mol/Å²).
+            let k = match bond.order {
+                crate::atomistic_chemistry::BondOrder::Double => 800.0,
+                crate::atomistic_chemistry::BondOrder::Triple => 1000.0,
+                _ => 553.0,
+            };
+            md.add_bond(bond.i, bond.j, r0, k);
+        }
+
+        md.set_temperature(300.0);
+        md.set_box([100.0, 100.0, 100.0]);
+        md.initialize_velocities();
+
+        Self {
+            id,
+            md,
+            grid_x,
+            grid_y,
+            footprint_radius,
+            n_atoms: n,
+            dt_fs: 1.0,
+            temperature_k: 300.0,
+            last_stats: Default::default(),
+        }
+    }
+
+    /// Advance the MD simulation by `n_steps` integration steps.
+    pub fn step(&mut self, n_steps: usize) -> &crate::molecular_dynamics::MDStats {
+        let dt_ps = self.dt_fs * 1e-3; // fs → ps
+        for _ in 0..n_steps {
+            self.last_stats = self.md.step(dt_ps);
+        }
+        &self.last_stats
+    }
+
+    /// Current kinetic temperature (K) from the last step.
+    pub fn temperature(&self) -> f32 {
+        self.last_stats.temperature
+    }
+
+    /// Total energy (kinetic + potential) from the last step.
+    pub fn total_energy(&self) -> f32 {
+        self.last_stats.total_energy
+    }
+}
+
 const DAY_LENGTH_S: f32 = 86_400.0;
 const ETHYL_ACETATE_IDX: usize = 0;
 const GERANIOL_IDX: usize = 1;
@@ -2811,7 +2931,8 @@ mod tests {
         // It's possible the fly doesn't consume in 10 frames, so we also verify the
         // mechanism works by checking the event is structurally valid when it fires.
         // At minimum, verify the event variant exists and is matchable.
-        assert!(n >= 0, "FlyFeeding event count should be non-negative (got {n})");
+        // n is usize (always >= 0); just verify count is usable.
+        let _ = n;
         // If any feeding occurred, the fly's crop should have received sugar.
         if n > 0 {
             assert!(world.fly_metabolisms[0].crop_sugar_mg > 0.0, "ingest() should fill crop");

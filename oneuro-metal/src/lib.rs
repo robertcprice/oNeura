@@ -80,17 +80,30 @@ pub mod whole_cell_submodels;
 // ===== Whole-cell satellite modules (pure reducers/helpers) =====
 // These modules contain extracted formula-heavy helpers that whole_cell.rs depends on.
 // DO NOT REMOVE — they are actively compiled and tested.
+// dead_code: these APIs are wired incrementally as solver stages come online.
+#[allow(dead_code)]
 pub(crate) mod whole_cell_assembly_fallbacks;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_assembly_projection;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_asset_fallbacks;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_chromosome_math;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_complex_channels;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_inventory_authority;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_named_complex_dynamics;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_process_occupancy;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_process_weights;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_rule_math;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_scale_reducers;
+#[allow(dead_code)]
 pub(crate) mod whole_cell_signal_estimators;
 
 // ===== Quantum runtime (220 API errors — see Task #6) =====
