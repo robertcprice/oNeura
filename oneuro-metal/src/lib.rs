@@ -164,6 +164,11 @@ pub mod enzyme_probes;
 pub mod probe_coupling;
 pub mod enzyme_evolution;
 pub mod bioremediation;
+pub mod metabolic_flux;
+pub mod phylogenetic_tracker;
+pub mod climate_scenarios;
+pub mod horizontal_gene_transfer;
+pub mod biofilm_dynamics;
 
 // NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
 // terrarium_render_pipeline are orphaned and depend on missing APIs.

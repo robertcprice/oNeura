@@ -2439,7 +2439,7 @@ impl TerrariumWorld {
             fly_food_total: self.fruits.iter().map(|f| f.source.sugar_content.max(0.0)).sum(),
             avg_fly_energy,
             avg_altitude,
-            light: 1.0,
+            light: self.time_s.rem_euclid(DAY_LENGTH_S) / DAY_LENGTH_S,
             temperature: self.temperature.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
             humidity: self.humidity.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
             mean_soil_moisture,
