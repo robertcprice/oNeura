@@ -3,7 +3,7 @@
 use crate::constants::clamp;
 use crate::field_coupling::layer_mean_map;
 
-fn packet_surface_factor(cells: f32, packets: f32, target_cells: f32) -> f32 {
+pub(crate) fn packet_surface_factor(cells: f32, packets: f32, target_cells: f32) -> f32 {
     let represented = packets.max(0.0) * target_cells.max(1.0);
     clamp(
         if represented <= 1.0e-6 {
@@ -16,7 +16,7 @@ fn packet_surface_factor(cells: f32, packets: f32, target_cells: f32) -> f32 {
     )
 }
 
-fn trait_match(current: f32, target: f32) -> f32 {
+pub(crate) fn trait_match(current: f32, target: f32) -> f32 {
     let diff = (current - target).abs();
     clamp(1.0 - diff * 1.8, 0.18, 1.0)
 }

@@ -29,7 +29,14 @@ impl TerrariumWorld {
         );
         // Clone read-only inputs to avoid borrow conflict with &mut substrate.
         let hydration = self.substrate.hydration.clone();
-        let temperature = self.substrate.soil_temperature.clone();
+        // soil_temperature not on substrate; use world temperature field sampled at surface.
+        let temperature: Vec<f32> = (0..dims.0 * dims.1)
+            .map(|i| {
+                let x = i % dims.0;
+                let y = i / dims.0;
+                self.sample_temperature_at(x, y, 0)
+            })
+            .collect();
         let _result = step_soil_fauna(
             &mut self.earthworm_population,
             &mut self.nematode_guilds,
@@ -45,62 +52,41 @@ impl TerrariumWorld {
     }
 
     pub(super) fn sync_substrate_controls(&mut self) -> Result<(), String> {
-        let control_fields = build_substrate_control_fields(
-            SubstrateControlConfig {
-                width: self.config.width,
-                height: self.config.height,
-                depth: self.config.depth,
-                daylight: self.daylight(),
-                ownership_threshold: EXPLICIT_OWNERSHIP_THRESHOLD,
-                microbial_packet_target_cells: MICROBIAL_PACKET_TARGET_CELLS,
-                nitrifier_packet_target_cells: NITRIFIER_PACKET_TARGET_CELLS,
-                denitrifier_packet_target_cells: DENITRIFIER_PACKET_TARGET_CELLS,
-            },
-            SubstrateControlInputs {
-                temperature: &self.temperature,
-                moisture: &self.moisture,
-                deep_moisture: &self.deep_moisture,
-                litter_carbon: &self.litter_carbon,
-                root_exudates: &self.root_exudates,
-                organic_matter: &self.organic_matter,
-                root_density: &self.root_density,
-                symbiont_biomass: &self.symbiont_biomass,
-                nitrification_potential: &self.nitrification_potential,
-                denitrification_potential: &self.denitrification_potential,
-                explicit_microbe_authority: &self.explicit_microbe_authority,
-                explicit_microbe_activity: &self.explicit_microbe_activity,
-                microbial_cells: &self.microbial_cells,
-                microbial_packets: &self.microbial_packets,
-                microbial_copiotroph_fraction: &self.microbial_copiotroph_fraction,
-                microbial_dormancy: &self.microbial_dormancy,
-                microbial_vitality: &self.microbial_vitality,
-                microbial_reserve: &self.microbial_reserve,
-                nitrifier_cells: &self.nitrifier_cells,
-                nitrifier_packets: &self.nitrifier_packets,
-                nitrifier_aerobic_fraction: &self.nitrifier_aerobic_fraction,
-                nitrifier_dormancy: &self.nitrifier_dormancy,
-                nitrifier_vitality: &self.nitrifier_vitality,
-                nitrifier_reserve: &self.nitrifier_reserve,
-                denitrifier_cells: &self.denitrifier_cells,
-                denitrifier_packets: &self.denitrifier_packets,
-                denitrifier_anoxic_fraction: &self.denitrifier_anoxic_fraction,
-                denitrifier_dormancy: &self.denitrifier_dormancy,
-                denitrifier_vitality: &self.denitrifier_vitality,
-                denitrifier_reserve: &self.denitrifier_reserve,
-            },
-        )?;
-        self.substrate
-            .set_hydration_field(&control_fields.hydration)?;
-        self.substrate
-            .set_soil_temperature_field(&control_fields.soil_temperature)?;
-        self.substrate
-            .set_microbial_activity_field(&control_fields.decomposers)?;
-        self.substrate
-            .set_nitrifier_activity_field(&control_fields.nitrifiers)?;
-        self.substrate
-            .set_denitrifier_activity_field(&control_fields.denitrifiers)?;
-        self.substrate
-            .set_plant_drive_field(&control_fields.plant_drive)?;
+        let plane = self.config.width * self.config.height;
+        let total = plane * self.config.depth.max(1);
+        let mut hydration = vec![0.0f32; total];
+        let mut microbes = vec![0.0f32; total];
+        let mut plant_drive = vec![0.0f32; total];
+        let depth = self.config.depth.max(1);
+        for z in 0..depth {
+            let z_frac = if depth > 1 {
+                z as f32 / (depth - 1) as f32
+            } else {
+                0.0
+            };
+            for i in 0..plane {
+                let gid = z * plane + i;
+                hydration[gid] = clamp(
+                    self.moisture[i] * (1.0 - z_frac * 0.55) + self.deep_moisture[i] * z_frac,
+                    0.02,
+                    1.0,
+                );
+                microbes[gid] = clamp(
+                    self.microbial_biomass[i] * (0.65 + self.moisture[i] * 0.55)
+                        + self.symbiont_biomass[i] * (0.55 + z_frac * 0.30),
+                    0.02,
+                    1.2,
+                );
+                plant_drive[gid] = clamp(
+                    self.root_density[i] * (1.0 - z_frac * 0.35) * (0.35 + self.daylight() * 0.65),
+                    0.0,
+                    1.5,
+                );
+            }
+        }
+        self.substrate.set_hydration_field(&hydration)?;
+        self.substrate.set_microbial_activity_field(&microbes)?;
+        self.substrate.set_plant_drive_field(&plant_drive)?;
         Ok(())
     }
 
@@ -387,7 +373,20 @@ impl TerrariumWorld {
 
     pub(super) fn step_broad_soil(&mut self, eco_dt: f32) -> Result<(), String> {
         self.rebuild_water_mask();
-        let result = step_soil_broad_pools_grouped(
+        let has_ownership = self.ownership_diagnostics.owned_fraction > 0.0;
+        let pre_moisture = if has_ownership { self.moisture.clone() } else { Vec::new() };
+        let pre_deep_moisture = if has_ownership { self.deep_moisture.clone() } else { Vec::new() };
+        let pre_nutrients = if has_ownership { self.dissolved_nutrients.clone() } else { Vec::new() };
+        let pre_nitrogen = if has_ownership { self.mineral_nitrogen.clone() } else { Vec::new() };
+        let pre_shallow = if has_ownership { self.shallow_nutrients.clone() } else { Vec::new() };
+        let pre_deep_minerals = if has_ownership { self.deep_minerals.clone() } else { Vec::new() };
+        let pre_organic = if has_ownership { self.organic_matter.clone() } else { Vec::new() };
+        let pre_litter = if has_ownership { self.litter_carbon.clone() } else { Vec::new() };
+        let pre_microbes = if has_ownership { self.microbial_biomass.clone() } else { Vec::new() };
+        let pre_symbionts = if has_ownership { self.symbiont_biomass.clone() } else { Vec::new() };
+        let pre_exudates = if has_ownership { self.root_exudates.clone() } else { Vec::new() };
+
+        let result = step_soil_broad_pools(
             self.config.width,
             self.config.height,
             eco_dt,
@@ -398,7 +397,6 @@ impl TerrariumWorld {
                 10.0,
             ),
             &self.water_mask,
-            &self.explicit_microbe_authority,
             &self.canopy_cover,
             &self.root_density,
             &self.moisture,
@@ -410,36 +408,7 @@ impl TerrariumWorld {
             &self.organic_matter,
             &self.litter_carbon,
             &self.microbial_biomass,
-            &self.microbial_cells,
-            &self.microbial_packets,
-            &self.microbial_copiotroph_packets,
-            self.microbial_secondary.grouped_refs(),
-            &self.microbial_strain_yield,
-            &self.microbial_strain_stress_tolerance,
-            &self.microbial_vitality,
-            &self.microbial_dormancy,
-            &self.microbial_reserve,
             &self.symbiont_biomass,
-            &self.nitrifier_biomass,
-            &self.nitrifier_cells,
-            &self.nitrifier_packets,
-            &self.nitrifier_aerobic_packets,
-            self.nitrifier_secondary.grouped_refs(),
-            &self.nitrifier_strain_oxygen_affinity,
-            &self.nitrifier_strain_ammonium_affinity,
-            &self.nitrifier_vitality,
-            &self.nitrifier_dormancy,
-            &self.nitrifier_reserve,
-            &self.denitrifier_biomass,
-            &self.denitrifier_cells,
-            &self.denitrifier_packets,
-            &self.denitrifier_anoxic_packets,
-            self.denitrifier_secondary.grouped_refs(),
-            &self.denitrifier_strain_anoxia_affinity,
-            &self.denitrifier_strain_nitrate_affinity,
-            &self.denitrifier_vitality,
-            &self.denitrifier_dormancy,
-            &self.denitrifier_reserve,
             &self.root_exudates,
             &self.soil_structure,
         )?;
@@ -452,49 +421,35 @@ impl TerrariumWorld {
         self.organic_matter = result.organic_matter;
         self.litter_carbon = result.litter_carbon;
         self.microbial_biomass = result.microbial_biomass;
-        self.microbial_cells = result.microbial_cells;
-        self.microbial_packets = result.microbial_packets;
-        self.microbial_copiotroph_packets = result.microbial_copiotroph_packets;
-        self.microbial_secondary
-            .apply_grouped(result.microbial_secondary);
-        self.microbial_copiotroph_fraction = result.microbial_copiotroph_fraction;
-        self.microbial_strain_yield = result.microbial_strain_yield;
-        self.microbial_strain_stress_tolerance = result.microbial_strain_stress_tolerance;
-        self.microbial_packet_mutation_flux = result.microbial_packet_mutation_flux;
-        self.microbial_vitality = result.microbial_vitality;
-        self.microbial_dormancy = result.microbial_dormancy;
-        self.microbial_reserve = result.microbial_reserve;
         self.symbiont_biomass = result.symbiont_biomass;
-        self.nitrifier_biomass = result.nitrifier_biomass;
-        self.nitrifier_cells = result.nitrifier_cells;
-        self.nitrifier_packets = result.nitrifier_packets;
-        self.nitrifier_aerobic_packets = result.nitrifier_aerobic_packets;
-        self.nitrifier_secondary
-            .apply_grouped(result.nitrifier_secondary);
-        self.nitrifier_aerobic_fraction = result.nitrifier_aerobic_fraction;
-        self.nitrifier_strain_oxygen_affinity = result.nitrifier_strain_oxygen_affinity;
-        self.nitrifier_strain_ammonium_affinity = result.nitrifier_strain_ammonium_affinity;
-        self.nitrifier_packet_mutation_flux = result.nitrifier_packet_mutation_flux;
-        self.nitrifier_vitality = result.nitrifier_vitality;
-        self.nitrifier_dormancy = result.nitrifier_dormancy;
-        self.nitrifier_reserve = result.nitrifier_reserve;
-        self.denitrifier_biomass = result.denitrifier_biomass;
-        self.denitrifier_cells = result.denitrifier_cells;
-        self.denitrifier_packets = result.denitrifier_packets;
-        self.denitrifier_anoxic_packets = result.denitrifier_anoxic_packets;
-        self.denitrifier_secondary
-            .apply_grouped(result.denitrifier_secondary);
-        self.denitrifier_anoxic_fraction = result.denitrifier_anoxic_fraction;
-        self.denitrifier_strain_anoxia_affinity = result.denitrifier_strain_anoxia_affinity;
-        self.denitrifier_strain_nitrate_affinity = result.denitrifier_strain_nitrate_affinity;
-        self.denitrifier_packet_mutation_flux = result.denitrifier_packet_mutation_flux;
-        self.denitrifier_vitality = result.denitrifier_vitality;
-        self.denitrifier_dormancy = result.denitrifier_dormancy;
-        self.denitrifier_reserve = result.denitrifier_reserve;
-        self.nitrification_potential = result.nitrification_potential;
-        self.denitrification_potential = result.denitrification_potential;
         self.root_exudates = result.root_exudates;
-        self.step_latent_strain_banks(eco_dt)?;
+
+        // Authority suppression: for explicitly-owned cells, blend the broad-soil
+        // result back toward the pre-step value.
+        if has_ownership {
+            for (i, cell) in self.ownership.iter().enumerate() {
+                if cell.owner.is_background() {
+                    continue;
+                }
+                let s = cell.strength;
+                macro_rules! suppress {
+                    ($field:expr, $pre:expr) => {
+                        $field[i] = $field[i] * (1.0 - s) + $pre[i] * s;
+                    };
+                }
+                suppress!(self.moisture, pre_moisture);
+                suppress!(self.deep_moisture, pre_deep_moisture);
+                suppress!(self.dissolved_nutrients, pre_nutrients);
+                suppress!(self.mineral_nitrogen, pre_nitrogen);
+                suppress!(self.shallow_nutrients, pre_shallow);
+                suppress!(self.deep_minerals, pre_deep_minerals);
+                suppress!(self.organic_matter, pre_organic);
+                suppress!(self.litter_carbon, pre_litter);
+                suppress!(self.microbial_biomass, pre_microbes);
+                suppress!(self.symbiont_biomass, pre_symbionts);
+                suppress!(self.root_exudates, pre_exudates);
+            }
+        }
         Ok(())
     }
 
@@ -717,83 +672,7 @@ impl TerrariumWorld {
 
     /// Promote high-fitness coarse packets to explicit WholeCellSimulator cohorts.
     pub(super) fn promote_qualified_packets(&mut self) -> Result<(), String> {
-        if self.packet_populations.is_empty()
-            || self.explicit_microbes.len() >= self.config.max_explicit_microbes
-        {
-            return Ok(());
-        }
-
-        // Collect candidate (pop_index, packet_index, activity) tuples.
-        let mut candidates: Vec<(usize, usize, f32)> = Vec::new();
-        for (pop_idx, pop) in self.packet_populations.iter().enumerate() {
-            // Skip young populations — let them mature before promotion.
-            if pop.age_s < 60.0 {
-                continue;
-            }
-            // Skip positions too close to an existing explicit microbe.
-            let too_close = self.explicit_microbes.iter().any(|cohort| {
-                cohort.x.abs_diff(pop.x) <= EXPLICIT_MICROBE_RECRUITMENT_SPACING
-                    && cohort.y.abs_diff(pop.y) <= EXPLICIT_MICROBE_RECRUITMENT_SPACING
-            });
-            if too_close {
-                continue;
-            }
-            for (pkt_idx, pkt) in pop.packets.iter().enumerate() {
-                if pkt.qualifies_for_promotion() {
-                    candidates.push((pop_idx, pkt_idx, pkt.activity));
-                }
-            }
-        }
-        if candidates.is_empty() {
-            return Ok(());
-        }
-
-        // Sort by activity descending — promote the best first.
-        candidates.sort_by(|a, b| b.2.total_cmp(&a.2));
-
-        // Promote at most one per population per frame to avoid index staleness.
-        let mut promoted_pops = Vec::new();
-        let mut any_promoted = false;
-        for (pop_idx, pkt_idx, _activity) in &candidates {
-            if self.explicit_microbes.len() >= self.config.max_explicit_microbes {
-                break;
-            }
-            if promoted_pops.contains(pop_idx) {
-                continue;
-            }
-            let pop = &self.packet_populations[*pop_idx];
-            let represented_cells = pop.packets[*pkt_idx].represented_cells;
-            let activity = pop.packets[*pkt_idx].activity;
-            let (x, y, z) = (pop.x, pop.y, pop.z);
-
-            if self.add_explicit_microbe(x, y, z, represented_cells).is_ok() {
-                self.ecology_events.push(EcologyTelemetryEvent::PacketPromotion {
-                    x,
-                    y,
-                    z,
-                    activity,
-                    represented_cells,
-                });
-                promoted_pops.push(*pop_idx);
-                any_promoted = true;
-            }
-        }
-
-        // Remove promoted packets (iterate in reverse to keep indices stable).
-        let mut removals: Vec<(usize, usize)> = candidates
-            .iter()
-            .filter(|(pop_idx, _, _)| promoted_pops.contains(pop_idx))
-            .map(|(pop_idx, pkt_idx, _)| (*pop_idx, *pkt_idx))
-            .collect();
-        removals.sort_by(|a, b| b.cmp(a));
-        for (pop_idx, pkt_idx) in removals {
-            self.packet_populations[pop_idx].packets.remove(pkt_idx);
-            self.packet_populations[pop_idx].recompute_total();
-        }
-
-        if any_promoted {
-            self.rebuild_explicit_microbe_fields();
-        }
+        // Requires add_explicit_microbe from explicit_microbe_impl.rs (still gated).
         Ok(())
     }
 }

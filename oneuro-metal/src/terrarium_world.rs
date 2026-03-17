@@ -1754,64 +1754,6 @@ impl TerrariumWorld {
         Ok(())
     }
 
-    fn rebuild_water_mask(&mut self) {
-        self.water_mask.fill(0.0);
-        for water in &self.waters {
-            if !water.alive {
-                continue;
-            }
-            let amplitude = clamp(water.volume / 140.0, 0.06, 1.0);
-            deposit_2d(
-                &mut self.water_mask,
-                self.config.width,
-                self.config.height,
-                water.x,
-                water.y,
-                2,
-                amplitude,
-            );
-        }
-    }
-
-    fn sync_substrate_controls(&mut self) -> Result<(), String> {
-        let plane = self.config.width * self.config.height;
-        let total = plane * self.config.depth.max(1);
-        let mut hydration = vec![0.0f32; total];
-        let mut microbes = vec![0.0f32; total];
-        let mut plant_drive = vec![0.0f32; total];
-        let depth = self.config.depth.max(1);
-        for z in 0..depth {
-            let z_frac = if depth > 1 {
-                z as f32 / (depth - 1) as f32
-            } else {
-                0.0
-            };
-            for i in 0..plane {
-                let gid = z * plane + i;
-                hydration[gid] = clamp(
-                    self.moisture[i] * (1.0 - z_frac * 0.55) + self.deep_moisture[i] * z_frac,
-                    0.02,
-                    1.0,
-                );
-                microbes[gid] = clamp(
-                    self.microbial_biomass[i] * (0.65 + self.moisture[i] * 0.55)
-                        + self.symbiont_biomass[i] * (0.55 + z_frac * 0.30),
-                    0.02,
-                    1.2,
-                );
-                plant_drive[gid] = clamp(
-                    self.root_density[i] * (1.0 - z_frac * 0.35) * (0.35 + self.daylight() * 0.65),
-                    0.0,
-                    1.5,
-                );
-            }
-        }
-        self.substrate.set_hydration_field(&hydration)?;
-        self.substrate.set_microbial_activity_field(&microbes)?;
-        self.substrate.set_plant_drive_field(&plant_drive)?;
-        Ok(())
-    }
-
     fn sample_temperature_at(&self, x: usize, y: usize, z: usize) -> f32 {
         self.temperature[idx3(
             self.config.width,
@@ -1972,118 +1914,6 @@ impl TerrariumWorld {
                 fruit.source.alive = false;
             }
         }
-    }
-
-    fn step_broad_soil(&mut self, eco_dt: f32) -> Result<(), String> {
-        self.rebuild_water_mask();
-
-        // Snapshot pre-step state for owned cells so we can suppress coarse
-        // dynamics proportional to ownership strength.
-        let has_ownership = self.ownership_diagnostics.owned_fraction > 0.0;
-        let pre_moisture;
-        let pre_deep_moisture;
-        let pre_nutrients;
-        let pre_nitrogen;
-        let pre_shallow;
-        let pre_deep_minerals;
-        let pre_organic;
-        let pre_litter;
-        let pre_microbes;
-        let pre_symbionts;
-        let pre_exudates;
-        if has_ownership {
-            pre_moisture = self.moisture.clone();
-            pre_deep_moisture = self.deep_moisture.clone();
-            pre_nutrients = self.dissolved_nutrients.clone();
-            pre_nitrogen = self.mineral_nitrogen.clone();
-            pre_shallow = self.shallow_nutrients.clone();
-            pre_deep_minerals = self.deep_minerals.clone();
-            pre_organic = self.organic_matter.clone();
-            pre_litter = self.litter_carbon.clone();
-            pre_microbes = self.microbial_biomass.clone();
-            pre_symbionts = self.symbiont_biomass.clone();
-            pre_exudates = self.root_exudates.clone();
-        } else {
-            pre_moisture = Vec::new();
-            pre_deep_moisture = Vec::new();
-            pre_nutrients = Vec::new();
-            pre_nitrogen = Vec::new();
-            pre_shallow = Vec::new();
-            pre_deep_minerals = Vec::new();
-            pre_organic = Vec::new();
-            pre_litter = Vec::new();
-            pre_microbes = Vec::new();
-            pre_symbionts = Vec::new();
-            pre_exudates = Vec::new();
-        }
-
-        let result = step_soil_broad_pools(
-            self.config.width,
-            self.config.height,
-            eco_dt,
-            self.daylight(),
-            temp_response(
-                self.sample_temperature_at(self.config.width / 2, self.config.height / 2, 0),
-                24.0,
-                10.0,
-            ),
-            &self.water_mask,
-            &self.canopy_cover,
-            &self.root_density,
-            &self.moisture,
-            &self.deep_moisture,
-            &self.dissolved_nutrients,
-            &self.mineral_nitrogen,
-            &self.shallow_nutrients,
-            &self.deep_minerals,
-            &self.organic_matter,
-            &self.litter_carbon,
-            &self.microbial_biomass,
-            &self.symbiont_biomass,
-            &self.root_exudates,
-            &self.soil_structure,
-        )?;
-        self.moisture = result.moisture;
-        self.deep_moisture = result.deep_moisture;
-        self.dissolved_nutrients = result.dissolved_nutrients;
-        self.mineral_nitrogen = result.mineral_nitrogen;
-        self.shallow_nutrients = result.shallow_nutrients;
-        self.deep_minerals = result.deep_minerals;
-        self.organic_matter = result.organic_matter;
-        self.litter_carbon = result.litter_carbon;
-        self.microbial_biomass = result.microbial_biomass;
-        self.symbiont_biomass = result.symbiont_biomass;
-        self.root_exudates = result.root_exudates;
-
-        // Authority suppression: for explicitly-owned cells, blend the broad-soil
-        // result back toward the pre-step value. If strength=1.0, the cell gets
-        // zero coarse dynamics (fully owned). If strength=0.5, it gets half.
-        if has_ownership {
-            for (i, cell) in self.ownership.iter().enumerate() {
-                if cell.owner.is_background() {
-                    continue;
-                }
-                let s = cell.strength;
-                macro_rules! suppress {
-                    ($field:expr, $pre:expr) => {
-                        $field[i] = $field[i] * (1.0 - s) + $pre[i] * s;
-                    };
-                }
-                suppress!(self.moisture, pre_moisture);
-                suppress!(self.deep_moisture, pre_deep_moisture);
-                suppress!(self.dissolved_nutrients, pre_nutrients);
-                suppress!(self.mineral_nitrogen, pre_nitrogen);
-                suppress!(self.shallow_nutrients, pre_shallow);
-                suppress!(self.deep_minerals, pre_deep_minerals);
-                suppress!(self.organic_matter, pre_organic);
-                suppress!(self.litter_carbon, pre_litter);
-                suppress!(self.microbial_biomass, pre_microbes);
-                suppress!(self.symbiont_biomass, pre_symbionts);
-                suppress!(self.root_exudates, pre_exudates);
-            }
-        }
-
-        Ok(())
     }
 
     fn step_world_fields(&mut self) -> Result<(), String> {
@@ -2730,7 +2560,6 @@ mod genotype;
 mod packet;
 mod calibrator;
 mod flora;
-#[cfg(feature = "terrarium_advanced")]
 mod soil;
 #[cfg(feature = "terrarium_advanced")]
 mod snapshot;
