@@ -108,7 +108,7 @@ pub(crate) mod whole_cell_signal_estimators;
 
 // ===== Quantum runtime =====
 pub mod subatomic_quantum;
-// whole_cell_quantum_runtime: blocked (missing atomistic types)
+// whole_cell_quantum_runtime — blocked: 18 API gaps (amount_moles, pauling_electronegativity, etc)
 
 // ===== Terrarium Evolution re-exports =====
 pub use terrarium_evolve::{
