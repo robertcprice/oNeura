@@ -2,7 +2,7 @@ use crate::terrarium_render::{
     TerrariumDynamicMeshTransform, TerrariumDynamicRenderSnapshot, TerrariumPbrMaterialRender,
     TerrariumTriangleMeshRender,
 };
-use crate::terrarium_world::{
+use crate::terrarium_render_compat::{
     terrarium_render_child_id, terrarium_render_id_class, TERRARIUM_RENDER_SLOT_MICROBE_BODY,
     TERRARIUM_RENDER_SLOT_MICROBE_PACKET, TERRARIUM_RENDER_SLOT_PLANT_CANOPY,
     TERRARIUM_RENDER_SLOT_PLANT_STEM, TERRARIUM_SHADER_FLAG_DEBUG_OVERLAY,
