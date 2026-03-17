@@ -1,6 +1,78 @@
-//! Color conversion and palette utilities.
+//! Color conversion and palette utilities, including terrain overlay heatmaps.
 
 use super::math::{V3, lerp3};
+
+/// Terrain visualization mode — number keys 1-6 switch between overlays.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OverlayMode {
+    Default,     // 1 — soil color from moisture + organic
+    Moisture,    // 2 — blue-green heatmap of soil moisture
+    Temperature, // 3 — cool blue → warm red temperature gradient
+    Organic,     // 4 — dark-to-green organic matter density
+    Chemistry,   // 5 — magenta-to-cyan soil chemistry activity
+    Elevation,   // 6 — topographic elevation bands
+}
+
+impl OverlayMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            OverlayMode::Default => "DEFAULT",
+            OverlayMode::Moisture => "MOISTURE",
+            OverlayMode::Temperature => "TEMPERATURE",
+            OverlayMode::Organic => "ORGANIC",
+            OverlayMode::Chemistry => "CHEMISTRY",
+            OverlayMode::Elevation => "ELEVATION",
+        }
+    }
+}
+
+/// Heatmap: blue (cold=0) → cyan → green → yellow → red (hot=1).
+pub fn heatmap_v3(t: f32) -> V3 {
+    let t = t.clamp(0.0, 1.0);
+    if t < 0.25 {
+        let s = t / 0.25;
+        [0.0, s, 1.0] // blue → cyan
+    } else if t < 0.5 {
+        let s = (t - 0.25) / 0.25;
+        [0.0, 1.0, 1.0 - s] // cyan → green
+    } else if t < 0.75 {
+        let s = (t - 0.5) / 0.25;
+        [s, 1.0, 0.0] // green → yellow
+    } else {
+        let s = (t - 0.75) / 0.25;
+        [1.0, 1.0 - s, 0.0] // yellow → red
+    }
+}
+
+/// Elevation bands — topographic map style with contour coloring.
+pub fn elevation_v3(height: f32, max_height: f32) -> V3 {
+    let t = (height / max_height.max(0.01)).clamp(0.0, 1.0);
+    if t < 0.3 {
+        let s = t / 0.3;
+        lerp3([0.15, 0.4, 0.1], [0.3, 0.55, 0.15], s)
+    } else if t < 0.6 {
+        let s = (t - 0.3) / 0.3;
+        lerp3([0.3, 0.55, 0.15], [0.55, 0.4, 0.2], s)
+    } else if t < 0.85 {
+        let s = (t - 0.6) / 0.25;
+        lerp3([0.55, 0.4, 0.2], [0.7, 0.65, 0.55], s)
+    } else {
+        let s = (t - 0.85) / 0.15;
+        lerp3([0.7, 0.65, 0.55], [0.95, 0.95, 0.95], s)
+    }
+}
+
+/// Chemistry overlay — magenta (low activity) → cyan (high activity).
+pub fn chemistry_v3(activity: f32) -> V3 {
+    let t = activity.clamp(0.0, 1.0);
+    lerp3([0.4, 0.1, 0.5], [0.1, 0.8, 0.9], t)
+}
+
+/// Organic matter overlay — dark soil → vibrant green.
+pub fn organic_v3(organic: f32) -> V3 {
+    let t = organic.clamp(0.0, 1.0);
+    lerp3([0.12, 0.08, 0.04], [0.2, 0.7, 0.15], t)
+}
 
 pub fn rgb(r: u8, g: u8, b: u8) -> u32 {
     ((r as u32) << 16) | ((g as u32) << 8) | b as u32

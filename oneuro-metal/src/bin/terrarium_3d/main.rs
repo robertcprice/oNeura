@@ -24,6 +24,7 @@ mod selection;
 mod particles;
 mod screenshot;
 mod zoom;
+mod export;
 
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 use oneuro_metal::TerrariumWorld;
@@ -34,14 +35,15 @@ use std::time::{Duration, Instant};
 use std::collections::VecDeque;
 
 use camera::{Camera, ZoomLevel};
-use color::rgb;
+use color::{rgb, OverlayMode};
 use hud::{draw_panel, draw_hud};
 use input::InputState;
 use lighting::{sun_direction, sun_color};
 use particles::ParticleSystem;
 use rasterizer::Rasterizer;
 use selection::Selection;
-use terrain::build_terrain_mesh;
+use terrain::{build_terrain_mesh, build_terrain_mesh_overlay};
+use export::{export_snapshot, TimeLapse};
 use plants::build_plant_meshes;
 use flies::build_fly_meshes;
 use water::build_water_meshes;
@@ -122,6 +124,8 @@ fn main() -> ExitCode {
     let mut pop_history: VecDeque<(usize, usize)> = VecDeque::with_capacity(120);
     let mut sim_speed: u32 = 1;
     let mut auto_orbit = false;
+    let mut overlay_mode = OverlayMode::Default;
+    let mut timelapse = TimeLapse::new();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let started = Instant::now();
@@ -134,6 +138,25 @@ fn main() -> ExitCode {
             if sel.is_selected() { cam.following = !cam.following; } else { cam.following = false; }
         }
         if window.is_key_pressed(Key::T, KeyRepeat::No) { auto_orbit = !auto_orbit; }
+        // Overlay mode keys (1-6)
+        if window.is_key_pressed(Key::Key1, KeyRepeat::No) { overlay_mode = OverlayMode::Default; }
+        if window.is_key_pressed(Key::Key2, KeyRepeat::No) { overlay_mode = OverlayMode::Moisture; }
+        if window.is_key_pressed(Key::Key3, KeyRepeat::No) { overlay_mode = OverlayMode::Temperature; }
+        if window.is_key_pressed(Key::Key4, KeyRepeat::No) { overlay_mode = OverlayMode::Organic; }
+        if window.is_key_pressed(Key::Key5, KeyRepeat::No) { overlay_mode = OverlayMode::Chemistry; }
+        if window.is_key_pressed(Key::Key6, KeyRepeat::No) { overlay_mode = OverlayMode::Elevation; }
+        // CSV export (E key)
+        if window.is_key_pressed(Key::E, KeyRepeat::No) {
+            match export_snapshot(&world, &snapshot, frame_idx) {
+                Ok(dir) => { screenshot_msg = format!("Exported: {}", dir); screenshot_timer = 120; }
+                Err(e) => { screenshot_msg = format!("Export error: {}", e); screenshot_timer = 120; }
+            }
+        }
+        // Time-lapse recording toggle (V key)
+        if window.is_key_pressed(Key::V, KeyRepeat::No) {
+            screenshot_msg = timelapse.toggle();
+            screenshot_timer = 120;
+        }
         if window.is_key_pressed(Key::LeftBracket, KeyRepeat::No) { sim_speed = (sim_speed / 2).max(1); }
         if window.is_key_pressed(Key::RightBracket, KeyRepeat::No) { sim_speed = (sim_speed * 2).min(8); }
 
@@ -295,7 +318,7 @@ fn main() -> ExitCode {
 
         match zoom {
             ZoomLevel::Ecosystem | ZoomLevel::Organism => {
-                terrain_tris = build_terrain_mesh(&world);
+                terrain_tris = build_terrain_mesh_overlay(&world, overlay_mode);
                 entity_tris = build_plant_meshes(&world.plants, gw, gh, &moisture, terrain_seed);
                 entity_tris.extend(build_fly_meshes(&world.flies, gw, gh, &moisture, terrain_seed, frame_idx));
                 entity_tris.extend(build_water_meshes(&world, terrain_seed, frame_idx));
@@ -308,7 +331,7 @@ fn main() -> ExitCode {
             }
             ZoomLevel::Cellular => {
                 // Show terrain as context + cellular detail for selected entity
-                terrain_tris = build_terrain_mesh(&world);
+                terrain_tris = build_terrain_mesh_overlay(&world, overlay_mode);
                 entity_tris = build_plant_meshes(&world.plants, gw, gh, &moisture, terrain_seed);
                 entity_tris.extend(build_fly_meshes(&world.flies, gw, gh, &moisture, terrain_seed, frame_idx));
                 if sel.is_selected() {
@@ -362,7 +385,7 @@ fn main() -> ExitCode {
         // Draw panel and HUD
         draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel, &pop_history);
         let msg = if screenshot_timer > 0 { &screenshot_msg } else { "" };
-        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit);
+        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit, &overlay_mode, timelapse.recording);
         if screenshot_timer > 0 { screenshot_timer -= 1; }
 
         // FPS counter
@@ -377,7 +400,19 @@ fn main() -> ExitCode {
             if realistic { "Realistic" } else { "Flat" },
             if sim_speed > 1 { format!(" | {}x", sim_speed) } else { String::new() },
             if sel.is_selected() { format!(" | {}", sel.label()) } else { String::new() },
+            if overlay_mode != OverlayMode::Default { format!(" | {}", overlay_mode.label()) } else { String::new() },
+            if timelapse.recording { " | REC" } else { "" },
         ));
+
+        // Time-lapse frame capture
+        if timelapse.recording {
+            let mut vp_buf = vec![0u32; VIEWPORT_W * VIEWPORT_H];
+            for y in 0..VIEWPORT_H {
+                vp_buf[y * VIEWPORT_W..(y + 1) * VIEWPORT_W]
+                    .copy_from_slice(&buffer[y * TOTAL_W..y * TOTAL_W + VIEWPORT_W]);
+            }
+            let _ = timelapse.save_frame(&vp_buf, VIEWPORT_W, VIEWPORT_H);
+        }
 
         if let Err(e) = window.update_with_buffer(&buffer, TOTAL_W, TOTAL_H) {
             eprintln!("buffer update failed: {e}"); return ExitCode::FAILURE;

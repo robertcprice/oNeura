@@ -2,7 +2,7 @@
 
 use oneuro_metal::TerrariumWorld;
 use super::math::*;
-use super::color::soil_color_v3;
+use super::color::{soil_color_v3, OverlayMode, heatmap_v3, elevation_v3, chemistry_v3, organic_v3};
 use super::mesh::{Vertex, Triangle, EntityTag};
 use super::{CELL_SIZE, HEIGHT_SCALE};
 
@@ -61,21 +61,45 @@ pub fn terrain_height(gx: usize, gy: usize, gw: usize, gh: usize, moisture: &[f3
 }
 
 pub fn build_terrain_mesh(world: &TerrariumWorld) -> Vec<Triangle> {
+    build_terrain_mesh_overlay(world, OverlayMode::Default)
+}
+
+pub fn build_terrain_mesh_overlay(world: &TerrariumWorld, overlay: OverlayMode) -> Vec<Triangle> {
     let gw = world.config.width;
     let gh = world.config.height;
     let moisture = world.moisture_field();
     let seed = world.config.width as u64 * 31 + world.config.height as u64;
+    let snapshot = world.snapshot();
     let n_verts = gw * gh;
     let mut positions = Vec::with_capacity(n_verts);
     let mut colors = Vec::with_capacity(n_verts);
+    let mut heights = Vec::with_capacity(n_verts);
     for gy in 0..gh {
         for gx in 0..gw {
             let mi = gy * gw + gx;
             let m = if mi < moisture.len() { moisture[mi] } else { 0.3 };
             let y = terrain_height(gx, gy, gw, gh, &moisture, seed);
             positions.push(v3(gx as f32 * CELL_SIZE, y, gy as f32 * CELL_SIZE));
+            heights.push(y);
             let height_factor = (y / HEIGHT_SCALE).clamp(0.0, 1.0);
-            colors.push(soil_color_v3(m, height_factor * 0.6 + m * 0.3));
+            let color = match overlay {
+                OverlayMode::Default => soil_color_v3(m, height_factor * 0.6 + m * 0.3),
+                OverlayMode::Moisture => heatmap_v3(m),
+                OverlayMode::Temperature => {
+                    // Temperature gradient based on snapshot temperature normalized around 15-35C
+                    let t = ((snapshot.temperature - 10.0) / 30.0).clamp(0.0, 1.0);
+                    // Add local variation from height (cooler at altitude)
+                    let local_t = (t - height_factor * 0.15).clamp(0.0, 1.0);
+                    heatmap_v3(local_t)
+                }
+                OverlayMode::Organic => organic_v3(height_factor * 0.6 + m * 0.4),
+                OverlayMode::Chemistry => {
+                    // Use moisture as proxy for chemical activity
+                    chemistry_v3(m * 0.7 + height_factor * 0.3)
+                }
+                OverlayMode::Elevation => elevation_v3(y, HEIGHT_SCALE),
+            };
+            colors.push(color);
         }
     }
     let mut normals = vec![[0.0f32; 3]; n_verts];

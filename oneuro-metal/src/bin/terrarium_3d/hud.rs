@@ -3,7 +3,7 @@
 use font8x8::{UnicodeFonts, BASIC_FONTS};
 use oneuro_metal::{TerrariumWorld, TerrariumWorldSnapshot};
 use super::camera::Camera;
-use super::color::rgb;
+use super::color::{rgb, OverlayMode};
 use super::mesh::EntityTag;
 use super::selection::Selection;
 use super::{VIEWPORT_W, PANEL_W, TOTAL_W, TOTAL_H, CELL_SIZE};
@@ -144,7 +144,8 @@ pub fn draw_panel(
     for (i, line) in [
         "L-drag  rotate", "R-drag  pan", "scroll  zoom", "click   select",
         "Tab     cycle", "WASD    pan", "L       lighting", "F       follow",
-        "T       orbit", "[/]     speed", "space   pause", "F12     screenshot",
+        "T       orbit", "[/]     speed", "1-6     overlay", "E       export CSV",
+        "V       record", "space   pause", "F12     screenshot",
         "R       reset cam", "esc     quit",
     ].iter().enumerate() {
         draw_text(buffer, TOTAL_W, TOTAL_H, x, cy + i * 10, line, rgb(128, 134, 142));
@@ -260,7 +261,7 @@ fn draw_minimap(buffer: &mut [u32], world: &TerrariumWorld, x: usize, y: usize) 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y + map_h + 2, "MINIMAP", rgb(130, 136, 144));
 }
 
-pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool) {
+pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool, overlay: &OverlayMode, recording: bool) {
     let label = if realistic { "3D REALISTIC" } else { "3D FLAT" };
     draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 4, label.len() * 8 + 8, 14, rgb(10, 12, 16));
     draw_text(buffer, TOTAL_W, TOTAL_H, 8, 7, label, if realistic { rgb(230, 200, 88) } else { rgb(160, 160, 170) });
@@ -296,6 +297,20 @@ pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_ms
         let ow = omsg.len() * 8 + 8;
         draw_rect(buffer, TOTAL_W, TOTAL_H, ix, 40, ow, 14, rgb(30, 10, 50));
         draw_text(buffer, TOTAL_W, TOTAL_H, ix + 4, 43, omsg, rgb(180, 120, 255));
+        ix += ow + 4;
+    }
+    if *overlay != OverlayMode::Default {
+        let olabel = overlay.label();
+        let olen = olabel.len() * 8 + 8;
+        draw_rect(buffer, TOTAL_W, TOTAL_H, ix, 40, olen, 14, rgb(10, 40, 10));
+        draw_text(buffer, TOTAL_W, TOTAL_H, ix + 4, 43, olabel, rgb(100, 230, 140));
+        ix += olen + 4;
+    }
+    if recording {
+        let rmsg = "REC";
+        let rw = rmsg.len() * 8 + 8;
+        draw_rect(buffer, TOTAL_W, TOTAL_H, ix, 40, rw, 14, rgb(80, 10, 10));
+        draw_text(buffer, TOTAL_W, TOTAL_H, ix + 4, 43, rmsg, rgb(255, 60, 60));
     }
     if paused {
         let msg = "PAUSED";
