@@ -226,9 +226,15 @@ const AMMONIA_IDX: usize = 2;
 const ATMOS_CO2_IDX: usize = 3;
 const ATMOS_O2_IDX: usize = 4;
 const ATMOS_O2_FRACTION: f32 = 0.21;
+// Flora submodule defines its own local copies of these constants.
+// When speciation/authority features are wired, move these to pub(crate).
+#[allow(dead_code)]
 const ATMOS_CO2_BASELINE: f32 = 0.045;
+#[allow(dead_code)]
 const ATMOS_O2_BASELINE: f32 = 0.21;
+#[allow(dead_code)]
 const PLANT_SPECIATION_THRESHOLD: f32 = 0.15;
+#[allow(dead_code)]
 const EXPLICIT_OWNERSHIP_THRESHOLD: f32 = 0.5;
 
 fn idx2(width: usize, x: usize, y: usize) -> usize {
