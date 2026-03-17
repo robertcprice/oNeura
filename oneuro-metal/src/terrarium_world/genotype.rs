@@ -24,7 +24,7 @@ pub(crate) struct SecondaryGenotypeRecord {
 
 impl Default for SecondaryGenotypeRecord {
     fn default() -> Self {
-        Self { genes: [0.5; INTERNAL_SECONDARY_GENOTYPE_AXES], genotype_divergence: 0.0, generation: 0.0, novelty: 0.0 }
+        Self { genes: [0.5; INTERNAL_SECONDARY_GENOTYPE_AXES], genotype_divergence: 0.0, generation: 0.0, novelty: 0.0, genotype_id: 0, lineage_id: 0 }
     }
 }
 
