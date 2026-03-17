@@ -165,11 +165,9 @@ pub mod probe_coupling;
 pub mod enzyme_evolution;
 pub mod bioremediation;
 
-// ===== Terrarium render infrastructure =====
-pub mod terrarium_render;
-pub mod terrarium_render_pipeline;
-pub mod terrarium_scene_query;
-// NOTE: terrarium_contact remains orphaned (depends on missing collision APIs).
+// NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
+// terrarium_render_pipeline are orphaned and depend on missing APIs.
+// DO NOT add mod declarations for them.
 
 // ===== CUDA simulation modules =====
 #[cfg(feature = "cuda")]
