@@ -1,13 +1,13 @@
-//! Fly entity mesh generation — small animated diamond with entity tags.
+//! Fly entity mesh generation — animated body segments with wing flutter.
 
 use oneuro_metal::drosophila::DrosophilaSim;
-use super::math::v3;
-use super::mesh::{Triangle, EntityTag, make_diamond, tag_all};
+use super::math::{v3, add3, V3};
+use super::mesh::{Triangle, EntityTag, make_diamond, make_sphere, tag_all};
 use super::terrain::terrain_height;
 use super::CELL_SIZE;
 
 pub fn build_fly_meshes(flies: &[DrosophilaSim], gw: usize, gh: usize, moisture: &[f32], seed: u64, frame: usize) -> Vec<Triangle> {
-    let mut tris = Vec::with_capacity(flies.len() * 8);
+    let mut tris = Vec::with_capacity(flies.len() * 24);
     for (i, fly) in flies.iter().enumerate() {
         let b = fly.body_state();
         let gx = b.x.round().clamp(0.0, (gw - 1) as f32) as usize;
@@ -16,12 +16,47 @@ pub fn build_fly_meshes(flies: &[DrosophilaSim], gw: usize, gh: usize, moisture:
         let wx = b.x.clamp(0.0, (gw - 1) as f32) * CELL_SIZE;
         let wz = b.y.clamp(0.0, (gh - 1) as f32) * CELL_SIZE;
         let alt = if b.is_flying { b.z.clamp(0.0, 4.0) * 0.4 } else { 0.05 };
-        let color = if b.is_flying {
-            if frame % 6 < 3 { [0.95, 0.92, 0.20] } else { [0.90, 0.85, 0.15] }
-        } else { [0.75, 0.65, 0.15] };
-        let mut fly_tris = make_diamond(v3(wx, base_y + alt + 0.1, wz), 0.06, 0.04, 0.08, color, 16.0);
-        tag_all(&mut fly_tris, EntityTag::Fly(i));
-        tris.extend(fly_tris);
+        let center = v3(wx, base_y + alt + 0.1, wz);
+
+        // Body color: golden when flying, dull when resting
+        let body_color: V3 = if b.is_flying { [0.90, 0.82, 0.18] } else { [0.70, 0.60, 0.12] };
+
+        // Head (small sphere)
+        let head_pos = add3(center, v3(0.0, 0.01, 0.03));
+        let mut head = make_sphere(head_pos, 0.015, [0.65, 0.55, 0.10], 16.0);
+        tag_all(&mut head, EntityTag::Fly(i));
+        tris.extend(head);
+
+        // Thorax (medium diamond)
+        let mut thorax = make_diamond(center, 0.04, 0.025, 0.05, body_color, 16.0);
+        tag_all(&mut thorax, EntityTag::Fly(i));
+        tris.extend(thorax);
+
+        // Abdomen (slightly behind + below)
+        let abd_pos = add3(center, v3(0.0, -0.008, -0.04));
+        let mut abd = make_diamond(abd_pos, 0.035, 0.02, 0.06, [body_color[0] * 0.85, body_color[1] * 0.85, body_color[2] * 0.85], 16.0);
+        tag_all(&mut abd, EntityTag::Fly(i));
+        tris.extend(abd);
+
+        // Wing flutter animation when flying
+        if b.is_flying {
+            let phase = (frame as f32 + i as f32 * 37.0) * 0.8;
+            let wing_angle = phase.sin() * 0.5;
+            let wing_y = 0.02 + wing_angle.abs() * 0.02;
+            let wing_color: V3 = [0.90, 0.92, 0.85];
+
+            // Left wing
+            let lw = add3(center, v3(-0.04, wing_y, 0.0));
+            let mut left_wing = make_diamond(lw, 0.035, 0.005, 0.025, wing_color, 8.0);
+            tag_all(&mut left_wing, EntityTag::Fly(i));
+            tris.extend(left_wing);
+
+            // Right wing
+            let rw = add3(center, v3(0.04, wing_y, 0.0));
+            let mut right_wing = make_diamond(rw, 0.035, 0.005, 0.025, wing_color, 8.0);
+            tag_all(&mut right_wing, EntityTag::Fly(i));
+            tris.extend(right_wing);
+        }
     }
     tris
 }
