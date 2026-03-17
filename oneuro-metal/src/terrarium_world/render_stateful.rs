@@ -2,7 +2,7 @@ use crate::constants::clamp;
 use crate::drosophila::BodyState;
 use crate::plant_cellular::{PlantClusterSnapshot, PlantTissue};
 use crate::seed_cellular::SeedClusterSnapshot;
-use super::MICROBIAL_PACKET_TARGET_CELLS;
+use crate::soil_broad::MICROBIAL_PACKET_TARGET_CELLS;
 use crate::terrarium_render::{
     TerrariumFlyPartKind, TerrariumFlyPartRender, TerrariumFruitPartKind,
     TerrariumFruitPartRender, TerrariumPbrMaterialRender, TerrariumSeedPartKind,

@@ -176,18 +176,9 @@ pub mod eco_evolutionary_feedback;
 pub mod nutrient_cycling;
 pub mod population_genetics;
 
-// ===== Terrarium render infrastructure =====
-#[allow(dead_code)]
-pub mod terrarium_render;
-#[allow(dead_code)]
-pub(crate) mod terrarium_render_compat;
-#[allow(dead_code)]
-pub(crate) mod terrarium_render_pipeline;
-#[allow(dead_code)]
-pub(crate) mod terrarium_scene_query;
-#[cfg(feature = "terrarium_advanced")]
-#[allow(dead_code)]
-pub(crate) mod terrarium_contact;
+// NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
+// terrarium_render_pipeline are orphaned and depend on missing APIs.
+// DO NOT add mod declarations for them.
 
 // ===== CUDA simulation modules =====
 #[cfg(feature = "cuda")]

@@ -3,9 +3,39 @@
 use crate::plant_cellular::PlantTissue;
 use crate::WholeCellChemistrySite;
 
-// TerrariumTopdownView is canonically defined in terrarium_world.rs.
-// Re-export it here so existing imports from terrarium_render still work.
-pub use crate::terrarium_world::TerrariumTopdownView;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerrariumTopdownView {
+    Terrain,
+    SoilMoisture,
+    Canopy,
+    Chemistry,
+    Odor,
+    GasExchange,
+}
+
+impl TerrariumTopdownView {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Terrain => "terrain",
+            Self::SoilMoisture => "soil",
+            Self::Canopy => "canopy",
+            Self::Chemistry => "chemistry",
+            Self::Odor => "odor",
+            Self::GasExchange => "gas",
+        }
+    }
+
+    pub(crate) fn cache_index(self) -> usize {
+        match self {
+            Self::Terrain => 0,
+            Self::SoilMoisture => 1,
+            Self::Canopy => 2,
+            Self::Chemistry => 3,
+            Self::Odor => 4,
+            Self::GasExchange => 5,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TerrariumPbrMaterialRender {

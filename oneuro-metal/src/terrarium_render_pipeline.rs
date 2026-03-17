@@ -9,7 +9,7 @@ use crate::terrarium_render::{
     TerrariumDynamicRenderDelta, TerrariumDynamicRenderSnapshot, TerrariumPbrMaterialRender,
     TerrariumSubstrateBatchRender, TerrariumTriangleMeshRender,
 };
-use crate::terrarium_render_compat::{
+use crate::terrarium_world::{
     add3, mesh_append, mesh_rotate_xyz, mesh_rotate_yxz, mesh_translate, rotate_xyz, rotate_yxz,
     terrarium_dynamic_batch_render_id, terrarium_render_child_id,
     terrarium_substrate_batch_render_id, DYNAMIC_BATCH_CHUNK_WORLD_XZ, DYNAMIC_BATCH_CHUNK_WORLD_Y,

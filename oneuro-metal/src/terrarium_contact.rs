@@ -1,11 +1,8 @@
 use crate::drosophila::{BodyState, DrosophilaSim};
-use crate::terrarium_render_compat::{
-    fly_body_state_from_world_translation, fly_translation_world_from_body,
+use crate::terrarium_world::{
+    fly_body_state_from_world_translation, fly_translation_world_from_body, raycast_scene_internal,
+    TerrariumRaycastBvhNode, TerrariumRaycastSurface, TerrariumWorldConfig,
 };
-use crate::terrarium_scene_query::{
-    raycast_scene_internal, TerrariumRaycastBvhNode, TerrariumRaycastSurface,
-};
-use crate::terrarium_world::TerrariumWorldConfig;
 
 const FLY_CONTACT_COLLIDER_RADIUS_WORLD: f32 = 0.09;
 const FLY_CONTACT_SURFACE_CLEARANCE_WORLD: f32 = 0.08;

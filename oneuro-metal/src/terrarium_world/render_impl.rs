@@ -6,7 +6,9 @@ use super::*;
 
 use crate::constants::clamp;
 use crate::drosophila::{BodyState, DrosophilaSim};
-// ATMOS constants available via super::* (defined in terrarium_world.rs)
+use crate::molecular_atmosphere::{
+    ATMOS_DENSITY_BASELINE_KG_M3, ATMOS_PRESSURE_BASELINE_KPA,
+};
 use crate::plant_cellular::{PlantClusterSnapshot, PlantTissue};
 use crate::seed_cellular::{SeedClusterSnapshot, SeedTissue};
 use crate::terrarium::TerrariumSpecies;
