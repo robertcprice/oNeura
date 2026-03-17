@@ -3749,7 +3749,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let g = WorldGenome::random(&mut rng);
         let params = g.normalized_params();
-        assert_eq!(params.len(), 18);
+        assert_eq!(params.len(), 20);
         for p in params {
             assert!(p >= 0.0 && p <= 1.0, "param {} not in [0,1]", p);
         }
@@ -3816,7 +3816,7 @@ mod tests {
         assert_eq!(telemetry[1].generation, 1);
         assert_eq!(telemetry[0].best_fitness, 100.0);
         assert_eq!(telemetry[1].best_fitness, 120.0);
-        assert_eq!(telemetry[0].best_genome_params.len(), 18);
+        assert_eq!(telemetry[0].best_genome_params.len(), 20);
         assert!(telemetry[0].population_diversity > 0.0);
         assert_eq!(telemetry[0].mode, Some("test".to_string()));
     }
