@@ -395,7 +395,7 @@ fn main() -> ExitCode {
 
         // Window title
         window.set_title(&format!(
-            "oNeura Terrarium 3D | {} | {} | P:{} Fl:{} | {:.1} FPS | {}{}{}",
+            "oNeura Terrarium 3D | {} | {} | P:{} Fl:{} | {:.1} FPS | {}{}{}{}{}",
             world.time_label(), zoom.label(), snapshot.plants, snapshot.flies, actual_fps,
             if realistic { "Realistic" } else { "Flat" },
             if sim_speed > 1 { format!(" | {}x", sim_speed) } else { String::new() },
