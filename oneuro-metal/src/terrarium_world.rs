@@ -2692,13 +2692,9 @@ mod explicit_microbe_impl;
 
 // Rendering modules — need crate::terrarium_render, terrarium_scene_query,
 // and full render pipeline types.
-#[cfg(feature = "terrarium_render")]
 mod render_utils;
-#[cfg(feature = "terrarium_render")]
 mod mesh;
-#[cfg(feature = "terrarium_render")]
 mod render_impl;
-#[cfg(feature = "terrarium_render")]
 mod render_stateful;
 
 // Integration tests spanning both advanced + render features.
