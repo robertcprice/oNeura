@@ -21,7 +21,7 @@ fn trait_match(current: f32, target: f32) -> f32 {
     clamp(1.0 - diff * 1.8, 0.18, 1.0)
 }
 
-fn microbial_copiotroph_target(
+pub fn microbial_copiotroph_target(
     substrate_gate: f32,
     moisture_factor: f32,
     oxygen_factor: f32,
@@ -35,7 +35,7 @@ fn microbial_copiotroph_target(
     )
 }
 
-fn nitrifier_aerobic_target(oxygen_factor: f32, aeration_factor: f32, anoxia_factor: f32) -> f32 {
+pub fn nitrifier_aerobic_target(oxygen_factor: f32, aeration_factor: f32, anoxia_factor: f32) -> f32 {
     clamp(
         0.18 + oxygen_factor * 0.56 + aeration_factor * 0.18 - anoxia_factor * 0.22,
         0.05,
@@ -43,7 +43,7 @@ fn nitrifier_aerobic_target(oxygen_factor: f32, aeration_factor: f32, anoxia_fac
     )
 }
 
-fn denitrifier_anoxic_target(anoxia_factor: f32, deep_moisture: f32, oxygen_factor: f32) -> f32 {
+pub fn denitrifier_anoxic_target(anoxia_factor: f32, deep_moisture: f32, oxygen_factor: f32) -> f32 {
     clamp(
         0.16 + anoxia_factor * 0.60 + deep_moisture * 0.10 - oxygen_factor * 0.20,
         0.05,
