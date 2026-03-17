@@ -6,9 +6,10 @@
 //!   terrarium_evolve --telemetry telemetry.json --output-genome best_genome.json
 
 use oneuro_metal::{
-    evolve, evolve_stress_test, telemetry_from_result, evaluate_stress_metrics_for_best,
+    evolve, evolve_stress_test, evolve_with_environment, evolve_coevolution,
+    telemetry_from_result, evaluate_stress_metrics_for_best,
     EvolutionConfig, FitnessObjective, GenomeConstraints, FitnessConfig,
-    SearchStrategy,
+    SearchStrategy, EnvironmentalSchedule, CoevolutionMode,
     evolve_pareto_stressed,
 };
 use std::env;
@@ -93,6 +94,26 @@ fn parse_args() -> Args {
                 args.snapshot_interval = env::args().nth(i + 1).and_then(|s| s.parse().ok()).unwrap_or(args.snapshot_interval);
                 i += 1;
             }
+            "--environment" | "--env" => {
+                let val = env::args().nth(i + 1).unwrap_or_default();
+                args.environment = match val.as_str() {
+                    "temperate" => Some(EnvironmentalSchedule::temperate()),
+                    "tropical" => Some(EnvironmentalSchedule::tropical()),
+                    "arid" => Some(EnvironmentalSchedule::arid()),
+                    _ => { eprintln!("Unknown environment: {}. Use: temperate, tropical, arid", val); Some(EnvironmentalSchedule::temperate()) },
+                };
+                i += 1;
+            }
+            "--coevolve" => {
+                let val = env::args().nth(i + 1).unwrap_or_default();
+                args.coevolve = match val.as_str() {
+                    "redqueen" | "red-queen" => Some(CoevolutionMode::RedQueen),
+                    "mutualistic" | "symbiotic" => Some(CoevolutionMode::Mutualistic),
+                    "competitive" => Some(CoevolutionMode::Competitive),
+                    _ => { eprintln!("Unknown coevolution mode: {}. Use: redqueen, mutualistic, competitive", val); Some(CoevolutionMode::RedQueen) },
+                };
+                i += 1;
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -134,6 +155,8 @@ fn print_help() {
     println!("  --telemetry <PATH>     Output telemetry to JSON file");
     println!("  --output-genome <PATH> Output best genome to JSON file");
     println!("  --snapshot-interval <N> Snapshot interval (default: 10)");
+    println!("  --environment <ENV>    Environmental schedule: temperate, tropical, arid");
+    println!("  --coevolve <MODE>      Coevolution mode: redqueen, mutualistic, competitive");
     println!("  --help, -h             Show this help message");
 }
 
@@ -156,6 +179,8 @@ struct Args {
     telemetry: Option<PathBuf>,
     output_genome: Option<PathBuf>,
     snapshot_interval: usize,
+    environment: Option<EnvironmentalSchedule>,
+    coevolve: Option<CoevolutionMode>,
 }
 
 impl Default for Args {
@@ -179,6 +204,8 @@ impl Default for Args {
             telemetry: None,
             output_genome: None,
             snapshot_interval: 10,
+            environment: None,
+            coevolve: None,
         }
     }
 }
@@ -216,7 +243,11 @@ fn main() {
     eprintln!("Population: {}", config.population_size);
     eprintln!("Generations: {}", config.generations);
     eprintln!("Frames/world: {}", config.frames_per_world);
-    let mode_str = if args.pareto && args.stress_test {
+    let mode_str = if args.coevolve.is_some() {
+        "coevolution"
+    } else if args.environment.is_some() {
+        "environmental"
+    } else if args.pareto && args.stress_test {
         "pareto-stressed"
     } else if args.pareto {
         "pareto"
@@ -228,6 +259,56 @@ fn main() {
     eprintln!("Mode: {}", mode_str);
     eprintln!("Lite: {}", config.lite);
     eprintln!("");
+
+    // Coevolution mode
+    if let Some(coevo_mode) = args.coevolve {
+        eprintln!("Coevolution mode: {:?}", coevo_mode);
+        match evolve_coevolution(config.population_size, config.generations, config.frames_per_world, coevo_mode, config.lite, config.master_seed) {
+            Ok(result) => {
+                eprintln!("");
+                eprintln!("=== Coevolution Complete ===");
+                eprintln!("Generations: {}", result.history.len());
+                if let Some(last) = result.history.last() {
+                    eprintln!("Final A: best={:.2} mean={:.2}", last.best_fitness_a, last.mean_fitness_a);
+                    eprintln!("Final B: best={:.2} mean={:.2}", last.best_fitness_b, last.mean_fitness_b);
+                }
+                eprintln!("Total time: {:.2}s", result.total_wall_time_ms / 1000.0);
+            }
+            Err(e) => {
+                eprintln!("Coevolution failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    // Environmental evolution mode
+    if let Some(ref schedule) = args.environment {
+        match evolve_with_environment(config, schedule.clone()) {
+            Ok(result) => {
+                eprintln!("");
+                eprintln!("=== Environmental Evolution Complete ===");
+                eprintln!("Total worlds: {}", result.total_worlds_evaluated);
+                eprintln!("Best fitness: {:.4}", result.global_best_fitness);
+                eprintln!("Total time: {:.2}s", result.total_wall_time_ms / 1000.0);
+
+                if let Some(ref path) = args.telemetry {
+                    let telemetry = telemetry_from_result(&result, Some("environmental"));
+                    let json = serde_json::to_string_pretty(&telemetry).unwrap_or_default();
+                    if let Err(e) = fs::write(path, json) { eprintln!("Error writing telemetry: {}", e); }
+                }
+                if let Some(ref path) = args.output_genome {
+                    let json = serde_json::to_string_pretty(&result.global_best_genome).unwrap_or_default();
+                    if let Err(e) = fs::write(path, json) { eprintln!("Error writing genome: {}", e); }
+                }
+            }
+            Err(e) => {
+                eprintln!("Environmental evolution failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
 
     if args.pareto {
         // Pareto mode (with or without stress) uses ParetoEvolutionResult

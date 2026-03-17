@@ -108,18 +108,22 @@ pub(crate) mod whole_cell_signal_estimators;
 
 // ===== Quantum runtime =====
 pub mod subatomic_quantum;
-// NOTE: whole_cell_quantum_runtime depends on missing atomistic_chemistry types
-// (EmbeddedMaterialMixture, StructuralReactionTemplate, etc.). DO NOT uncomment.
-// pub(crate) mod whole_cell_quantum_runtime;
+// whole_cell_quantum_runtime: blocked (missing atomistic types)
 
 // ===== Terrarium Evolution re-exports =====
 pub use terrarium_evolve::{
     evolve, evolve_stress_test, evolve_pareto, evolve_pareto_stressed,
+    evolve_with_environment, evolve_coevolution, evolve_grn,
+    run_and_export, assess_ecosystem_health, ecosystem_dashboard, sparkline,
     telemetry_from_result, telemetry_from_pareto_result, evaluate_stress_metrics_for_best,
     EvolutionConfig, EvolutionResult, FitnessConfig, FitnessObjective,
     GenerationResult, GenerationTelemetry, GenomeConstraints, MultiObjectiveFitness,
     ParetoEvolutionResult, ParetoResult,
     SearchStrategy, StressTelemetryMetrics, WorldGenome, WorldResult,
+    EnvironmentalSchedule, EnvironmentalSample, EnvironmentalState,
+    CoevolutionMode, CoevolutionResult, SpeciesGenome,
+    GeneRegulatoryNetwork, GRNPhenotype, GRNEvolutionResult,
+    EcosystemHealthReport, WorldExport, WorldExportMetadata,
 };
 
 // ===== High-level orchestration =====
@@ -153,6 +157,7 @@ pub mod seed_cellular;
 pub mod fly_metabolism;
 pub mod substrate_coupling;
 pub mod plant_competition;
+pub mod cross_scale_coupling;
 
 // NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
 // terrarium_render_pipeline are orphaned and depend on missing APIs.

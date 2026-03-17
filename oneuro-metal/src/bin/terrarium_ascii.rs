@@ -11,10 +11,10 @@
 //!   --seed <n>       World seed (default: 7)
 //!   --fps <n>        Target framerate (default: 15)
 //!   --frames <n>     Quit after N frames (default: infinite)
-//!   --mode <name>    View mode: iso, top, split (default: iso)
+//!   --mode <name>    View mode: iso, top, split, heat, dash (default: iso)
 //!   --no-color       Disable ANSI colors
 
-use oneuro_metal::{TerrariumWorld, TerrariumWorldConfig, TerrariumWorldSnapshot};
+use oneuro_metal::{TerrariumWorld, TerrariumWorldSnapshot, ecosystem_dashboard};
 use std::env;
 use std::io::{self, Write};
 use std::process::ExitCode;
@@ -62,6 +62,49 @@ fn plant_color(canopy: f32, vitality: f32) -> (u8, u8, u8) {
     lerp_color(base, stressed, (1.0 - vitality).clamp(0.0, 1.0))
 }
 
+/// Heatmap: blue(cold) → cyan → green → yellow → red(hot)
+fn heatmap_color(value: f32) -> (u8, u8, u8) {
+    let v = value.clamp(0.0, 1.0);
+    if v < 0.25 {
+        let t = v / 0.25;
+        lerp_color((0, 0, 200), (0, 200, 255), t)
+    } else if v < 0.5 {
+        let t = (v - 0.25) / 0.25;
+        lerp_color((0, 200, 255), (0, 220, 0), t)
+    } else if v < 0.75 {
+        let t = (v - 0.5) / 0.25;
+        lerp_color((0, 220, 0), (255, 255, 0), t)
+    } else {
+        let t = (v - 0.75) / 0.25;
+        lerp_color((255, 255, 0), (255, 30, 0), t)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Terminal size detection
+// ---------------------------------------------------------------------------
+
+fn terminal_size() -> (usize, usize) {
+    // Try `stty size` on unix
+    if let Ok(output) = std::process::Command::new("stty")
+        .arg("size")
+        .stdin(std::process::Stdio::inherit())
+        .output()
+    {
+        if let Ok(s) = String::from_utf8(output.stdout) {
+            let parts: Vec<&str> = s.trim().split_whitespace().collect();
+            if parts.len() == 2 {
+                if let (Ok(rows), Ok(cols)) = (parts[0].parse::<usize>(), parts[1].parse::<usize>()) {
+                    if cols > 20 && rows > 10 {
+                        return (cols, rows);
+                    }
+                }
+            }
+        }
+    }
+    (120, 45) // fallback
+}
+
 // ---------------------------------------------------------------------------
 // Screen Buffer
 // ---------------------------------------------------------------------------
@@ -100,6 +143,12 @@ impl ScreenBuffer {
         if x < self.width && y < self.height {
             let idx = y * self.width + x;
             self.cells[idx] = Cell { ch, fg: fg_c, bg: bg_c };
+        }
+    }
+
+    fn write_str(&mut self, x: usize, y: usize, s: &str, fg_c: (u8, u8, u8), bg_c: (u8, u8, u8)) {
+        for (i, ch) in s.chars().enumerate() {
+            self.set(x + i, y, ch, fg_c, bg_c);
         }
     }
 
@@ -149,51 +198,38 @@ fn render_isometric(
         frame_idx, world.time_label(), snapshot.temperature,
         snapshot.plants, snapshot.flies, snapshot.fruits,
     );
-    for (i, ch) in header.chars().enumerate() {
-        if i < buf.width {
-            buf.set(i, 0, ch, (0, 220, 255), (20, 20, 40));
-        }
-    }
+    buf.write_str(0, 0, &header[..header.len().min(buf.width)], (0, 220, 255), (20, 20, 40));
     let sub = format!(
         " moisture:{:.2} microbes:{:.3} CO2:{:.4} O2:{:.2} cells:{:.0}",
         snapshot.mean_soil_moisture, snapshot.mean_microbes,
         snapshot.mean_atmospheric_co2, snapshot.mean_atmospheric_o2,
         snapshot.total_plant_cells,
     );
-    for (i, ch) in sub.chars().enumerate() {
-        if i < buf.width {
-            buf.set(i, 1, ch, (180, 180, 200), (20, 20, 40));
-        }
-    }
+    buf.write_str(0, 1, &sub[..sub.len().min(buf.width)], (180, 180, 200), (20, 20, 40));
 
     // Draw terrain from back to front (painter's algorithm)
     for gy in 0..gh {
         for gx in 0..gw {
-            // Isometric projection
             let iso_x = (gx as isize - gy as isize) * 2 + ox as isize;
             let iso_y = (gx as isize + gy as isize) / 2 + oy as isize;
 
-            // Terrain height from moisture + organic matter
             let m_idx = gy * gw + gx;
             let m = if m_idx < moisture.len() { moisture[m_idx] } else { 0.3 };
             let height = (m * 3.0).clamp(0.0, 4.0) as isize;
-
             let color = soil_color(m, m * 0.5);
 
-            // Draw terrain column
             for h in 0..=height {
                 let sy = iso_y - h;
                 let sx = iso_x;
                 if sx >= 0 && sy >= 0 {
                     let sxu = sx as usize;
                     let syu = sy as usize;
-                    // Top face uses lighter shade
                     let face_color = if h == height {
                         lerp_color(color, (255, 255, 255), 0.15)
                     } else {
                         lerp_color(color, (0, 0, 0), 0.2)
                     };
-                    let ch = if h == height { '\u{2593}' } else { '\u{2588}' }; // ▓ or █
+                    let ch = if h == height { '\u{2593}' } else { '\u{2588}' };
                     for dx in 0..3 {
                         buf.set(sxu + dx, syu, ch, face_color, (10, 10, 20));
                     }
@@ -202,7 +238,7 @@ fn render_isometric(
         }
     }
 
-    // Draw water sources
+    // Water sources
     for water in &world.waters {
         if water.alive {
             let iso_x = (water.x as isize - water.y as isize) * 2 + ox as isize;
@@ -210,19 +246,18 @@ fn render_isometric(
             if iso_x >= 0 && iso_y >= 0 {
                 let sx = iso_x as usize;
                 let sy = iso_y as usize;
-                let wave = if frame_idx % 4 < 2 { '\u{2248}' } else { '~' }; // ≈ or ~
+                let wave = if frame_idx % 4 < 2 { '\u{2248}' } else { '~' };
                 for dx in 0..4 {
                     buf.set(sx + dx, sy, wave, (60, 140, 255), (20, 60, 120));
                 }
-                // Water depth indication
                 if sy + 1 < buf.height {
-                    buf.set(sx + 1, sy + 1, '\u{2592}', (30, 80, 180), (15, 40, 80)); // ▒
+                    buf.set(sx + 1, sy + 1, '\u{2592}', (30, 80, 180), (15, 40, 80));
                 }
             }
         }
     }
 
-    // Draw plants as vertical columns
+    // Plants
     for plant in &world.plants {
         let iso_x = (plant.x as isize - plant.y as isize) * 2 + ox as isize;
         let iso_y = (plant.x as isize + plant.y as isize) / 2 + oy as isize;
@@ -234,27 +269,25 @@ fn render_isometric(
             let vitality = plant.cellular.vitality();
             let pc = plant_color(cells * 0.01, vitality);
 
-            // Trunk
             for h in 0..plant_h {
                 if sy >= h + 1 {
-                    buf.set(sx + 1, sy - h - 1, '\u{2503}', (120, 80, 40), (10, 10, 20)); // ┃
+                    buf.set(sx + 1, sy - h - 1, '\u{2503}', (120, 80, 40), (10, 10, 20));
                 }
             }
-            // Canopy
             if sy >= plant_h + 1 {
                 let canopy_y = sy - plant_h - 1;
-                buf.set(sx, canopy_y, '\u{2663}', pc, (10, 10, 20));     // ♣
+                buf.set(sx, canopy_y, '\u{2663}', pc, (10, 10, 20));
                 buf.set(sx + 1, canopy_y, '\u{2663}', pc, (10, 10, 20));
                 buf.set(sx + 2, canopy_y, '\u{2663}', pc, (10, 10, 20));
                 if canopy_y > 0 {
-                    buf.set(sx + 1, canopy_y - 1, '\u{25B2}', // ▲
+                    buf.set(sx + 1, canopy_y - 1, '\u{25B2}',
                         lerp_color(pc, (200, 255, 100), 0.3), (10, 10, 20));
                 }
             }
         }
     }
 
-    // Draw fruits
+    // Fruits
     for fruit in &world.fruits {
         if fruit.source.alive && fruit.source.sugar_content > 0.01 {
             let iso_x = (fruit.source.x as isize - fruit.source.y as isize) * 2 + ox as isize;
@@ -262,12 +295,12 @@ fn render_isometric(
             if iso_x >= 0 && iso_y >= 0 {
                 let ripe = fruit.source.ripeness.clamp(0.0, 1.0);
                 let c = lerp_color((100, 200, 50), (255, 80, 30), ripe);
-                buf.set(iso_x as usize + 1, iso_y as usize, '\u{25CF}', c, (10, 10, 20)); // ●
+                buf.set(iso_x as usize + 1, iso_y as usize, '\u{25CF}', c, (10, 10, 20));
             }
         }
     }
 
-    // Draw flies
+    // Flies
     for fly in &world.flies {
         let body = fly.body_state();
         let gx = body.x.round().clamp(0.0, (gw - 1) as f32) as isize;
@@ -280,24 +313,19 @@ fn render_isometric(
             let sy = (iso_y - altitude) as usize;
             let sx = iso_x as usize;
             let (ch, color) = if body.is_flying {
-                // Animated wing flap
-                let wing = if frame_idx % 6 < 3 { '\u{2736}' } else { '\u{2734}' }; // ✶ or ✴
+                let wing = if frame_idx % 6 < 3 { '\u{2736}' } else { '\u{2734}' };
                 (wing, (255, 230, 50))
             } else {
-                ('\u{25C6}', (255, 200, 80)) // ◆
+                ('\u{25C6}', (255, 200, 80))
             };
             buf.set(sx + 1, sy, ch, color, (10, 10, 20));
         }
     }
 
-    // Legend bar at bottom
-    let legend_y = buf.height - 2;
+    // Legend
+    let legend_y = buf.height.saturating_sub(2);
     let legend = " \u{2663}=plant  \u{25CF}=fruit  ~=water  \u{25C6}=fly  \u{2593}=terrain";
-    for (i, ch) in legend.chars().enumerate() {
-        if i < buf.width {
-            buf.set(i, legend_y, ch, (140, 140, 160), (20, 20, 35));
-        }
-    }
+    buf.write_str(0, legend_y, legend, (140, 140, 160), (20, 20, 35));
 }
 
 // ---------------------------------------------------------------------------
@@ -315,22 +343,16 @@ fn render_topdown_color(
     let gh = world.config.height;
     let moisture = world.moisture_field();
 
-    // Header
     let header = format!(
         " Terrarium Top-Down | F:{} | {} | {:.0}C | P:{} Fl:{} Fr:{}",
         frame_idx, world.time_label(), snapshot.temperature,
         snapshot.plants, snapshot.flies, snapshot.fruits,
     );
-    for (i, ch) in header.chars().enumerate() {
-        if i < buf.width {
-            buf.set(i, 0, ch, (0, 220, 255), (20, 20, 40));
-        }
-    }
+    buf.write_str(0, 0, &header[..header.len().min(buf.width)], (0, 220, 255), (20, 20, 40));
 
     let ox = (buf.width.saturating_sub(gw * 2)) / 2;
     let oy = 2;
 
-    // Terrain base layer
     for gy in 0..gh {
         for gx in 0..gw {
             let m_idx = gy * gw + gx;
@@ -342,7 +364,6 @@ fn render_topdown_color(
         }
     }
 
-    // Water overlay
     for water in &world.waters {
         if water.alive {
             let wave = if frame_idx % 4 < 2 { '\u{2248}' } else { '~' };
@@ -359,17 +380,15 @@ fn render_topdown_color(
         }
     }
 
-    // Plants
     for plant in &world.plants {
         let cells = plant.cellular.total_cells();
         let vitality = plant.cellular.vitality();
         let pc = plant_color(cells * 0.01, vitality);
-        let ch = if cells > 50.0 { '\u{2663}' } else { '\u{2022}' }; // ♣ or •
+        let ch = if cells > 50.0 { '\u{2663}' } else { '\u{2022}' };
         buf.set(ox + plant.x * 2, oy + plant.y, ch, pc, (10, 30, 10));
         buf.set(ox + plant.x * 2 + 1, oy + plant.y, ch, pc, (10, 30, 10));
     }
 
-    // Fruits
     for fruit in &world.fruits {
         if fruit.source.alive && fruit.source.sugar_content > 0.01 {
             let ripe = fruit.source.ripeness.clamp(0.0, 1.0);
@@ -378,7 +397,6 @@ fn render_topdown_color(
         }
     }
 
-    // Flies
     for fly in &world.flies {
         let body = fly.body_state();
         let gx = body.x.round().clamp(0.0, (gw - 1) as f32) as usize;
@@ -391,7 +409,6 @@ fn render_topdown_color(
         buf.set(ox + gx * 2, oy + gy, ch, color, (10, 10, 20));
     }
 
-    // Stats panel below
     let stats_y = oy + gh + 1;
     let stats = [
         format!(" Moisture:{:.3} Deep:{:.3} Glucose:{:.3}", snapshot.mean_soil_moisture, snapshot.mean_deep_moisture, snapshot.mean_soil_glucose),
@@ -400,11 +417,159 @@ fn render_topdown_color(
         format!(" FlyEnergy:{:.1} FlyEC:{:.2} Seeds:{} Events:{}", snapshot.avg_fly_energy, snapshot.avg_fly_energy_charge, snapshot.seeds, snapshot.ecology_event_count),
     ];
     for (i, line) in stats.iter().enumerate() {
-        for (j, ch) in line.chars().enumerate() {
-            if j < buf.width && stats_y + i < buf.height {
-                buf.set(j, stats_y + i, ch, (160, 200, 160), (15, 25, 15));
+        if stats_y + i < buf.height {
+            buf.write_str(0, stats_y + i, &line[..line.len().min(buf.width)], (160, 200, 160), (15, 25, 15));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Heatmap Renderer
+// ---------------------------------------------------------------------------
+
+fn render_heatmap(
+    buf: &mut ScreenBuffer,
+    world: &TerrariumWorld,
+    snapshot: &TerrariumWorldSnapshot,
+    frame_idx: usize,
+) {
+    buf.clear();
+    let gw = world.config.width;
+    let gh = world.config.height;
+    let moisture = world.moisture_field();
+
+    let header = format!(
+        " Moisture Heatmap | F:{} | {:.0}C | Avg:{:.3} | Plants:{} Flies:{}",
+        frame_idx, snapshot.temperature, snapshot.mean_soil_moisture,
+        snapshot.plants, snapshot.flies,
+    );
+    buf.write_str(0, 0, &header[..header.len().min(buf.width)], (255, 200, 0), (30, 10, 10));
+
+    let ox = (buf.width.saturating_sub(gw * 3)) / 2;
+    let oy = 2;
+
+    // Moisture heatmap with block characters
+    for gy in 0..gh {
+        for gx in 0..gw {
+            let m_idx = gy * gw + gx;
+            let m = if m_idx < moisture.len() { moisture[m_idx] } else { 0.0 };
+            let color = heatmap_color(m.clamp(0.0, 1.0));
+            let ch = if m > 0.7 { '\u{2588}' }
+                else if m > 0.5 { '\u{2593}' }
+                else if m > 0.3 { '\u{2592}' }
+                else { '\u{2591}' };
+            for dx in 0..3 {
+                buf.set(ox + gx * 3 + dx, oy + gy, ch, color, (5, 5, 15));
             }
         }
+    }
+
+    // Overlay plants
+    for plant in &world.plants {
+        let px = ox + plant.x * 3 + 1;
+        let py = oy + plant.y;
+        buf.set(px, py, '\u{2663}', (0, 255, 0), (5, 5, 15));
+    }
+
+    // Overlay flies
+    for fly in &world.flies {
+        let body = fly.body_state();
+        let fx = ox + (body.x.round().clamp(0.0, (gw - 1) as f32) as usize) * 3 + 1;
+        let fy = oy + body.y.round().clamp(0.0, (gh - 1) as f32) as usize;
+        buf.set(fx, fy, '\u{25C6}', (255, 255, 0), (5, 5, 15));
+    }
+
+    // Color legend
+    let legend_y = oy + gh + 1;
+    buf.write_str(0, legend_y, " Moisture: ", (200, 200, 200), (15, 15, 25));
+    let labels = ["0.0", "0.25", "0.5", "0.75", "1.0"];
+    for (i, &label) in labels.iter().enumerate() {
+        let t = i as f32 / 4.0;
+        let c = heatmap_color(t);
+        let x = 11 + i * 10;
+        buf.set(x, legend_y, '\u{2588}', c, (5, 5, 15));
+        buf.set(x + 1, legend_y, '\u{2588}', c, (5, 5, 15));
+        buf.write_str(x + 2, legend_y, label, (180, 180, 180), (15, 15, 25));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard Renderer
+// ---------------------------------------------------------------------------
+
+fn render_dashboard(
+    buf: &mut ScreenBuffer,
+    snapshot_history: &[TerrariumWorldSnapshot],
+    frame_idx: usize,
+) {
+    buf.clear();
+    let dash = ecosystem_dashboard(snapshot_history, buf.width);
+    for (y, line) in dash.lines().enumerate() {
+        if y >= buf.height { break; }
+        let is_header = line.starts_with('=') || line.starts_with('-');
+        let fg_c = if is_header { (0, 220, 255) } else { (200, 220, 200) };
+        let bg_c = if is_header { (20, 40, 60) } else { (15, 15, 25) };
+        buf.write_str(0, y, &line[..line.len().min(buf.width)], fg_c, bg_c);
+    }
+
+    // Frame counter in bottom right
+    let frame_str = format!(" F:{frame_idx} ");
+    let fx = buf.width.saturating_sub(frame_str.len() + 1);
+    buf.write_str(fx, buf.height.saturating_sub(1), &frame_str, (255, 200, 100), (30, 30, 50));
+}
+
+// ---------------------------------------------------------------------------
+// Minimap overlay
+// ---------------------------------------------------------------------------
+
+fn draw_minimap(
+    buf: &mut ScreenBuffer,
+    world: &TerrariumWorld,
+    map_x: usize,
+    map_y: usize,
+) {
+    let gw = world.config.width;
+    let gh = world.config.height;
+    let moisture = world.moisture_field();
+
+    // Draw border
+    buf.write_str(map_x, map_y, "\u{250C}", (80, 80, 120), (10, 10, 20));
+    for x in 1..=gw {
+        buf.set(map_x + x, map_y, '\u{2500}', (80, 80, 120), (10, 10, 20));
+    }
+    buf.set(map_x + gw + 1, map_y, '\u{2510}', (80, 80, 120), (10, 10, 20));
+
+    for gy in 0..gh {
+        buf.set(map_x, map_y + gy + 1, '\u{2502}', (80, 80, 120), (10, 10, 20));
+        for gx in 0..gw {
+            let m_idx = gy * gw + gx;
+            let m = if m_idx < moisture.len() { moisture[m_idx] } else { 0.3 };
+            let c = soil_color(m, m * 0.3);
+            buf.set(map_x + gx + 1, map_y + gy + 1, '\u{2588}', c, (5, 5, 10));
+        }
+        buf.set(map_x + gw + 1, map_y + gy + 1, '\u{2502}', (80, 80, 120), (10, 10, 20));
+    }
+
+    // Bottom border
+    buf.set(map_x, map_y + gh + 1, '\u{2514}', (80, 80, 120), (10, 10, 20));
+    for x in 1..=gw {
+        buf.set(map_x + x, map_y + gh + 1, '\u{2500}', (80, 80, 120), (10, 10, 20));
+    }
+    buf.set(map_x + gw + 1, map_y + gh + 1, '\u{2518}', (80, 80, 120), (10, 10, 20));
+
+    // Plants on minimap
+    for plant in &world.plants {
+        if plant.x < gw && plant.y < gh {
+            buf.set(map_x + plant.x + 1, map_y + plant.y + 1, '\u{2022}', (0, 200, 0), (5, 5, 10));
+        }
+    }
+
+    // Flies on minimap
+    for fly in &world.flies {
+        let body = fly.body_state();
+        let fx = body.x.round().clamp(0.0, (gw - 1) as f32) as usize;
+        let fy = body.y.round().clamp(0.0, (gh - 1) as f32) as usize;
+        buf.set(map_x + fx + 1, map_y + fy + 1, '\u{00B7}', (255, 230, 50), (5, 5, 10));
     }
 }
 
@@ -420,6 +585,7 @@ struct Cli {
     mode: ViewMode,
     use_color: bool,
     cpu_substrate: bool,
+    show_minimap: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -427,6 +593,8 @@ enum ViewMode {
     Isometric,
     TopDown,
     Split,
+    Heatmap,
+    Dashboard,
 }
 
 impl Default for Cli {
@@ -434,14 +602,30 @@ impl Default for Cli {
         Self {
             seed: 7, fps: 15, frames: None,
             mode: ViewMode::Isometric, use_color: true, cpu_substrate: false,
+            show_minimap: false,
         }
     }
 }
 
 fn print_usage() {
-    eprintln!(
-        "Usage: terrarium_ascii [--seed N] [--fps N] [--frames N] [--mode iso|top|split] [--no-color] [--cpu-substrate]"
-    );
+    eprintln!("oNeuro Terrarium 3D ASCII Renderer");
+    eprintln!();
+    eprintln!("Usage: terrarium_ascii [OPTIONS]");
+    eprintln!();
+    eprintln!("Options:");
+    eprintln!("  --seed <N>       World seed (default: 7)");
+    eprintln!("  --fps <N>        Target framerate (default: 15)");
+    eprintln!("  --frames <N>     Quit after N frames (default: infinite)");
+    eprintln!("  --mode <MODE>    View mode (default: iso)");
+    eprintln!("                   iso    - 3D isometric terrain with plants/flies");
+    eprintln!("                   top    - Top-down colored terrain map");
+    eprintln!("                   split  - Side-by-side iso + top-down");
+    eprintln!("                   heat   - Moisture heatmap with organisms");
+    eprintln!("                   dash   - Ecosystem health dashboard with sparklines");
+    eprintln!("  --minimap        Show minimap overlay (iso/top modes)");
+    eprintln!("  --no-color       Disable ANSI colors");
+    eprintln!("  --cpu-substrate  Use CPU substrate instead of GPU");
+    eprintln!("  --help, -h       Show this help");
 }
 
 fn parse_args() -> Result<Cli, String> {
@@ -457,9 +641,12 @@ fn parse_args() -> Result<Cli, String> {
                     "iso" | "isometric" => ViewMode::Isometric,
                     "top" | "topdown" => ViewMode::TopDown,
                     "split" => ViewMode::Split,
+                    "heat" | "heatmap" => ViewMode::Heatmap,
+                    "dash" | "dashboard" => ViewMode::Dashboard,
                     other => return Err(format!("unknown mode: {other}")),
                 };
             }
+            "--minimap" => cli.show_minimap = true,
             "--no-color" => cli.use_color = false,
             "--cpu-substrate" => cli.cpu_substrate = true,
             "--help" | "-h" => { print_usage(); std::process::exit(0); }
@@ -484,22 +671,19 @@ fn main() -> ExitCode {
         Err(e) => { eprintln!("failed to build terrarium: {e}"); return ExitCode::FAILURE; }
     };
 
-    // Determine terminal size (fallback to 120x40)
-    let term_width = 120;
-    let term_height = 45;
+    // Auto-detect terminal size
+    let (term_width, term_height) = terminal_size();
 
     let mut buf = ScreenBuffer::new(term_width, term_height);
-    let _buf2 = if cli.mode == ViewMode::Split {
-        Some(ScreenBuffer::new(term_width, term_height))
-    } else {
-        None
-    };
 
     let frame_budget = if cli.fps > 0 {
         Some(Duration::from_secs_f64(1.0 / cli.fps as f64))
     } else {
         None
     };
+
+    // Keep snapshot history for dashboard mode
+    let mut snapshot_history: Vec<TerrariumWorldSnapshot> = Vec::with_capacity(256);
 
     // Hide cursor, clear screen
     print!("\x1b[?25l\x1b[2J");
@@ -519,21 +703,33 @@ fn main() -> ExitCode {
         frame_idx += 1;
         let snapshot = world.snapshot();
 
+        // Keep last 200 snapshots for dashboard
+        if snapshot_history.len() >= 200 {
+            snapshot_history.remove(0);
+        }
+        snapshot_history.push(snapshot.clone());
+
         match cli.mode {
             ViewMode::Isometric => {
                 render_isometric(&mut buf, &world, &snapshot, frame_idx);
+                if cli.show_minimap {
+                    let mx = buf.width.saturating_sub(world.config.width + 4);
+                    draw_minimap(&mut buf, &world, mx, 3);
+                }
             }
             ViewMode::TopDown => {
                 render_topdown_color(&mut buf, &world, &snapshot, frame_idx);
+                if cli.show_minimap {
+                    let mx = buf.width.saturating_sub(world.config.width + 4);
+                    draw_minimap(&mut buf, &world, mx, 3);
+                }
             }
             ViewMode::Split => {
-                // Left half: isometric, right half: top-down
                 let half_w = term_width / 2;
                 let mut left = ScreenBuffer::new(half_w, term_height);
                 let mut right = ScreenBuffer::new(half_w, term_height);
                 render_isometric(&mut left, &world, &snapshot, frame_idx);
                 render_topdown_color(&mut right, &world, &snapshot, frame_idx);
-                // Merge into main buffer
                 buf.clear();
                 for y in 0..term_height {
                     for x in 0..half_w {
@@ -546,6 +742,12 @@ fn main() -> ExitCode {
                     }
                 }
             }
+            ViewMode::Heatmap => {
+                render_heatmap(&mut buf, &world, &snapshot, frame_idx);
+            }
+            ViewMode::Dashboard => {
+                render_dashboard(&mut buf, &snapshot_history, frame_idx);
+            }
         }
 
         // FPS counter
@@ -557,9 +759,7 @@ fn main() -> ExitCode {
         }
         let fps_str = format!(" FPS: {last_fps:.1} ");
         let fps_x = buf.width.saturating_sub(fps_str.len() + 1);
-        for (i, ch) in fps_str.chars().enumerate() {
-            buf.set(fps_x + i, 0, ch, (255, 255, 100), (20, 20, 40));
-        }
+        buf.write_str(fps_x, 0, &fps_str, (255, 255, 100), (20, 20, 40));
 
         let rendered = buf.render(cli.use_color);
         print!("{rendered}");
