@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::molecular_dynamics::GPUMolecularDynamics;
 
 /// Kinetic parameters derived from molecular dynamics calibration.

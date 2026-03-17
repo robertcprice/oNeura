@@ -6,7 +6,7 @@
 // instances and can exist in larger numbers per owned cell.
 
 use crate::constants::clamp;
-use crate::soil_broad::SecondaryCatalogBankEntry;
+use super::genotype::SecondaryCatalogBankEntry;
 
 // Phase 4: Genotype-ID packet population constants
 pub(super) const GENOTYPE_PACKET_MAX_PER_CELL: usize = 12;

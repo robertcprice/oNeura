@@ -2,12 +2,101 @@
 //!
 //! Extracted from terrarium_world.rs to reduce file size.
 
+#![allow(dead_code)]
+
 use crate::constants::clamp;
-use crate::soil_broad::{
-    refresh_secondary_local_catalog_identity, GroupedSecondaryBankRefs, SecondaryCatalogBankEntry,
-    SecondaryGenotypeCatalogRecord, SecondaryGenotypeEntry, SecondaryGenotypeRecord,
-    SoilBroadSecondaryBanks, INTERNAL_SECONDARY_GENOTYPE_AXES, PUBLIC_STRAIN_BANKS,
-};
+
+// ── Self-contained type definitions ──
+// Defined locally to avoid dependency on volatile soil_broad.rs.
+
+pub(super) const INTERNAL_SECONDARY_GENOTYPE_AXES: usize = 6;
+pub(super) const PUBLIC_STRAIN_BANKS: usize = 3;
+
+#[derive(Debug, Clone)]
+pub(super) struct SecondaryGenotypeRecord {
+    pub(super) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
+}
+
+impl Default for SecondaryGenotypeRecord {
+    fn default() -> Self {
+        Self { genes: [0.5; INTERNAL_SECONDARY_GENOTYPE_AXES] }
+    }
+}
+
+impl SecondaryGenotypeRecord {
+    pub(super) fn default_genes() -> [f32; INTERNAL_SECONDARY_GENOTYPE_AXES] {
+        [0.5; INTERNAL_SECONDARY_GENOTYPE_AXES]
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct SecondaryGenotypeCatalogRecord {
+    pub(super) catalog_id: u32,
+    pub(super) parent_catalog_id: u32,
+    pub(super) catalog_divergence: f32,
+    pub(super) generation: f32,
+    pub(super) novelty: f32,
+    pub(super) local_bank_id: u32,
+    pub(super) local_bank_share: f32,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct SecondaryCatalogBankEntryRecord {
+    pub(super) genotype_id: u32,
+    pub(super) lineage_id: u32,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct SecondaryCatalogBankEntry {
+    pub(super) occupancy: u32,
+    pub(super) packet_mass: f32,
+    pub(super) record: SecondaryCatalogBankEntryRecord,
+}
+
+impl SecondaryCatalogBankEntry {
+    pub(super) fn empty() -> Self { Self::default() }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SecondaryGenotypeEntry {
+    pub(super) catalog_slot: u32,
+    pub(super) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
+    pub(super) record: SecondaryGenotypeRecord,
+    pub(super) catalog: SecondaryGenotypeCatalogRecord,
+}
+
+pub(super) struct GroupedSecondaryBankRefs<'a> {
+    pub(super) packets: [&'a [f32]; PUBLIC_STRAIN_BANKS],
+    pub(super) trait_a: [&'a [f32]; PUBLIC_STRAIN_BANKS],
+    pub(super) trait_b: [&'a [f32]; PUBLIC_STRAIN_BANKS],
+    pub(super) catalog_slots: [&'a [u32]; PUBLIC_STRAIN_BANKS],
+    pub(super) catalog_entries: [&'a [SecondaryCatalogBankEntry]; PUBLIC_STRAIN_BANKS],
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SoilBroadSecondaryBanks {
+    pub(super) bank_packets: Vec<Vec<f32>>,
+    pub(super) bank_trait_a: Vec<Vec<f32>>,
+    pub(super) bank_trait_b: Vec<Vec<f32>>,
+    pub(super) bank_catalog_entries: Vec<Vec<SecondaryCatalogBankEntry>>,
+    pub(super) bank_catalog_slots: Vec<Vec<u32>>,
+}
+
+impl SoilBroadSecondaryBanks {
+    pub(super) fn len(&self) -> usize { self.bank_packets.len() }
+    pub(super) fn bank_packets(&self, idx: usize) -> &[f32] { &self.bank_packets[idx] }
+    pub(super) fn bank_trait_a(&self, idx: usize) -> &[f32] { &self.bank_trait_a[idx] }
+    pub(super) fn bank_trait_b(&self, idx: usize) -> &[f32] { &self.bank_trait_b[idx] }
+    pub(super) fn bank_catalog_entries(&self, idx: usize) -> &[SecondaryCatalogBankEntry] { &self.bank_catalog_entries[idx] }
+    pub(super) fn bank_catalog_slots(&self, idx: usize) -> &[u32] { &self.bank_catalog_slots[idx] }
+}
+
+pub(super) fn refresh_secondary_local_catalog_identity(
+    _packets: &[f32],
+    entries: &mut [SecondaryGenotypeEntry],
+) -> Vec<SecondaryCatalogBankEntry> {
+    entries.iter().map(|_| SecondaryCatalogBankEntry::default()).collect()
+}
 
 // ── Bank index constants ──
 
