@@ -324,6 +324,21 @@ impl GPUMolecularDynamics {
         self.temperature = temp;
     }
 
+    /// Get atom count.
+    pub fn n_atoms(&self) -> usize {
+        self.n_atoms
+    }
+
+    /// Get atom masses.
+    pub fn masses(&self) -> &[f32] {
+        &self.masses
+    }
+
+    /// Get bond topology.
+    pub fn bonds(&self) -> &[Bond] {
+        &self.bonds
+    }
+
     /// Get current positions.
     pub fn positions(&self) -> &[f32] {
         &self.positions

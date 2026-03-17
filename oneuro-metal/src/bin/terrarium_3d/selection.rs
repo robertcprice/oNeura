@@ -51,6 +51,9 @@ impl Selection {
             EntityTag::Fly(i) => format!("Fly #{}", i),
             EntityTag::Water(i) => format!("Water #{}", i),
             EntityTag::Fruit(i) => format!("Fruit #{}", i),
+            EntityTag::Atom(i) => format!("Atom #{}", i),
+            EntityTag::Bond(i) => format!("Bond #{}", i),
+            EntityTag::Metabolite(i) => format!("Metabolite #{}", i),
         }
     }
 }

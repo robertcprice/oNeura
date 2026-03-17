@@ -1149,6 +1149,9 @@ impl TerrariumWorld {
 
     pub(crate) fn fly_population(&self) -> &FlyPopulation { &self.fly_pop }
 
+    /// Public accessor for fly metabolisms (used by 3D viewer zoom).
+    pub fn fly_metabolisms(&self) -> &[FlyMetabolism] { &self.fly_metabolisms }
+
 
     // ===== Ownership API =====
 
