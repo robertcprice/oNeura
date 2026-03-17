@@ -1,4 +1,4 @@
-//! oNeuro-Metal -- GPU-accelerated molecular brain simulator.
+//! oNeura-Metal -- GPU-accelerated molecular brain simulator.
 //!
 //! The world's first Metal-powered biophysical neural engine where every behavior
 //! -- learning, memory, drug response, consciousness, sleep -- EMERGES from
@@ -158,6 +158,8 @@ pub mod fly_metabolism;
 pub mod substrate_coupling;
 pub mod plant_competition;
 pub mod cross_scale_coupling;
+pub mod drug_discovery;
+pub mod enzyme_engineering;
 
 // NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
 // terrarium_render_pipeline are orphaned and depend on missing APIs.
@@ -210,6 +212,8 @@ pub use plant_organism::{PlantOrganismSim, PlantStepReport};
 pub use retina::MolecularRetina;
 pub use soil_broad::{step_soil_broad_pools, SoilBroadStepResult};
 pub use soil_uptake::{extract_root_resources_with_layers, SoilResourceExtraction};
+pub use drug_discovery::{DrugCandidate, BindingSite, DockingResult, ADMETProfile, screen_drug_candidates, predict_admet, optimize_lead};
+pub use enzyme_engineering::{EnzymeVariant, MutationLibrary, directed_evolution, saturation_mutagenesis, recombination};
 pub use substrate_ir::{
     evaluate_patch_assembly, execute_patch_reaction, localize_patch, AssemblyComponent,
     AssemblyContext, AssemblyRule, AssemblyState, FluxChannel, LocalizationCue, LocalizationRule,
