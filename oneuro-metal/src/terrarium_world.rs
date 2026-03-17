@@ -266,8 +266,8 @@ pub const EXPLICIT_MICROBE_MIN_REPRESENTED_CELLS: f32 = 100.0;
 pub const EXPLICIT_MICROBE_MAX_REPRESENTED_CELLS: f32 = 50000.0;
 pub const EXPLICIT_MICROBE_PATCH_RADIUS: usize = 2;
 pub const EXPLICIT_MICROBE_TIME_COMPRESSION: f32 = 10.0;
-pub const EXPLICIT_MICROBE_MIN_STEPS: u64 = 5;
-pub const EXPLICIT_MICROBE_MAX_STEPS: u64 = 200;
+pub const EXPLICIT_MICROBE_MIN_STEPS: usize = 5;
+pub const EXPLICIT_MICROBE_MAX_STEPS: usize = 200;
 pub const EXPLICIT_MICROBE_GROWTH_RATE: f32 = 0.002;
 pub const EXPLICIT_MICROBE_DECAY_RATE: f32 = 0.001;
 pub const EXPLICIT_MICROBE_RADIUS_EXPAND_1_CELLS: f32 = 2000.0;
@@ -676,8 +676,8 @@ pub enum EcologyTelemetryEvent {
     FlyHypoxiaOnset { x: f32, y: f32, ambient_o2: f32, altitude: f32 },
     ExplicitPromotion { x: usize, y: usize, z: usize, guild: u8, represented_cells: f32 },
     ExplicitDemotion { x: usize, y: usize, z: usize, represented_cells: f32, atp_mm: f32 },
-    ExplicitDeath { x: usize, y: usize, z: usize, reason: String, represented_cells: f32, atp_mm: f32 },
-    CellDivision { x: usize, y: usize, z: usize, represented_cells: f32 },
+    ExplicitDeath { x: usize, y: usize, z: usize, reason: String, represented_cells: f32, atp_mm: f32, age_s: f32 },
+    CellDivision { x: usize, y: usize, z: usize, parent_represented_cells: f32, daughter_represented_cells: f32 },
     CellDivisionDaughter { x: usize, y: usize, z: usize, represented_cells: f32, atp_mm: f32 },
     PacketPopulationSeed { x: usize, y: usize },
 }
@@ -977,7 +977,7 @@ pub enum MaterialPhaseKind {
 pub struct MaterialPhaseSelector { pub kind: MaterialPhaseKind, pub min_fraction: f32 }
 #[allow(non_snake_case, dead_code)]
 impl MaterialPhaseSelector {
-    pub fn Exact(kind: MaterialPhaseKind) -> Self { Self { kind, min_fraction: 1.0 } }
+    pub fn Exact(desc: MaterialPhaseDescriptor) -> Self { Self { kind: desc.kind, min_fraction: 1.0 } }
     pub fn Kind(kind: MaterialPhaseKind) -> Self { Self { kind, min_fraction: 0.0 } }
 }
 
@@ -986,7 +986,7 @@ impl MaterialPhaseSelector {
 pub struct MaterialPhaseDescriptor { pub kind: MaterialPhaseKind, pub fraction: f32, pub conductivity: f32 }
 #[allow(dead_code)]
 impl MaterialPhaseDescriptor {
-    pub fn ambient() -> Self { Self { kind: MaterialPhaseKind::Gas, fraction: 1.0, conductivity: 0.025 } }
+    pub fn ambient(kind: MaterialPhaseKind) -> Self { Self { kind, fraction: 1.0, conductivity: 0.025 } }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1015,15 +1015,17 @@ impl MoleculeGraph {
 #[allow(dead_code)]
 pub struct RegionalMaterialInventory { pub regions: Vec<(MaterialRegionKind, f32)> }
 impl RegionalMaterialInventory {
-    pub fn new() -> Self { Self::default() }
-    pub fn total_amount_moles(&self) -> f64 { 0.0 }
-    pub fn estimate_whole_cell_environment_inputs(&self, _: &[MaterialRegionKind]) -> WholeCellEnvironmentInputs { WholeCellEnvironmentInputs::default() }
-    pub fn total_amount_for_component(&self, _: MaterialRegionKind, _: &MoleculeDescriptor, _: &MaterialPhaseSelector) -> f32 { 0.0 }
-    pub fn add_component(&mut self, _: MaterialRegionKind, _: &MoleculeDescriptor, _: f32) {}
-    pub fn deposit_component(&mut self, _: MaterialRegionKind, _: &MoleculeDescriptor, _: f32) {}
-    pub fn set_component_amount(&mut self, _: MaterialRegionKind, _: &MoleculeDescriptor, _: f32) -> Result<(), String> { Ok(()) }
-    pub fn remove_component_amount(&mut self, _: MaterialRegionKind, _: &MoleculeDescriptor, _: f32) -> Result<f32, String> { Ok(0.0) }
-    pub fn withdraw_component(&mut self, _: MaterialRegionKind, _: &MoleculeDescriptor, _: f32) -> f32 { 0.0 }
+    pub fn new_empty() -> Self { Self::default() }
+    pub fn new(_name: String) -> Self { Self::default() }
+    pub fn total_amount_moles(&self) -> f64 { 0.0_f64 }
+    pub fn estimate_whole_cell_environment_inputs(&self, _regions: &[MaterialRegionKind]) -> WholeCellEnvironmentInputs { WholeCellEnvironmentInputs::default() }
+    pub fn total_amount_for_component(&self, _region: MaterialRegionKind, _molecule: &MoleculeDescriptor, _selector: &MaterialPhaseSelector) -> f32 { 0.0 }
+    pub fn add_component(&mut self, _region: MaterialRegionKind, _molecule: MoleculeDescriptor, _amount: f64, _phase: MaterialPhaseDescriptor) {}
+    pub fn deposit_component(&mut self, _region: MaterialRegionKind, _molecule: MoleculeDescriptor, _amount: f64, _phase: MaterialPhaseDescriptor) {}
+    pub fn set_component_amount(&mut self, _region: MaterialRegionKind, _molecule: MoleculeGraph, _phase: MaterialPhaseDescriptor, _amount: f64) -> Result<(), String> { Ok(()) }
+    pub fn remove_component_amount(&mut self, _region: MaterialRegionKind, _molecule: &MoleculeDescriptor, _amount: f64) -> Result<f64, String> { Ok(0.0) }
+    pub fn relax_toward(&mut self, _target: &RegionalMaterialInventory, _relaxation: f64) -> Result<(), String> { Ok(()) }
+    pub fn withdraw_component(&mut self, _region: MaterialRegionKind, _molecule: &MoleculeDescriptor, _amount: f64) -> f64 { 0.0 }
 }
 
 pub struct TerrariumWorld {
@@ -2396,9 +2398,9 @@ impl TerrariumWorld {
         let avg_altitude = if self.flies.is_empty() { 0.0 } else {
             self.flies.iter().map(|f| f.body_state().z).sum::<f32>() / n_flies
         };
-        let avg_fly_energy_charge = if self.flies.is_empty() { 0.0 } else {
+        let avg_fly_energy_charge = if self.fly_metabolisms.is_empty() { 0.0 } else {
             use crate::organism_metabolism::OrganismMetabolism;
-            self.flies.iter().map(|f| f.metabolism.energy_charge()).sum::<f32>() / n_flies
+            self.fly_metabolisms.iter().map(|m| m.energy_charge()).sum::<f32>() / self.fly_metabolisms.len() as f32
         };
         let w = self.config.width;
         let h = self.config.height;
@@ -2411,7 +2413,7 @@ impl TerrariumWorld {
             self.dissolved_nutrients.iter().zip(self.mineral_nitrogen.iter())
                 .map(|(dn, mn)| (dn - mn).clamp(-1.0, 1.0)).sum::<f32>() / n_cells
         } else { 0.0 };
-        let owned_cells = self.ownership_map.iter().filter(|&&o| o != SoilOwnershipClass::Unowned).count();
+        let owned_cells = self.ownership.iter().filter(|&&o| o != SoilOwnershipClass::Background).count();
         let owned_fraction = if n_cells > 0.0 { owned_cells as f32 / n_cells } else { 0.0 };
         let fly_plant_proximity_mean = if self.flies.is_empty() || self.plants.is_empty() { 0.0 } else {
             let mut total_dist = 0.0f32;
@@ -2437,12 +2439,12 @@ impl TerrariumWorld {
             fly_food_total: self.fruits.iter().map(|f| f.source.sugar_content.max(0.0)).sum(),
             avg_fly_energy,
             avg_altitude,
-            light: self.config.light,
-            temperature: self.config.temperature,
-            humidity: self.config.humidity,
+            light: 1.0,
+            temperature: self.temperature.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
+            humidity: self.humidity.iter().sum::<f32>() / (self.config.width * self.config.height).max(1) as f32,
             mean_soil_moisture,
             mean_deep_moisture: mean_soil_moisture * 0.8,
-            mean_microbes: self.microbe_density.iter().sum::<f32>() / n_cells.max(1.0),
+            mean_microbes: self.microbial_biomass.iter().sum::<f32>() / n_cells.max(1.0),
             mean_symbionts: 0.0,
             mean_canopy: 0.0,
             mean_root_density: 0.0,
@@ -2467,7 +2469,7 @@ impl TerrariumWorld {
             substrate_backend: String::from("cpu"),
             substrate_steps: 0,
             substrate_time_ms: 0.0,
-            time_s: self.elapsed_s,
+            time_s: self.time_s,
             atomistic_probes: self.atomistic_probes.len(),
             avg_fly_hunger: 0.0,
             avg_fly_trehalose_mm: 0.0,
@@ -2547,19 +2549,19 @@ impl TerrariumWorld {
             mean_denitrifiers: 0.0,
             mean_denitrifier_cells: 0.0,
             mean_denitrifier_packets: 0.0,
-            mean_denitrifier_anaerobic_packets: 0.0,
+            mean_denitrifier_anoxic_packets: 0.0,
             mean_denitrifier_shadow_packets: 0.0,
             mean_denitrifier_variant_packets: 0.0,
             mean_denitrifier_novel_packets: 0.0,
             mean_denitrifier_latent_packets: 0.0,
-            mean_denitrifier_microaerophilic_packets: 0.0,
+            mean_denitrifier_facultative_packets: 0.0,
             mean_denitrifier_packet_load: 0.0,
-            mean_denitrifier_anaerobic_fraction: 0.0,
+            mean_denitrifier_anoxic_fraction: 0.0,
             mean_denitrifier_shadow_fraction: 0.0,
             mean_denitrifier_variant_fraction: 0.0,
             mean_denitrifier_novel_fraction: 0.0,
             mean_denitrifier_bank_simpson_diversity: 0.0,
-            mean_denitrifier_strain_anoxia_tolerance: 0.0,
+            mean_denitrifier_strain_anoxia_affinity: 0.0,
             mean_denitrifier_strain_nitrate_affinity: 0.0,
             mean_denitrifier_gene_anoxia_respiration: 0.0,
             mean_denitrifier_gene_nitrate_transport: 0.0,
