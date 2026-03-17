@@ -1349,7 +1349,7 @@ impl TerrariumWorld {
             root_exudates,
             soil_structure,
             fly_food_total: 0.0,
-            ecology_events: self.ecology_events.clone(),
+            ecology_events: Vec::new(),
             atomistic_probes: Vec::new(),
             next_probe_id: 0,
             fly_metabolisms: Vec::new(),
