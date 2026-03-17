@@ -44,6 +44,10 @@ pub struct WorldGenome {
     // Simulation
     pub seed: u64,
     pub time_warp: f32,
+
+    // Enzyme probe placement (normalized 0-1, both 0 = no probe)
+    pub enzyme_probe_x: f32,
+    pub enzyme_probe_y: f32,
 }
 
 /// Parameter ranges for genome fields.
@@ -64,6 +68,7 @@ impl GenomeRange {
     const NEURAL_STEPS: (u32, u32) = (5, 50);
     const FLY_SCALE: (u8, u8) = (0, 1);
     const TIME_WARP: (f32, f32) = (100.0, 2000.0);
+    const ENZYME_POS: (f32, f32) = (0.0, 1.0);
 }
 
 impl WorldGenome {
@@ -88,6 +93,8 @@ impl WorldGenome {
             mineralization_vmax_scale: 1.0,
             seed,
             time_warp: 900.0,
+            enzyme_probe_x: 0.0,
+            enzyme_probe_y: 0.0,
         }
     }
 
@@ -112,6 +119,8 @@ impl WorldGenome {
             mineralization_vmax_scale: rng.gen_range(GenomeRange::VMAX_SCALE.0..=GenomeRange::VMAX_SCALE.1),
             seed: rng.gen(),
             time_warp: rng.gen_range(GenomeRange::TIME_WARP.0..=GenomeRange::TIME_WARP.1),
+            enzyme_probe_x: rng.gen_range(GenomeRange::ENZYME_POS.0..=GenomeRange::ENZYME_POS.1),
+            enzyme_probe_y: rng.gen_range(GenomeRange::ENZYME_POS.0..=GenomeRange::ENZYME_POS.1),
         }
     }
 
@@ -146,6 +155,8 @@ impl WorldGenome {
             norm(self.mineralization_vmax_scale, GenomeRange::VMAX_SCALE.0, GenomeRange::VMAX_SCALE.1),
             0.5, // seed (not normalized meaningfully)
             norm(self.time_warp, GenomeRange::TIME_WARP.0, GenomeRange::TIME_WARP.1),
+            norm(self.enzyme_probe_x, GenomeRange::ENZYME_POS.0, GenomeRange::ENZYME_POS.1),
+            norm(self.enzyme_probe_y, GenomeRange::ENZYME_POS.0, GenomeRange::ENZYME_POS.1),
         ]
     }
 
@@ -170,6 +181,8 @@ impl WorldGenome {
             mineralization_vmax_scale: if rng.gen::<f32>() < 0.5 { a.mineralization_vmax_scale } else { b.mineralization_vmax_scale },
             seed: rng.gen(),
             time_warp: if rng.gen::<f32>() < 0.5 { a.time_warp } else { b.time_warp },
+            enzyme_probe_x: if rng.gen::<f32>() < 0.5 { a.enzyme_probe_x } else { b.enzyme_probe_x },
+            enzyme_probe_y: if rng.gen::<f32>() < 0.5 { a.enzyme_probe_y } else { b.enzyme_probe_y },
         }
     }
 
@@ -211,6 +224,8 @@ impl WorldGenome {
         mutate_f32(&mut self.photosynthesis_vmax_scale, GenomeRange::VMAX_SCALE.0, GenomeRange::VMAX_SCALE.1, rng, rate);
         mutate_f32(&mut self.mineralization_vmax_scale, GenomeRange::VMAX_SCALE.0, GenomeRange::VMAX_SCALE.1, rng, rate);
         mutate_f32(&mut self.time_warp, GenomeRange::TIME_WARP.0, GenomeRange::TIME_WARP.1, rng, rate);
+        mutate_f32(&mut self.enzyme_probe_x, GenomeRange::ENZYME_POS.0, GenomeRange::ENZYME_POS.1, rng, rate);
+        mutate_f32(&mut self.enzyme_probe_y, GenomeRange::ENZYME_POS.0, GenomeRange::ENZYME_POS.1, rng, rate);
     }
 
     /// Build a TerrariumWorld from this genome (full size).
@@ -286,6 +301,14 @@ impl WorldGenome {
             let y = rng.gen_range(2.0..(h as f32 - 2.0).max(3.0));
             world.add_fly(fly_scale, x, y, self.seed.wrapping_add(i as u64));
         }
+
+        // Add enzyme probe if position is non-zero
+        if self.enzyme_probe_x > 0.0 || self.enzyme_probe_y > 0.0 {
+            let gx = ((self.enzyme_probe_x * w as f32) as usize).min(w - 1);
+            let gy = ((self.enzyme_probe_y * h as f32) as usize).min(h - 1);
+            let mol = crate::enzyme_probes::select_enzyme_for_seed(self.seed);
+            let _ = world.spawn_probe(&mol, gx, gy, 1);
+        }
     }
 }
 
@@ -304,6 +327,7 @@ pub enum FitnessObjective {
     MaxMicrobialHealth,
     MaxFlyEcosystem,
     MaxFlyMetabolism,
+    MaxEnzymeEfficacy,
 }
 
 impl Default for FitnessObjective {
@@ -323,6 +347,7 @@ impl std::fmt::Display for FitnessObjective {
             Self::MaxMicrobialHealth => write!(f, "MaxMicrobialHealth"),
             Self::MaxFlyEcosystem => write!(f, "MaxFlyEcosystem"),
             Self::MaxFlyMetabolism => write!(f, "MaxFlyMetabolism"),
+            Self::MaxEnzymeEfficacy => write!(f, "MaxEnzymeEfficacy"),
         }
     }
 }
@@ -366,6 +391,12 @@ pub fn evaluate_fitness(objective: FitnessObjective, snapshot: &TerrariumWorldSn
         FitnessObjective::MaxFlyMetabolism => {
             snapshot.avg_fly_energy_charge * 10.0 + snapshot.flies as f32 * 2.0
         }
+        FitnessObjective::MaxEnzymeEfficacy => {
+            // Probe presence rewards stability; nutrient improvement measures catalytic effect
+            let probe_stability = if snapshot.atomistic_probes > 0 { 5.0 } else { 0.0 };
+            let nutrient_bonus = snapshot.mean_soil_glucose + snapshot.mean_soil_ammonium;
+            probe_stability + nutrient_bonus
+        }
     }
 }
 
@@ -379,6 +410,7 @@ pub struct MultiObjectiveFitness {
     pub fruit: f32,
     pub microbial: f32,
     pub fly_metabolism: f32,
+    pub enzyme_efficacy: f32,
 }
 
 impl MultiObjectiveFitness {
@@ -392,6 +424,7 @@ impl MultiObjectiveFitness {
             fruit: evaluate_fitness(FitnessObjective::MaxFruitProduction, snapshot, periodic),
             microbial: evaluate_fitness(FitnessObjective::MaxMicrobialHealth, snapshot, periodic),
             fly_metabolism: evaluate_fitness(FitnessObjective::MaxFlyMetabolism, snapshot, periodic),
+            enzyme_efficacy: evaluate_fitness(FitnessObjective::MaxEnzymeEfficacy, snapshot, periodic),
         }
     }
 }
@@ -1267,6 +1300,7 @@ fn compute_crowding_distance(results: &mut [ParetoResult]) {
         |r: &ParetoResult| r.objectives.carbon,
         |r: &ParetoResult| r.objectives.fruit,
         |r: &ParetoResult| r.objectives.microbial,
+        |r: &ParetoResult| r.objectives.enzyme_efficacy,
     ];
 
     for obj_fn in objectives {

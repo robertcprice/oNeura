@@ -22,7 +22,7 @@
 //! dissolved nutrients within the probe footprint.
 
 use crate::atomistic_chemistry::{BondOrder, EmbeddedMolecule, MoleculeGraph, PeriodicElement};
-use crate::terrarium_world::{TerrariumWorld, TerrariumWorldSnapshot};
+use crate::terrarium_world::TerrariumWorld;
 
 // ---------------------------------------------------------------------------
 // Enzyme Molecule Library
