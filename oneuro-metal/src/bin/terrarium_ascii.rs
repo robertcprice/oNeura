@@ -16,11 +16,12 @@
 
 use oneuro_metal::{TerrariumWorld, TerrariumWorldSnapshot, ecosystem_dashboard};
 use std::env;
-use std::io::{self, Read as _, Write};
+use std::io::{self, Read, Write};
 use std::process::ExitCode;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+use std::fs::File;
 
 // ---------------------------------------------------------------------------
 // ANSI Color Helpers
@@ -116,74 +117,74 @@ enum KeyInput {
     Down,
     Left,
     Right,
-    None,
 }
 
-fn spawn_key_reader() -> mpsc::Receiver<KeyInput> {
+/// Open /dev/tty directly — this is the real terminal device, independent of
+/// stdin which the render loop uses for output.
+fn open_tty() -> Option<File> {
+    File::open("/dev/tty").ok()
+}
+
+fn spawn_key_reader(tty: File) -> mpsc::Receiver<KeyInput> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        let stdin = io::stdin();
+        let mut tty = tty;
         let mut buf = [0u8; 8];
         loop {
-            // Read one byte at a time in raw mode
-            match stdin.lock().read(&mut buf[..1]) {
-                Ok(1) => {
+            match tty.read(&mut buf[..1]) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
                     let key = match buf[0] {
-                        b'q' | b'Q' => KeyInput::Char('q'),
-                        b'h' | b'H' => KeyInput::Char('h'),
-                        b'\t' => KeyInput::Char('\t'),        // Tab
-                        b'm' | b'M' => KeyInput::Char('m'),
-                        b'w' | b'W' => KeyInput::Char('w'),
-                        b'a' | b'A' => KeyInput::Char('a'),
-                        b's' | b'S' => KeyInput::Char('s'),
-                        b'd' | b'D' => KeyInput::Char('d'),
-                        b'+' | b'=' => KeyInput::Char('+'),
-                        b'-' | b'_' => KeyInput::Char('-'),
-                        b' ' => KeyInput::Char(' '),
-                        b'r' | b'R' => KeyInput::Char('r'),
-                        b'1' => KeyInput::Char('1'),
-                        b'2' => KeyInput::Char('2'),
-                        b'3' => KeyInput::Char('3'),
-                        b'4' => KeyInput::Char('4'),
-                        b'5' => KeyInput::Char('5'),
+                        b'q' | b'Q' => Some(KeyInput::Char('q')),
+                        b'h' | b'H' => Some(KeyInput::Char('h')),
+                        b'\t' => Some(KeyInput::Char('\t')),
+                        b'm' | b'M' => Some(KeyInput::Char('m')),
+                        b'w' | b'W' => Some(KeyInput::Char('w')),
+                        b'a' | b'A' => Some(KeyInput::Char('a')),
+                        b's' | b'S' => Some(KeyInput::Char('s')),
+                        b'd' | b'D' => Some(KeyInput::Char('d')),
+                        b'+' | b'=' => Some(KeyInput::Char('+')),
+                        b'-' | b'_' => Some(KeyInput::Char('-')),
+                        b' ' => Some(KeyInput::Char(' ')),
+                        b'r' | b'R' => Some(KeyInput::Char('r')),
+                        b'1' => Some(KeyInput::Char('1')),
+                        b'2' => Some(KeyInput::Char('2')),
+                        b'3' => Some(KeyInput::Char('3')),
+                        b'4' => Some(KeyInput::Char('4')),
+                        b'5' => Some(KeyInput::Char('5')),
                         27 => {
-                            // Escape sequence — read next two bytes for arrow keys
-                            if stdin.lock().read(&mut buf[1..3]).unwrap_or(0) == 2 {
-                                if buf[1] == b'[' {
-                                    match buf[2] {
-                                        b'A' => KeyInput::Up,
-                                        b'B' => KeyInput::Down,
-                                        b'C' => KeyInput::Right,
-                                        b'D' => KeyInput::Left,
-                                        _ => KeyInput::None,
-                                    }
-                                } else {
-                                    KeyInput::Char('q') // bare Esc = quit
-                                }
-                            } else {
-                                KeyInput::Char('q') // bare Esc = quit
+                            // Escape sequence — try to read [X for arrow keys
+                            match tty.read(&mut buf[1..3]) {
+                                Ok(2) if buf[1] == b'[' => match buf[2] {
+                                    b'A' => Some(KeyInput::Up),
+                                    b'B' => Some(KeyInput::Down),
+                                    b'C' => Some(KeyInput::Right),
+                                    b'D' => Some(KeyInput::Left),
+                                    _ => None,
+                                },
+                                _ => Some(KeyInput::Char('q')), // bare Esc = quit
                             }
                         }
-                        _ => KeyInput::None,
+                        _ => None,
                     };
-                    if key != KeyInput::None {
-                        if tx.send(key).is_err() {
+                    if let Some(k) = key {
+                        if tx.send(k).is_err() {
                             break;
                         }
                     }
                 }
-                _ => break,
+                Err(_) => break,
             }
         }
     });
     rx
 }
 
-/// Set terminal to raw mode. Returns true if successful.
+/// Set terminal to raw mode via /dev/tty. Returns true if successful.
 fn set_raw_mode() -> bool {
-    std::process::Command::new("stty")
-        .args(["-echo", "raw", "-icanon", "min", "1"])
-        .stdin(std::process::Stdio::inherit())
+    // Use sh -c so stty reads from /dev/tty directly
+    std::process::Command::new("sh")
+        .args(["-c", "stty raw -echo </dev/tty"])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -191,9 +192,8 @@ fn set_raw_mode() -> bool {
 
 /// Restore terminal to cooked mode.
 fn restore_terminal() {
-    let _ = std::process::Command::new("stty")
-        .args(["sane"])
-        .stdin(std::process::Stdio::inherit())
+    let _ = std::process::Command::new("sh")
+        .args(["-c", "stty sane </dev/tty"])
         .status();
 }
 
@@ -259,7 +259,7 @@ impl ScreenBuffer {
             if use_color {
                 out.push_str(RESET);
             }
-            out.push('\n');
+            out.push_str("\r\n");
         }
         out
     }
@@ -360,7 +360,7 @@ fn draw_help_overlay(buf: &mut ScreenBuffer) {
     let cx = px + 2; // content x
 
     // Title
-    buf.write_str(cx, row, "   oNeuro Terrarium - Help & Legend", title_fg, panel_bg);
+    buf.write_str(cx, row, "   oNeura Terrarium - Help & Legend", title_fg, panel_bg);
     row += 2;
 
     // ── Controls ──
@@ -472,69 +472,100 @@ fn draw_help_overlay(buf: &mut ScreenBuffer) {
 // ---------------------------------------------------------------------------
 
 fn draw_legend_bar(buf: &mut ScreenBuffer, vs: &ViewState) {
-    let y = buf.height.saturating_sub(3);
-    let bar_bg = (20, 25, 40);
-    let sep_fg = (60, 60, 90);
-    let lbl_fg = (160, 170, 200);
+    let bar_h = 4;  // 4 rows of legend
+    let y = buf.height.saturating_sub(bar_h);
+    let bar_bg = (18, 22, 38);
+    let sep_fg = (50, 55, 80);
+    let lbl_fg = (170, 180, 210);
+    let dim_fg = (110, 115, 140);
+    let key_fg = (80, 200, 140);
+    let mode_fg = (0, 220, 255);
 
-    // Fill two rows with background
+    // Fill rows with background
     for row in y..buf.height {
         for x in 0..buf.width {
             buf.set(x, row, ' ', lbl_fg, bar_bg);
         }
     }
 
-    // ── Row 1: Symbols ──
-    let mut x = 1;
+    // ── Row 1: Separator line at top ──
+    let r1 = y;
 
-    // Plant
-    buf.set(x, y, '\u{2663}', (30, 180, 30), bar_bg); x += 1;
-    buf.write_str(x, y, "Plant ", lbl_fg, bar_bg); x += 6;
-    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
-
-    // Fruit
-    buf.set(x, y, '\u{25CF}', (100, 200, 50), bar_bg); x += 1;
-    buf.set(x, y, '\u{25CF}', (255, 80, 30), bar_bg); x += 1;
-    buf.write_str(x, y, "Fruit ", lbl_fg, bar_bg); x += 6;
-    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
-
-    // Water
-    buf.set(x, y, '\u{2248}', (60, 140, 255), bar_bg); x += 1;
-    buf.write_str(x, y, "Water ", lbl_fg, bar_bg); x += 6;
-    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
-
-    // Fly
-    buf.set(x, y, '\u{2736}', (255, 230, 50), bar_bg); x += 1;
-    buf.write_str(x, y, "Flying ", lbl_fg, bar_bg); x += 7;
-    buf.set(x, y, '\u{25C6}', (255, 200, 80), bar_bg); x += 1;
-    buf.write_str(x, y, "Landed ", lbl_fg, bar_bg); x += 7;
-    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
-
-    // Soil gradient
-    buf.write_str(x, y, "Soil:", lbl_fg, bar_bg); x += 5;
-    for i in 0..8 {
-        let t = i as f32 / 7.0;
-        let c = soil_color(t, t * 0.4);
-        buf.set(x + i, y, '\u{2588}', c, bar_bg);
+    for sx in 0..buf.width {
+        buf.set(sx, r1, '\u{2500}', sep_fg, bar_bg);
     }
-    x += 8;
-    buf.write_str(x, y, " dry\u{2192}wet", (140, 140, 160), bar_bg);
 
-    // ── Row 2: Controls hint + mode indicator ──
-    let y2 = y + 1;
-    let hint_fg = (100, 120, 160);
-    let mode_fg = (0, 220, 255);
+    // ── Row 2: Symbols ──
+    let r2 = y + 1;
+    let mut x = 1;
+    buf.set(x, r2, '\u{2663}', (40, 200, 40), bar_bg); x += 1;
+    buf.write_str(x, r2, "=Plant(green=healthy) ", lbl_fg, bar_bg); x += 22;
 
+    buf.set(x, r2, '\u{25CF}', (100, 200, 50), bar_bg); x += 1;
+    buf.write_str(x, r2, "grn", (100, 200, 50), bar_bg); x += 3;
+    buf.set(x, r2, '\u{2192}', dim_fg, bar_bg); x += 1;
+    buf.set(x, r2, '\u{25CF}', (255, 80, 30), bar_bg); x += 1;
+    buf.write_str(x, r2, "red=Fruit(ripeness) ", lbl_fg, bar_bg); x += 20;
+
+    buf.set(x, r2, '\u{2248}', (60, 140, 255), bar_bg); x += 1;
+    buf.write_str(x, r2, "=Water ", lbl_fg, bar_bg); x += 7;
+
+    buf.set(x, r2, '\u{2736}', (255, 230, 50), bar_bg); x += 1;
+    buf.write_str(x, r2, "=Fly(air) ", lbl_fg, bar_bg); x += 10;
+
+    buf.set(x, r2, '\u{25C6}', (255, 200, 80), bar_bg); x += 1;
+    buf.write_str(x, r2, "=Fly(landed) ", lbl_fg, bar_bg); x += 13;
+
+    buf.set(x, r2, '\u{2593}', (160, 130, 70), bar_bg); x += 1;
+    buf.write_str(x, r2, "=Terrain top ", lbl_fg, bar_bg); x += 13;
+
+    buf.set(x, r2, '\u{2588}', (100, 80, 40), bar_bg); x += 1;
+    buf.write_str(x, r2, "=Side", lbl_fg, bar_bg);
+
+    // ── Row 3: Color gradients ──
+    let r3 = y + 2;
+    x = 1;
+    buf.write_str(x, r3, "Soil: ", dim_fg, bar_bg); x += 6;
+    for i in 0..10 {
+        let t = i as f32 / 9.0;
+        let c = soil_color(t, t * 0.4);
+        buf.set(x + i, r3, '\u{2588}', c, bar_bg);
+    }
+    x += 10;
+    buf.write_str(x, r3, "(sandy dry", (180, 140, 80), bar_bg); x += 10;
+    buf.set(x, r3, '\u{2192}', dim_fg, bar_bg); x += 1;
+    buf.write_str(x, r3, "dark wet) ", (80, 60, 30), bar_bg); x += 10;
+
+    buf.write_str(x, r3, "Plants: ", dim_fg, bar_bg); x += 8;
+    let pc_healthy = plant_color(1.0, 1.0);
+    let pc_stressed = plant_color(0.8, 0.2);
+    buf.set(x, r3, '\u{2588}', pc_healthy, bar_bg); x += 1;
+    buf.set(x, r3, '\u{2588}', pc_healthy, bar_bg); x += 1;
+    buf.write_str(x, r3, "healthy ", (30, 120, 30), bar_bg); x += 8;
+    buf.set(x, r3, '\u{2588}', pc_stressed, bar_bg); x += 1;
+    buf.set(x, r3, '\u{2588}', pc_stressed, bar_bg); x += 1;
+    buf.write_str(x, r3, "stressed ", (160, 150, 50), bar_bg); x += 9;
+
+    buf.write_str(x, r3, "Height=moisture(wet=tall)", dim_fg, bar_bg);
+
+    // ── Row 4: Controls + mode ──
+    let r4 = y + 3;
     let controls = format!(
-        " [H]elp [Tab]mode [WASD]\u{2190}\u{2191}\u{2193}\u{2192}pan [+/-]zoom [Space]{} [M]inimap [R]eset [Q]uit",
+        " [H]elp [Tab]mode [WASD/Arrows]pan [+/-]zoom [Space]{} [M]inimap [R]eset [Q]uit",
         if vs.paused { "resume" } else { "pause" },
     );
-    buf.write_str(0, y2, &controls[..controls.len().min(buf.width)], hint_fg, bar_bg);
+    buf.write_str(0, r4, &controls[..controls.len().min(buf.width)], key_fg, bar_bg);
 
     // Mode name right-aligned
     let mode_str = format!(" {} ", vs.mode_name());
     let mx = buf.width.saturating_sub(mode_str.len() + 1);
-    buf.write_str(mx, y2, &mode_str, mode_fg, bar_bg);
+    buf.write_str(mx, r4, &mode_str, mode_fg, bar_bg);
+
+    // Paused indicator
+    if vs.paused {
+        let px = buf.width.saturating_sub(mode_str.len() + 12);
+        buf.write_str(px, r4, " PAUSED ", (255, 80, 80), (80, 20, 20));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -562,7 +593,7 @@ fn render_isometric(
 
     // Header
     let header = format!(
-        " oNeuro Terrarium 3D | F:{} | {} | {:.0}C | plants:{} flies:{} fruit:{}",
+        " oNeura Terrarium 3D | F:{} | {} | {:.0}C | plants:{} flies:{} fruit:{}",
         frame_idx, world.time_label(), snapshot.temperature,
         snapshot.plants, snapshot.flies, snapshot.fruits,
     );
@@ -811,6 +842,7 @@ fn render_topdown_color(
     }
 
     let stats_y = oy.max(0) as usize + gh + 1;
+    let max_stats_y = buf.height.saturating_sub(5); // leave room for legend bar
     let stats = [
         format!(" Moisture:{:.3} Deep:{:.3} Glucose:{:.3}", snapshot.mean_soil_moisture, snapshot.mean_deep_moisture, snapshot.mean_soil_glucose),
         format!(" Microbes:{:.3} Symbionts:{:.3} ATP:{:.3}", snapshot.mean_microbes, snapshot.mean_symbionts, snapshot.mean_soil_atp_flux),
@@ -818,7 +850,7 @@ fn render_topdown_color(
         format!(" FlyEnergy:{:.1} FlyEC:{:.2} Seeds:{} Events:{}", snapshot.avg_fly_energy, snapshot.avg_fly_energy_charge, snapshot.seeds, snapshot.ecology_event_count),
     ];
     for (i, line) in stats.iter().enumerate() {
-        if stats_y + i < buf.height.saturating_sub(3) {
+        if stats_y + i < max_stats_y {
             buf.write_str(0, stats_y + i, &line[..line.len().min(buf.width)], (160, 200, 160), (15, 25, 15));
         }
     }
@@ -1016,7 +1048,7 @@ impl Default for Cli {
 }
 
 fn print_usage() {
-    eprintln!("oNeuro Terrarium 3D ASCII Renderer");
+    eprintln!("oNeura Terrarium 3D ASCII Renderer");
     eprintln!();
     eprintln!("Usage: terrarium_ascii [OPTIONS]");
     eprintln!();
@@ -1103,8 +1135,16 @@ fn main() -> ExitCode {
     let mut vs = ViewState::new(cli.mode, cli.show_minimap);
 
     // Enable raw terminal mode for keyboard input
+    // Open /dev/tty BEFORE setting raw mode so we have the fd
+    let tty = open_tty();
     let raw_ok = set_raw_mode();
-    let key_rx = if raw_ok { Some(spawn_key_reader()) } else { None };
+    let key_rx = match (raw_ok, tty) {
+        (true, Some(tty_file)) => Some(spawn_key_reader(tty_file)),
+        _ => {
+            eprintln!("Warning: could not enable interactive controls (no tty)");
+            None
+        }
+    };
 
     // Hide cursor, clear screen
     print!("\x1b[?25l\x1b[2J");
