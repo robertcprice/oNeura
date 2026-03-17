@@ -964,7 +964,7 @@ impl WholeCellSnapshot {
             amino_acids_mm: snap.amino_acids_mm,
             nucleotides_mm: snap.nucleotides_mm,
             membrane_precursors_mm: snap.membrane_precursors_mm,
-            metabolic_load: snap.metabolic_load,
+            metabolic_load: snap.active_ribosomes * 0.3 + snap.active_rnap * 0.2,
             division_progress: snap.division_progress,
             local_chemistry: None,
         }
