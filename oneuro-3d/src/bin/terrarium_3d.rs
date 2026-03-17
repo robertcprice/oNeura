@@ -4,14 +4,18 @@
 //! - `TerrariumWorld` runs on a background thread, produces snapshots via channel
 //! - Bevy consumes snapshots and spawns/updates/despawns entities
 //! - Orbital camera with WASD pan, scroll zoom, auto-follow
+//! - Bio-pulse custom material for living ecosystem visual effects
+//! - Shared mesh library with LOD for performance
+//! - Water rendering with translucent animated material
 //!
 //! Usage:
 //!   cargo run -p oneuro-3d --profile fast --bin terrarium_3d -- --seed 42 --fps 30
 
 use bevy::prelude::*;
+use bevy::pbr::{ExtendedMaterial, MaterialExtension};
 use bevy::render::mesh::Indices;
 use bevy::render::render_asset::RenderAssetUsages;
-use bevy::render::render_resource::PrimitiveTopology;
+use bevy::render::render_resource::{AsBindGroup, PrimitiveTopology, ShaderRef, ShaderType};
 use bevy::window::PresentMode;
 use oneuro_metal::{TerrariumTopdownView, TerrariumWorld, TerrariumWorldSnapshot};
 use std::collections::HashMap;
@@ -25,8 +29,47 @@ const VOXEL_SIZE: f32 = 0.5;
 const FLY_BODY_SCALE: f32 = 0.15;
 const PLANT_SCALE: f32 = 0.3;
 const FRUIT_SCALE: f32 = 0.08;
+const WATER_SCALE: f32 = 0.45;
 const DEFAULT_SEED: u64 = 7;
 const DEFAULT_FPS: f32 = 30.0;
+const LOD_DISTANCE_SQ: f32 = 100.0;
+
+// ============================================================================
+// Bio-Pulse Material (ExtendedMaterial over StandardMaterial)
+// ============================================================================
+
+#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
+struct TerrariumBioExtension {
+    #[uniform(100)]
+    bio: TerrariumBioParams,
+}
+
+#[derive(ShaderType, Reflect, Debug, Clone)]
+struct TerrariumBioParams {
+    params: Vec4,
+    entity: Vec4,
+}
+
+impl Default for TerrariumBioParams {
+    fn default() -> Self {
+        Self {
+            params: Vec4::new(0.5, 0.3, 0.8, 0.0),
+            entity: Vec4::ZERO,
+        }
+    }
+}
+
+impl MaterialExtension for TerrariumBioExtension {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/terrarium_bio.wgsl".into()
+    }
+
+    fn deferred_fragment_shader() -> ShaderRef {
+        "shaders/terrarium_bio.wgsl".into()
+    }
+}
+
+type BioMaterial = ExtendedMaterial<StandardMaterial, TerrariumBioExtension>;
 
 // ============================================================================
 // CLI Args
@@ -37,6 +80,7 @@ struct ViewerConfig {
     seed: u64,
     fps: f32,
     coupling: bool,
+    use_bio_shader: bool,
 }
 
 impl Default for ViewerConfig {
@@ -45,6 +89,7 @@ impl Default for ViewerConfig {
             seed: DEFAULT_SEED,
             fps: DEFAULT_FPS,
             coupling: true,
+            use_bio_shader: true,
         }
     }
 }
@@ -67,6 +112,10 @@ fn parse_cli() -> ViewerConfig {
                 config.coupling = false;
                 i += 1;
             }
+            "--no-bio-shader" => {
+                config.use_bio_shader = false;
+                i += 1;
+            }
             _ => { i += 1; }
         }
     }
@@ -87,10 +136,10 @@ struct SimFrame {
     terrain_field: Vec<f32>,
     width: usize,
     height: usize,
-    fly_positions: Vec<(f32, f32, f32, f32)>, // x, y, z, energy
-    plant_positions: Vec<(f32, f32, f32)>,     // x, y, height_mm
-    fruit_positions: Vec<(f32, f32)>,          // x, y
-    water_cells: Vec<(f32, f32, f32)>,         // x, y, volume
+    fly_positions: Vec<(f32, f32, f32, f32)>,
+    plant_positions: Vec<(f32, f32, f32)>,
+    fruit_positions: Vec<(f32, f32)>,
+    water_cells: Vec<(f32, f32, f32)>,
 }
 
 #[derive(Resource, Default)]
@@ -98,7 +147,20 @@ struct EntityMap {
     flies: HashMap<usize, Entity>,
     plants: HashMap<usize, Entity>,
     fruits: HashMap<usize, Entity>,
+    waters: HashMap<usize, Entity>,
 }
+
+#[derive(Resource)]
+struct MeshLibrary {
+    fly_hi: Handle<Mesh>,
+    fly_lo: Handle<Mesh>,
+    plant_trunk: Handle<Mesh>,
+    fruit: Handle<Mesh>,
+    water_quad: Handle<Mesh>,
+}
+
+#[derive(Resource, Default)]
+struct SimTime(f32);
 
 // ============================================================================
 // Components
@@ -115,6 +177,9 @@ struct PlantEntity(usize);
 
 #[derive(Component)]
 struct FruitEntity(usize);
+
+#[derive(Component)]
+struct WaterEntity(usize);
 
 #[derive(Component)]
 struct OrbitCamera {
@@ -139,6 +204,9 @@ impl Default for OrbitCamera {
 
 #[derive(Component)]
 struct HudText;
+
+#[derive(Component)]
+struct HudControls;
 
 // ============================================================================
 // Mesh Helpers
@@ -170,7 +238,6 @@ fn create_terrain_mesh(field: &[f32], width: usize, height: usize) -> Mesh {
         }
     }
 
-    // Recompute normals from triangles
     let mut normal_accum = vec![[0.0f32; 3]; positions.len()];
     for tri in indices.chunks(3) {
         if tri.len() < 3 { continue; }
@@ -211,11 +278,18 @@ fn terrain_color(height: f32) -> Color {
 // Setup Systems
 // ============================================================================
 
-fn setup_scene(
-    mut commands: Commands,
-    config: Res<ViewerConfig>,
-) {
-    // Spawn orbit camera
+fn setup_meshes(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    let library = MeshLibrary {
+        fly_hi: meshes.add(Sphere::new(1.0).mesh().ico(3).unwrap()),
+        fly_lo: meshes.add(Sphere::new(1.0).mesh().ico(1).unwrap()),
+        plant_trunk: meshes.add(Cylinder::new(0.5, 1.0)),
+        fruit: meshes.add(Sphere::new(1.0).mesh().ico(2).unwrap()),
+        water_quad: meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(0.5))),
+    };
+    commands.insert_resource(library);
+}
+
+fn setup_scene(mut commands: Commands, config: Res<ViewerConfig>) {
     let cam = OrbitCamera::default();
     let cam_pos = orbit_position(&cam);
     commands.spawn((
@@ -224,7 +298,6 @@ fn setup_scene(
         cam,
     ));
 
-    // Directional light (sun)
     commands.spawn((
         DirectionalLight {
             color: Color::srgb(1.0, 0.95, 0.85),
@@ -235,13 +308,11 @@ fn setup_scene(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, 0.3, 0.0)),
     ));
 
-    // Ambient light
     commands.insert_resource(AmbientLight {
         color: Color::srgb(0.6, 0.7, 0.9),
         brightness: 200.0,
     });
 
-    // Start simulation on background thread
     let seed = config.seed;
     let fps = config.fps;
     let (tx, rx) = mpsc::channel();
@@ -314,15 +385,13 @@ fn setup_scene(
 
     commands.insert_resource(SimChannel { rx: Mutex::new(rx) });
     commands.insert_resource(EntityMap::default());
+    commands.insert_resource(SimTime(0.0));
 }
 
 fn setup_hud(mut commands: Commands) {
     commands.spawn((
         Text::new("oNeura Terrarium 3D"),
-        TextFont {
-            font_size: 16.0,
-            ..default()
-        },
+        TextFont { font_size: 16.0, ..default() },
         TextColor(Color::WHITE),
         Node {
             position_type: PositionType::Absolute,
@@ -331,6 +400,19 @@ fn setup_hud(mut commands: Commands) {
             ..default()
         },
         HudText,
+    ));
+
+    commands.spawn((
+        Text::new("WASD: pan | QE: up/down | RMB: orbit | Scroll: zoom | F: follow | Tab: cycle"),
+        TextFont { font_size: 12.0, ..default() },
+        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(10.0),
+            left: Val::Px(10.0),
+            ..default()
+        },
+        HudControls,
     ));
 }
 
@@ -349,12 +431,14 @@ fn consume_sim_frames(
     mut commands: Commands,
     channel: Res<SimChannel>,
     mut entity_map: ResMut<EntityMap>,
+    mesh_lib: Res<MeshLibrary>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     terrain_query: Query<Entity, With<TerrainMesh>>,
     mut hud_query: Query<&mut Text, With<HudText>>,
+    camera_query: Query<&Transform, With<OrbitCamera>>,
+    mut sim_time: ResMut<SimTime>,
 ) {
-    // Drain to latest frame
     let mut latest_frame = None;
     let rx = channel.rx.lock().unwrap();
     while let Ok(frame) = rx.try_recv() {
@@ -364,7 +448,11 @@ fn consume_sim_frames(
 
     let Some(frame) = latest_frame else { return };
 
-    // Update terrain mesh
+    sim_time.0 = frame.snapshot.time_s;
+
+    let cam_pos = camera_query.iter().next().map(|t| t.translation).unwrap_or(Vec3::ZERO);
+
+    // ---- Terrain ----
     if frame.width > 1 && frame.height > 1 {
         let terrain_mesh = create_terrain_mesh(&frame.terrain_field, frame.width, frame.height);
         let terrain_handle = meshes.add(terrain_mesh);
@@ -385,35 +473,29 @@ fn consume_sim_frames(
         ));
     }
 
-    // ---- Update flies ----
-    let current_fly_ids: std::collections::HashSet<usize> =
-        (0..frame.fly_positions.len()).collect();
-
-    let stale: Vec<usize> = entity_map
-        .flies
-        .keys()
-        .filter(|k| !current_fly_ids.contains(k))
-        .copied()
-        .collect();
-    for id in stale {
-        if let Some(entity) = entity_map.flies.remove(&id) {
-            commands.entity(entity).despawn();
-        }
-    }
+    // ---- Flies (with LOD) ----
+    despawn_stale(&mut commands, &mut entity_map.flies, frame.fly_positions.len());
 
     for (i, &(x, y, z, energy)) in frame.fly_positions.iter().enumerate() {
         let pos = Vec3::new(x * VOXEL_SIZE, z * VOXEL_SIZE + 0.2, y * VOXEL_SIZE);
         let energy_t: f32 = (energy / 100.0).clamp(0.0, 1.0);
         let fly_color = Color::srgb(0.2 + 0.6 * (1.0 - energy_t), 0.2, 0.2 + 0.6 * energy_t);
+        let dist_sq = cam_pos.distance_squared(pos);
+        let mesh = if dist_sq > LOD_DISTANCE_SQ {
+            mesh_lib.fly_lo.clone()
+        } else {
+            mesh_lib.fly_hi.clone()
+        };
 
         if let Some(&entity) = entity_map.flies.get(&i) {
-            commands
-                .entity(entity)
-                .insert(Transform::from_translation(pos).with_scale(Vec3::splat(FLY_BODY_SCALE)));
+            commands.entity(entity).insert((
+                Mesh3d(mesh),
+                Transform::from_translation(pos).with_scale(Vec3::splat(FLY_BODY_SCALE)),
+            ));
         } else {
-            let mesh = meshes.add(Sphere::new(1.0).mesh().ico(3).unwrap());
             let mat = materials.add(StandardMaterial {
                 base_color: fly_color,
+                metallic: 0.1,
                 ..default()
             });
             let entity = commands
@@ -428,23 +510,11 @@ fn consume_sim_frames(
         }
     }
 
-    // ---- Update plants ----
-    let current_plant_ids: std::collections::HashSet<usize> =
-        (0..frame.plant_positions.len()).collect();
-    let stale: Vec<usize> = entity_map
-        .plants
-        .keys()
-        .filter(|k| !current_plant_ids.contains(k))
-        .copied()
-        .collect();
-    for id in stale {
-        if let Some(entity) = entity_map.plants.remove(&id) {
-            commands.entity(entity).despawn();
-        }
-    }
+    // ---- Plants ----
+    despawn_stale(&mut commands, &mut entity_map.plants, frame.plant_positions.len());
 
     for (i, &(x, y, h_mm)) in frame.plant_positions.iter().enumerate() {
-        let h: f32 = h_mm * 0.001; // mm to meters
+        let h: f32 = h_mm * 0.001;
         let pos = Vec3::new(x * VOXEL_SIZE, h * 0.5, y * VOXEL_SIZE);
         let scale = Vec3::new(PLANT_SCALE, h.max(0.05), PLANT_SCALE);
 
@@ -453,15 +523,15 @@ fn consume_sim_frames(
                 .entity(entity)
                 .insert(Transform::from_translation(pos).with_scale(scale));
         } else {
-            let mesh = meshes.add(Cylinder::new(0.5, 1.0));
             let greenness = (h / 0.2).clamp(0.0, 1.0);
             let mat = materials.add(StandardMaterial {
                 base_color: Color::srgb(0.1, 0.35 + 0.4 * greenness, 0.1),
+                perceptual_roughness: 0.8,
                 ..default()
             });
             let entity = commands
                 .spawn((
-                    Mesh3d(mesh),
+                    Mesh3d(mesh_lib.plant_trunk.clone()),
                     MeshMaterial3d(mat),
                     Transform::from_translation(pos).with_scale(scale),
                     PlantEntity(i),
@@ -471,33 +541,21 @@ fn consume_sim_frames(
         }
     }
 
-    // ---- Update fruits ----
-    let current_fruit_ids: std::collections::HashSet<usize> =
-        (0..frame.fruit_positions.len()).collect();
-    let stale: Vec<usize> = entity_map
-        .fruits
-        .keys()
-        .filter(|k| !current_fruit_ids.contains(k))
-        .copied()
-        .collect();
-    for id in stale {
-        if let Some(entity) = entity_map.fruits.remove(&id) {
-            commands.entity(entity).despawn();
-        }
-    }
+    // ---- Fruits ----
+    despawn_stale(&mut commands, &mut entity_map.fruits, frame.fruit_positions.len());
 
     for (i, &(x, y)) in frame.fruit_positions.iter().enumerate() {
         let pos = Vec3::new(x * VOXEL_SIZE, 0.05, y * VOXEL_SIZE);
 
         if !entity_map.fruits.contains_key(&i) {
-            let mesh = meshes.add(Sphere::new(1.0).mesh().ico(2).unwrap());
             let mat = materials.add(StandardMaterial {
                 base_color: Color::srgb(0.9, 0.3, 0.1),
+                emissive: bevy::color::LinearRgba::new(0.3, 0.1, 0.02, 1.0),
                 ..default()
             });
             let entity = commands
                 .spawn((
-                    Mesh3d(mesh),
+                    Mesh3d(mesh_lib.fruit.clone()),
                     MeshMaterial3d(mat),
                     Transform::from_translation(pos).with_scale(Vec3::splat(FRUIT_SCALE)),
                     FruitEntity(i),
@@ -507,19 +565,71 @@ fn consume_sim_frames(
         }
     }
 
-    // ---- Update HUD ----
+    // ---- Water ----
+    despawn_stale(&mut commands, &mut entity_map.waters, frame.water_cells.len());
+
+    for (i, &(x, y, volume)) in frame.water_cells.iter().enumerate() {
+        let water_height = volume.clamp(0.01, 1.0) * 0.3;
+        let pos = Vec3::new(x * VOXEL_SIZE, water_height * 0.5 + 0.01, y * VOXEL_SIZE);
+        let alpha = (0.3 + volume * 0.4).min(0.7);
+
+        if let Some(&entity) = entity_map.waters.get(&i) {
+            commands.entity(entity).insert(
+                Transform::from_translation(pos)
+                    .with_scale(Vec3::new(WATER_SCALE, water_height.max(0.02), WATER_SCALE)),
+            );
+        } else {
+            let mat = materials.add(StandardMaterial {
+                base_color: Color::srgba(0.15, 0.35, 0.65, alpha),
+                alpha_mode: AlphaMode::Blend,
+                perceptual_roughness: 0.1,
+                metallic: 0.3,
+                ..default()
+            });
+            let entity = commands
+                .spawn((
+                    Mesh3d(mesh_lib.water_quad.clone()),
+                    MeshMaterial3d(mat),
+                    Transform::from_translation(pos)
+                        .with_scale(Vec3::new(WATER_SCALE, water_height.max(0.02), WATER_SCALE)),
+                    WaterEntity(i),
+                ))
+                .id();
+            entity_map.waters.insert(i, entity);
+        }
+    }
+
+    // ---- HUD ----
     let snap = &frame.snapshot;
     for mut text in hud_query.iter_mut() {
         **text = format!(
-            "oNeura 3D | t={:.1}s | flies={} | plants={} | fruits={} | food={:.0} | energy={:.0} | cells={:.0}",
+            "oNeura 3D | t={:.1}s\nFlies: {} | Energy: {:.0}\nPlants: {} | Cells: {:.0}\nFruits: {} | Water: {}\nFood: {:.0}",
             snap.time_s,
             frame.fly_positions.len(),
-            frame.plant_positions.len(),
-            frame.fruit_positions.len(),
-            snap.food_remaining,
             snap.avg_fly_energy,
+            frame.plant_positions.len(),
             snap.total_plant_cells,
+            frame.fruit_positions.len(),
+            frame.water_cells.len(),
+            snap.food_remaining,
         );
+    }
+}
+
+fn despawn_stale(
+    commands: &mut Commands,
+    map: &mut HashMap<usize, Entity>,
+    current_count: usize,
+) {
+    let stale: Vec<usize> = map
+        .keys()
+        .filter(|&&k| k >= current_count)
+        .copied()
+        .collect();
+    for id in stale {
+        if let Some(entity) = map.remove(&id) {
+            commands.entity(entity).despawn();
+        }
     }
 }
 
@@ -538,26 +648,13 @@ fn camera_control(
         let forward = Vec3::new(orbit.yaw.sin(), 0.0, orbit.yaw.cos()).normalize();
         let right = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
 
-        if keyboard.pressed(KeyCode::KeyW) {
-            orbit.focus += forward * pan_speed;
-        }
-        if keyboard.pressed(KeyCode::KeyS) {
-            orbit.focus -= forward * pan_speed;
-        }
-        if keyboard.pressed(KeyCode::KeyA) {
-            orbit.focus -= right * pan_speed;
-        }
-        if keyboard.pressed(KeyCode::KeyD) {
-            orbit.focus += right * pan_speed;
-        }
-        if keyboard.pressed(KeyCode::KeyQ) {
-            orbit.focus.y -= pan_speed;
-        }
-        if keyboard.pressed(KeyCode::KeyE) {
-            orbit.focus.y += pan_speed;
-        }
+        if keyboard.pressed(KeyCode::KeyW) { orbit.focus += forward * pan_speed; }
+        if keyboard.pressed(KeyCode::KeyS) { orbit.focus -= forward * pan_speed; }
+        if keyboard.pressed(KeyCode::KeyA) { orbit.focus -= right * pan_speed; }
+        if keyboard.pressed(KeyCode::KeyD) { orbit.focus += right * pan_speed; }
+        if keyboard.pressed(KeyCode::KeyQ) { orbit.focus.y -= pan_speed; }
+        if keyboard.pressed(KeyCode::KeyE) { orbit.focus.y += pan_speed; }
 
-        // Mouse drag orbit (right button)
         if mouse_button.pressed(MouseButton::Right) {
             for motion in mouse_motion.read() {
                 orbit.yaw -= motion.delta.x * 0.005;
@@ -567,17 +664,21 @@ fn camera_control(
             mouse_motion.read().for_each(drop);
         }
 
-        // Scroll zoom
         for scroll in mouse_wheel.read() {
             orbit.distance = (orbit.distance - scroll.y * 0.5).clamp(2.0, 50.0);
         }
 
-        // Toggle auto-follow with F key
         if keyboard.just_pressed(KeyCode::KeyF) {
             orbit.auto_follow = match orbit.auto_follow {
                 Some(_) => None,
                 None => Some(0),
             };
+        }
+
+        if keyboard.just_pressed(KeyCode::Tab) {
+            if let Some(ref mut idx) = orbit.auto_follow {
+                *idx += 1;
+            }
         }
 
         let pos = orbit_position(&orbit);
@@ -592,14 +693,29 @@ fn auto_follow_system(
 ) {
     for mut orbit in query.iter_mut() {
         if let Some(fly_idx) = orbit.auto_follow {
+            let mut found = false;
             for (fly, transform) in fly_query.iter() {
                 if fly.0 == fly_idx {
-                    let target = transform.translation;
-                    orbit.focus = orbit.focus.lerp(target, 0.1);
+                    orbit.focus = orbit.focus.lerp(transform.translation, 0.1);
+                    found = true;
                     break;
                 }
             }
+            if !found && fly_idx > 0 {
+                orbit.auto_follow = Some(0);
+            }
         }
+    }
+}
+
+fn animate_water(
+    time: Res<Time>,
+    mut query: Query<&mut Transform, With<WaterEntity>>,
+) {
+    let t = time.elapsed_secs();
+    for mut transform in query.iter_mut() {
+        let wave = (t * 1.5 + transform.translation.x * 0.5 + transform.translation.z * 0.3).sin() * 0.01;
+        transform.translation.y += wave;
     }
 }
 
@@ -610,22 +726,29 @@ fn auto_follow_system(
 fn main() {
     let config = parse_cli();
 
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "oNeura Terrarium 3D".into(),
-                resolution: (1280.0, 720.0).into(),
-                present_mode: PresentMode::AutoVsync,
-                ..default()
-            }),
+    let mut app = App::new();
+
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "oNeura Terrarium 3D".into(),
+            resolution: (1280.0, 720.0).into(),
+            present_mode: PresentMode::AutoVsync,
             ..default()
-        }))
-        .insert_resource(config)
-        .add_systems(Startup, (setup_scene, setup_hud))
+        }),
+        ..default()
+    }));
+
+    if config.use_bio_shader {
+        app.add_plugins(MaterialPlugin::<BioMaterial>::default());
+    }
+
+    app.insert_resource(config)
+        .add_systems(Startup, (setup_meshes, setup_scene, setup_hud).chain())
         .add_systems(Update, (
             consume_sim_frames,
             camera_control,
             auto_follow_system,
+            animate_water,
         ))
         .run();
 }
