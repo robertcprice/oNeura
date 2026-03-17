@@ -1,0 +1,66 @@
+{
+  "h200": {
+    "gpu_name": "NVIDIA H200",
+    "workload": "25K Pong large scale, Exp 1, benchmark mode, 80 rallies",
+    "triton_off": {
+      "wall_time_s": 171.88209,
+      "biological_time_s": 3.985,
+      "realtime_factor": 0.02318449816382847,
+      "slower_than_real_time": 43.13226850690088,
+      "hit_rate": 0.4375,
+      "avg_gpu_util_pct": 97.57831325301204,
+      "max_gpu_util_pct": 100.0,
+      "max_memory_used_mb": 44471.0,
+      "avg_power_w": 359.9971084337349
+    },
+    "triton_on": {
+      "wall_time_s": 109.961912,
+      "biological_time_s": 3.985,
+      "realtime_factor": 0.0362398209299962,
+      "slower_than_real_time": 27.593955332496865,
+      "hit_rate": 0.4375,
+      "avg_gpu_util_pct": 95.6891891891892,
+      "max_gpu_util_pct": 100.0,
+      "max_memory_used_mb": 43089.0,
+      "avg_power_w": 373.5060810810811
+    },
+    "improvement": {
+      "wall_time_speedup": 1.5631056869946023,
+      "realtime_factor_gain": 1.5631056869946023,
+      "memory_delta_mb": -1382.0,
+      "avg_power_delta_w": 13.508972647346184
+    }
+  },
+  "a100": {
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "workload": "25K Pong large scale, Exp 1, benchmark mode, 80 rallies",
+    "triton_off": {
+      "wall_time_s": 121.031481,
+      "biological_time_s": 3.985,
+      "realtime_factor": 0.032925318000529134,
+      "slower_than_real_time": 30.371764366373903,
+      "hit_rate": 0.4375,
+      "avg_gpu_util_pct": 73.74885844748859,
+      "max_gpu_util_pct": 97.0,
+      "max_memory_used_mb": 1267.0,
+      "avg_power_w": 141.7902283105023
+    },
+    "triton_on": {
+      "wall_time_s": 117.935869,
+      "biological_time_s": 3.985,
+      "realtime_factor": 0.03378955048866431,
+      "slower_than_real_time": 29.594948306148055,
+      "hit_rate": 0.4375,
+      "avg_gpu_util_pct": 75.5868544600939,
+      "max_gpu_util_pct": 91.0,
+      "max_memory_used_mb": 1267.0,
+      "avg_power_w": 144.50455399061033
+    },
+    "improvement": {
+      "wall_time_speedup": 1.0262482654874066,
+      "realtime_factor_gain": 1.0262482654874066,
+      "memory_delta_mb": 0.0,
+      "avg_power_delta_w": 2.7143256801080327
+    }
+  }
+}

@@ -1,6 +1,6 @@
-"""Extended Drug Library for oNeuro Pharma Platform.
+"""Extended Drug Library for oNeura Pharma Platform.
 
-This module provides pharmacological agents beyond the base oNeuro
+This module provides pharmacological agents beyond the base oNeura
 pharmacology system, specifically targeting:
 - Bacterial infections (antibiotics)
 - Viral infections (antivirals)

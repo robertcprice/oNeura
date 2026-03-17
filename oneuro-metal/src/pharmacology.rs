@@ -192,7 +192,7 @@ impl PharmacologyEngine {
 
     /// Apply general anesthesia (immediate, not PK-dependent).
     ///
-    /// Effects (from Python oNeuro implementation):
+    /// Effects (from Python oNeura implementation):
     /// - GABA-A x8.0 (enhanced inhibition)
     /// - NMDA x0.05 (near-complete block)
     /// - AMPA x0.4 (reduced fast excitation)

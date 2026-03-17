@@ -6,11 +6,11 @@ Goal:
 - Test whether allowing simultaneous movement and attack improves held-out Doom combat in `deadly_corridor`.
 
 Code changes:
-- Added optional factorized controls in [demo_doom_hybrid_ppo.py](/Users/bobbyprice/projects/oNeuro/demos/demo_doom_hybrid_ppo.py).
+- Added optional factorized controls in [demo_doom_hybrid_ppo.py](/Users/bobbyprice/projects/oNeura/demos/demo_doom_hybrid_ppo.py).
 - The hybrid policy can now emit:
   - a movement choice (`none`, `forward`, `turn_left`, `turn_right`, `strafe_left`, `strafe_right`)
   - an independent attack button
-- The Doom wrapper now accepts a full multi-button action vector in [demo_doom_vizdoom.py](/Users/bobbyprice/projects/oNeuro/demos/demo_doom_vizdoom.py).
+- The Doom wrapper now accepts a full multi-button action vector in [demo_doom_vizdoom.py](/Users/bobbyprice/projects/oNeura/demos/demo_doom_vizdoom.py).
 
 Experiment:
 - Scenario: `deadly_corridor`
@@ -50,10 +50,10 @@ Interpretation:
   - no factorized attack controls
 
 Artifacts:
-- [summary.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_factorized_controls_20260310/summary.json)
-- [baseline_seed42.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_factorized_controls_20260310/baseline_seed42.json)
-- [baseline_seed43.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_factorized_controls_20260310/baseline_seed43.json)
-- [baseline_seed44.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_factorized_controls_20260310/baseline_seed44.json)
-- [factorized_seed42.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_factorized_controls_20260310/factorized_seed42.json)
-- [factorized_seed43.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_factorized_controls_20260310/factorized_seed43.json)
-- [factorized_seed44.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_factorized_controls_20260310/factorized_seed44.json)
+- [summary.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_factorized_controls_20260310/summary.json)
+- [baseline_seed42.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_factorized_controls_20260310/baseline_seed42.json)
+- [baseline_seed43.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_factorized_controls_20260310/baseline_seed43.json)
+- [baseline_seed44.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_factorized_controls_20260310/baseline_seed44.json)
+- [factorized_seed42.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_factorized_controls_20260310/factorized_seed42.json)
+- [factorized_seed43.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_factorized_controls_20260310/factorized_seed43.json)
+- [factorized_seed44.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_factorized_controls_20260310/factorized_seed44.json)

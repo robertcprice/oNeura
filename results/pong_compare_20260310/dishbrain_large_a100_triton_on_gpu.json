@@ -1,0 +1,66 @@
+{
+  "command": [
+    "env",
+    "PYTHONPATH=src",
+    "python3",
+    "demos/demo_dishbrain_pong.py",
+    "--scale",
+    "large",
+    "--device",
+    "cuda",
+    "--exp",
+    "1",
+    "--runs",
+    "1",
+    "--benchmark-mode",
+    "--json",
+    "/workspace/dishbrain_large_a100_triton_on.json"
+  ],
+  "returncode": 1,
+  "started_at_unix_s": 1773183778.1164582,
+  "ended_at_unix_s": 1773183898.9432516,
+  "wall_time_s": 120.82679058600115,
+  "gpu_telemetry": {
+    "available": true,
+    "interval_s": 0.5,
+    "sample_count": 213,
+    "errors": [],
+    "summary": [
+      {
+        "index": 0,
+        "name": "NVIDIA A100-SXM4-40GB",
+        "sample_count": 213,
+        "utilization_gpu_pct": {
+          "avg": 75.5868544600939,
+          "min": 0.0,
+          "max": 91.0
+        },
+        "utilization_memory_pct": {
+          "avg": 53.08450704225352,
+          "min": 0.0,
+          "max": 65.0
+        },
+        "memory_used_mb": {
+          "avg": 1224.3708920187794,
+          "min": 0.0,
+          "max": 1267.0
+        },
+        "memory_utilization_pct": {
+          "avg": 2.989186748092723,
+          "min": 0.0,
+          "max": 3.09326171875
+        },
+        "power_draw_w": {
+          "avg": 144.50455399061033,
+          "min": 53.15,
+          "max": 163.87
+        },
+        "temperature_c": {
+          "avg": 45.53521126760563,
+          "min": 42.0,
+          "max": 48.0
+        }
+      }
+    ]
+  }
+}

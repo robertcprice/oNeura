@@ -1,6 +1,6 @@
 # Results Index
 
-This directory is the checked-in artifact surface for oNeuro. Treat these files
+This directory is the checked-in artifact surface for oNeura. Treat these files
 as working-project outputs rather than a frozen benchmark release.
 
 ## Start Here

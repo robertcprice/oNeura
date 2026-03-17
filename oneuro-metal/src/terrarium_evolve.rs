@@ -3674,7 +3674,7 @@ pub fn ecosystem_dashboard(snapshots: &[TerrariumWorldSnapshot], width: usize) -
     let mut out = String::new();
     let w = width.max(40);
 
-    out.push_str(&format!("{:=<w$}\n", "= oNeuro Ecosystem Dashboard ", w = w));
+    out.push_str(&format!("{:=<w$}\n", "= oNeura Ecosystem Dashboard ", w = w));
 
     if snapshots.is_empty() {
         out.push_str("No data yet.\n");
@@ -4793,7 +4793,7 @@ mod tests {
             snapshots.push(world.snapshot());
         }
         let dash = ecosystem_dashboard(&snapshots, 80);
-        assert!(dash.contains("oNeuro Ecosystem Dashboard"));
+        assert!(dash.contains("oNeura Ecosystem Dashboard"));
         assert!(dash.contains("Biomass"));
         assert!(dash.contains("Moisture"));
     }

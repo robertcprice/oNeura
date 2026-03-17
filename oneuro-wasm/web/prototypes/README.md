@@ -1,4 +1,4 @@
-# oNeuro WASM Prototypes
+# oNeura WASM Prototypes
 
 These pages are still useful, but they are not the canonical `oneuro-wasm`
 entrypoints.

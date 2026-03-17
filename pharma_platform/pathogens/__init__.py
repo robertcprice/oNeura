@@ -1,4 +1,4 @@
-"""Digital Pathogen Library for oNeuro Pharma Platform.
+"""Digital Pathogen Library for oNeura Pharma Platform.
 
 This module provides biophysically-realistic digital pathogens (viruses, bacteria,
 parasites) that can infect digital organisms and respond to pharmacological treatments.

@@ -1,0 +1,9 @@
+Source:   results/pong_compare_20260310/dishbrain_large_a100_triton_off.json
+System:   scale=large device=cuda backend=cuda gpu=NVIDIA A100-SXM4-40GB
+Status:   ok
+Wall:     121.031s
+Rallies:  80 total, 35 hits, 45 misses
+Bio:      3985.0 ms (39850 neural steps at dt=0.1 ms)
+Speed:    0.032925x real time
+Slowdown: 30.37x slower than real time
+Throughput: 0.661 rallies/s, 7.932 frames/s, 329.3 neural steps/s

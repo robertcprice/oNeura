@@ -6,7 +6,7 @@ Goal:
 - Test whether auxiliary supervision for `enemy_visible` and `attack_window` improves held-out combat in `deadly_corridor`.
 
 Code changes:
-- Added optional auxiliary heads and losses in [demo_doom_hybrid_ppo.py](/Users/bobbyprice/projects/oNeuro/demos/demo_doom_hybrid_ppo.py).
+- Added optional auxiliary heads and losses in [demo_doom_hybrid_ppo.py](/Users/bobbyprice/projects/oNeura/demos/demo_doom_hybrid_ppo.py).
 - Logged:
   - `enemy_visible`
   - `attack_window`
@@ -47,4 +47,4 @@ Interpretation:
 - Current best config remained the plain split attack head with DishBrain feedback and short-horizon DAgger.
 
 Artifacts:
-- [summary.json](/Users/bobbyprice/projects/oNeuro/results/hybrid_ppo_aux_heads_20260310/summary.json)
+- [summary.json](/Users/bobbyprice/projects/oNeura/results/hybrid_ppo_aux_heads_20260310/summary.json)

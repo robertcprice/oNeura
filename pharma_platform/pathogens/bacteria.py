@@ -1,4 +1,4 @@
-"""Digital Bacterial Pathogen Models for oNeuro Pharma Platform.
+"""Digital Bacterial Pathogen Models for oNeura Pharma Platform.
 
 Biophysically-realistic bacterial infections that interact with:
 - Host immune response

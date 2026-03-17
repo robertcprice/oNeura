@@ -1,4 +1,4 @@
-"""Digital Virus Models for oNeuro Pharma Platform.
+"""Digital Virus Models for oNeura Pharma Platform.
 
 Biophysically-realistic viral infections that interact with:
 - Host cell receptors (ACE2, CD4, ICAM-1, etc.)

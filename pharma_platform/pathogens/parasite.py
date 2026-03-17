@@ -1,4 +1,4 @@
-"""Digital Parasite Models for oNeuro Pharma Platform.
+"""Digital Parasite Models for oNeura Pharma Platform.
 
 Biophysically-realistic parasitic infections including:
 - Protozoa (malaria, toxoplasma, giardia)

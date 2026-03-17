@@ -1,4 +1,4 @@
-"""oNeuro pharma platform package.
+"""oNeura pharma platform package.
 
 Working package surface for the digital pathogen / pharmacology sidecar.
 """

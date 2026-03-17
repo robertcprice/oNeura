@@ -1,0 +1,67 @@
+{
+  "command": [
+    "env",
+    "PYTHONPATH=src",
+    "ONEURO_DISABLE_TRITON=1",
+    "python3",
+    "demos/demo_dishbrain_pong.py",
+    "--scale",
+    "large",
+    "--device",
+    "cuda",
+    "--exp",
+    "1",
+    "--runs",
+    "1",
+    "--benchmark-mode",
+    "--json",
+    "/workspace/dishbrain_large_h200_triton_off.json"
+  ],
+  "returncode": 1,
+  "started_at_unix_s": 1773183176.1164453,
+  "ended_at_unix_s": 1773183357.154946,
+  "wall_time_s": 181.03849842585623,
+  "gpu_telemetry": {
+    "available": true,
+    "interval_s": 0.5,
+    "sample_count": 83,
+    "errors": [],
+    "summary": [
+      {
+        "index": 0,
+        "name": "NVIDIA H200",
+        "sample_count": 83,
+        "utilization_gpu_pct": {
+          "avg": 97.57831325301204,
+          "min": 79.0,
+          "max": 100.0
+        },
+        "utilization_memory_pct": {
+          "avg": 32.674698795180724,
+          "min": 19.0,
+          "max": 37.0
+        },
+        "memory_used_mb": {
+          "avg": 44023.5421686747,
+          "min": 41708.0,
+          "max": 44471.0
+        },
+        "memory_utilization_pct": {
+          "avg": 30.620599542797017,
+          "min": 29.010022883613523,
+          "max": 30.93182908931565
+        },
+        "power_draw_w": {
+          "avg": 359.9971084337349,
+          "min": 339.99,
+          "max": 428.37
+        },
+        "temperature_c": {
+          "avg": 61.1566265060241,
+          "min": 58.0,
+          "max": 64.0
+        }
+      }
+    ]
+  }
+}

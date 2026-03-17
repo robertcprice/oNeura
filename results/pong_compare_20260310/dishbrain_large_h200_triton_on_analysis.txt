@@ -1,0 +1,9 @@
+Source:   results/pong_compare_20260310/dishbrain_large_h200_triton_on.json
+System:   scale=large device=cuda backend=cuda gpu=NVIDIA H200
+Status:   ok
+Wall:     109.962s
+Rallies:  80 total, 35 hits, 45 misses
+Bio:      3985.0 ms (39850 neural steps at dt=0.1 ms)
+Speed:    0.036240x real time
+Slowdown: 27.59x slower than real time
+Throughput: 0.728 rallies/s, 8.730 frames/s, 362.4 neural steps/s

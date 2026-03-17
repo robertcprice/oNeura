@@ -1,4 +1,4 @@
-"""oNeuro Pharma Platform - Drug Efficacy Tests.
+"""oNeura Pharma Platform - Drug Efficacy Tests.
 
 Comprehensive testing framework for validating drug-pathogen interactions.
 """
@@ -316,7 +316,7 @@ def run_standard_battery():
     return all_results
 if __name__ == "__main__":
     print("=" * 60)
-    print("oNeuro Pharma Platform - Drug Efficacy Test Suite")
+    print("oNeura Pharma Platform - Drug Efficacy Test Suite")
     print("=" * 60)
     results = run_standard_battery()
     # Summary

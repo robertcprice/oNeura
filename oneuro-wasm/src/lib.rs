@@ -1,4 +1,4 @@
-//! oNeuro WASM - WebGPU-based neural-molecular simulator
+//! oNeura WASM - WebGPU-based neural-molecular simulator
 //!
 //! This module provides GPU-accelerated molecular dynamics in the browser
 //! using WebGPU for compute shaders.
@@ -211,7 +211,7 @@ impl MDSimulation {
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
-    web_sys::console::log_1(&"oNeuro WASM initialized".into());
+    web_sys::console::log_1(&"oNeura WASM initialized".into());
 }
 
 mod console_error_panic_hook {

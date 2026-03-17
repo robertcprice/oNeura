@@ -1,4 +1,4 @@
-//! PyO3 Python bindings for oNeuro-Metal.
+//! PyO3 Python bindings for oNeura-Metal.
 //!
 //! Exposes `MolecularBrain` and `RegionalBrain` to Python with zero-copy
 //! numpy array access via Apple Silicon unified memory.
@@ -3585,7 +3585,7 @@ impl PyBatchedAtomTerrarium {
 // Module registration
 // =============================================================================
 
-/// oNeuro-Metal: GPU-accelerated molecular brain simulator.
+/// oNeura-Metal: GPU-accelerated molecular brain simulator.
 #[pymodule]
 fn oneuro_metal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyMolecularBrain>()?;

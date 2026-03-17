@@ -1,4 +1,4 @@
-# oNeuro Web - Browser-Based Neural Molecular Dynamics
+# oNeura Web - Browser-Based Neural Molecular Dynamics
 
 This module provides browser-based neural-molecular simulation using WebGPU and WebGL.
 

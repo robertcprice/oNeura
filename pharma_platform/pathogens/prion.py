@@ -1,4 +1,4 @@
-"""Digital Prion Models for oNeuro Pharma Platform.
+"""Digital Prion Models for oNeura Pharma Platform.
 
 Prions are misfolded proteins that propagate by inducing conformational
 changes in normal proteins. They cause neurodegenerative diseases:

@@ -1,6 +1,6 @@
-# oNeuro Pharma Platform
+# oNeura Pharma Platform
 
-`pharma_platform/` is the digital pathogen and pharmacology sidecar for oNeuro.
+`pharma_platform/` is the digital pathogen and pharmacology sidecar for oNeura.
 It is a working subproject, not a frozen release, and it is now organized as a
 real Python package rather than a loose set of scripts.
 

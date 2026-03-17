@@ -1,4 +1,4 @@
-"""oNeuro Pharma Platform - Testing Framework.
+"""oNeura Pharma Platform - Testing Framework.
 
 This module provides tools for testing drug-pathogen interactions,
 verifying expected pharmacological effects, and validating the pharma platform.

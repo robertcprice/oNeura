@@ -558,7 +558,7 @@ fn update_title(
     view: TerrariumTopdownView,
 ) {
     window.set_title(&format!(
-        "oNeuro Terrarium | time={} | view={} | plants={} fruits={} flies={} | food={:.2} | cells={:.0} | substrate={}",
+        "oNeura Terrarium | time={} | view={} | plants={} fruits={} flies={} | food={:.2} | cells={:.0} | substrate={}",
         world.time_label(),
         view.label(),
         snapshot.plants,
@@ -594,7 +594,7 @@ fn main() -> ExitCode {
     let width = world.width() * cli.cell_px + PANEL_W;
     let height = world.height() * cli.cell_px;
     let mut window = match Window::new(
-        "oNeuro Terrarium",
+        "oNeura Terrarium",
         width,
         height,
         WindowOptions {
