@@ -1,5 +1,8 @@
 //! 3D Terrarium Viewer — Software Rasterizer with Orbit Camera, Sunlight Shadows,
-//! SSAO, Entity Selection, Particles, Minimap, and Screenshot Export.
+//! SSAO, Entity Selection, Particles, Minimap, Screenshot Export, and Infinite Zoom.
+//!
+//! Zoom levels: Ecosystem → Organism → Cellular → Molecular
+//! Scroll wheel zooms continuously. At molecular level, renders individual atoms.
 //!
 //! Usage: cargo build --profile fast --no-default-features --bin terrarium_3d
 //!        ./target/fast/terrarium_3d --seed 7 --fps 30
@@ -20,6 +23,7 @@ mod input;
 mod selection;
 mod particles;
 mod screenshot;
+mod zoom;
 
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 use oneuro_metal::TerrariumWorld;
@@ -28,7 +32,7 @@ use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use camera::Camera;
+use camera::{Camera, ZoomLevel};
 use color::rgb;
 use hud::{draw_panel, draw_hud};
 use input::InputState;
@@ -41,6 +45,7 @@ use plants::build_plant_meshes;
 use flies::build_fly_meshes;
 use water::build_water_meshes;
 use fruits::build_fruit_meshes;
+use zoom::{build_organism_detail, build_cellular_detail, build_molecular_detail};
 
 const VIEWPORT_W: usize = 960;
 const VIEWPORT_H: usize = 640;
@@ -59,8 +64,10 @@ const SHADOW_STEP_SIZE: f32 = 0.5;
 const SHADOW_DARKEN: f32 = 0.4;
 
 fn print_usage() {
-    eprintln!("oNeura Terrarium 3D Viewer (Software Rasterizer)\n");
-    eprintln!("Usage: terrarium_3d [OPTIONS]\n");
+    eprintln!("oNeura Terrarium 3D Viewer (Software Rasterizer)
+");
+    eprintln!("Usage: terrarium_3d [OPTIONS]
+");
     eprintln!("Options:");
     eprintln!("  --seed <N>        World seed (default: 7)");
     eprintln!("  --fps <N>         Target framerate (default: 30)");
@@ -89,6 +96,8 @@ fn main() -> ExitCode {
         Ok(w) => w,
         Err(e) => { eprintln!("failed to build terrarium: {e}"); return ExitCode::FAILURE; }
     };
+
+    let terrain_seed = world.config.width as u64 * 31 + world.config.height as u64;
 
     let mut window = match Window::new("oNeura Terrarium 3D", TOTAL_W, TOTAL_H, WindowOptions { resize: false, ..WindowOptions::default() }) {
         Ok(w) => w,
@@ -124,9 +133,8 @@ fn main() -> ExitCode {
             sel.cycle_next();
         }
 
-        // F12: screenshot (only in viewport area)
+        // F12: screenshot
         if window.is_key_pressed(Key::F12, KeyRepeat::No) {
-            // Capture just the viewport portion into a temporary buffer
             let mut vp_buf = vec![0u32; VIEWPORT_W * VIEWPORT_H];
             for y in 0..VIEWPORT_H {
                 vp_buf[y * VIEWPORT_W..(y + 1) * VIEWPORT_W]
@@ -138,23 +146,33 @@ fn main() -> ExitCode {
             }
         }
 
-        // Camera keyboard controls
+        // Camera keyboard controls — speed scales with zoom level
+        let zoom = cam.zoom_level();
+        let zoom_scale = match zoom {
+            ZoomLevel::Ecosystem => 1.0,
+            ZoomLevel::Organism => 0.3,
+            ZoomLevel::Cellular => 0.08,
+            ZoomLevel::Molecular => 0.01,
+        };
         let rot_speed = 0.03;
         if window.is_key_down(Key::Left)  { cam.yaw += rot_speed; }
         if window.is_key_down(Key::Right) { cam.yaw -= rot_speed; }
         if window.is_key_down(Key::Up)    { cam.pitch = (cam.pitch + rot_speed).min(85.0_f32.to_radians()); }
         if window.is_key_down(Key::Down)  { cam.pitch = (cam.pitch - rot_speed).max(-85.0_f32.to_radians()); }
-        let pan_speed = 0.15;
+        let pan_speed = 0.15 * zoom_scale;
         let r = cam.right();
         let f = cam.forward_xz();
         if window.is_key_down(Key::W) { cam.target = math::add3(cam.target, math::scale3(f, pan_speed)); }
         if window.is_key_down(Key::S) { cam.target = math::add3(cam.target, math::scale3(f, -pan_speed)); }
         if window.is_key_down(Key::A) { cam.target = math::add3(cam.target, math::scale3(r, -pan_speed)); }
         if window.is_key_down(Key::D) { cam.target = math::add3(cam.target, math::scale3(r, pan_speed)); }
-        if window.is_key_pressed(Key::Equal, KeyRepeat::Yes) { cam.distance = (cam.distance - 1.0).max(5.0); }
-        if window.is_key_pressed(Key::Minus, KeyRepeat::Yes) { cam.distance = (cam.distance + 1.0).min(80.0); }
 
-        // Mouse input (returns click event if user clicked without dragging)
+        // Zoom: +/- keys with proportional speed, NO LIMIT — infinite zoom
+        let zoom_step = cam.distance * 0.08;  // proportional to distance
+        if window.is_key_pressed(Key::Equal, KeyRepeat::Yes) { cam.distance = (cam.distance - zoom_step).max(0.005); }
+        if window.is_key_pressed(Key::Minus, KeyRepeat::Yes) { cam.distance = cam.distance + zoom_step; }
+
+        // Mouse input — returns click event if user clicked without dragging
         if let Some(click) = input_state.handle(&window, &mut cam) {
             let tag = raster.tag_at(click.x, click.y);
             sel.select(tag);
@@ -169,20 +187,18 @@ fn main() -> ExitCode {
             let gw = world.config.width;
             let gh = world.config.height;
             let moisture = world.moisture_field();
-            for (i, water) in world.waters.iter().enumerate() {
-                if water.alive {
-                    let gx = water.x.min(gw - 1);
-                    let gy = water.y.min(gh - 1);
-                    let mi = gy * gw + gx;
-                    let base_y = (if mi < moisture.len() { moisture[mi] } else { 0.3 }) * HEIGHT_SCALE;
+            for (i, water_ent) in world.waters.iter().enumerate() {
+                if water_ent.alive {
+                    let gx = water_ent.x.min(gw - 1);
+                    let gy = water_ent.y.min(gh - 1);
+                    let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
                     particle_sys.spawn_water_evap(gx as f32 * CELL_SIZE, base_y + 0.03, gy as f32 * CELL_SIZE, frame_idx, i);
                 }
             }
             for (i, plant) in world.plants.iter().enumerate() {
                 let gx = plant.x.min(gw - 1);
                 let gy = plant.y.min(gh - 1);
-                let mi = gy * gw + gx;
-                let base_y = (if mi < moisture.len() { moisture[mi] } else { 0.3 }) * HEIGHT_SCALE;
+                let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
                 let h = (plant.physiology.height_mm() * 0.15).clamp(0.3, 2.5);
                 particle_sys.spawn_pollen(gx as f32 * CELL_SIZE, base_y + h, gy as f32 * CELL_SIZE, frame_idx, i);
             }
@@ -190,24 +206,54 @@ fn main() -> ExitCode {
                 if fruit.source.alive && fruit.source.ripeness > 0.7 {
                     let gx = fruit.source.x.min(gw - 1);
                     let gy = fruit.source.y.min(gh - 1);
-                    let mi = gy * gw + gx;
-                    let base_y = (if mi < moisture.len() { moisture[mi] } else { 0.3 }) * HEIGHT_SCALE;
+                    let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
                     particle_sys.spawn_fruit_sparkle(gx as f32 * CELL_SIZE, base_y + 0.1, gy as f32 * CELL_SIZE, frame_idx, i);
                 }
             }
             particle_sys.update(1.0 / fps.max(1) as f32);
         }
 
-        // Build scene geometry
+        // Build scene geometry (varies by zoom level)
         let snapshot = world.snapshot();
         let gw = world.config.width;
         let gh = world.config.height;
         let moisture = world.moisture_field();
-        let terrain_tris = build_terrain_mesh(&world);
-        let mut entity_tris = build_plant_meshes(&world.plants, gw, gh, &moisture);
-        entity_tris.extend(build_fly_meshes(&world.flies, gw, gh, &moisture, frame_idx));
-        entity_tris.extend(build_water_meshes(&world, frame_idx));
-        entity_tris.extend(build_fruit_meshes(&world.fruits, gw, gh, &moisture));
+
+        let mut terrain_tris = Vec::new();
+        let mut entity_tris = Vec::new();
+
+        match zoom {
+            ZoomLevel::Ecosystem | ZoomLevel::Organism => {
+                terrain_tris = build_terrain_mesh(&world);
+                entity_tris = build_plant_meshes(&world.plants, gw, gh, &moisture, terrain_seed);
+                entity_tris.extend(build_fly_meshes(&world.flies, gw, gh, &moisture, terrain_seed, frame_idx));
+                entity_tris.extend(build_water_meshes(&world, terrain_seed, frame_idx));
+                entity_tris.extend(build_fruit_meshes(&world.fruits, gw, gh, &moisture, terrain_seed));
+
+                // At organism level, add detail meshes for selected entity
+                if zoom == ZoomLevel::Organism && sel.is_selected() {
+                    entity_tris.extend(build_organism_detail(&world, &sel, cam.target));
+                }
+            }
+            ZoomLevel::Cellular => {
+                // Show terrain as context + cellular detail for selected entity
+                terrain_tris = build_terrain_mesh(&world);
+                entity_tris = build_plant_meshes(&world.plants, gw, gh, &moisture, terrain_seed);
+                entity_tris.extend(build_fly_meshes(&world.flies, gw, gh, &moisture, terrain_seed, frame_idx));
+                if sel.is_selected() {
+                    entity_tris.extend(build_cellular_detail(&world, &sel, cam.target));
+                }
+            }
+            ZoomLevel::Molecular => {
+                // Only detail meshes at molecular scale — no terrain
+                if sel.is_selected() {
+                    entity_tris = build_molecular_detail(&world, &sel, cam.target);
+                } else {
+                    // If nothing selected, show substrate species cloud at camera target
+                    entity_tris = build_molecular_detail(&world, &sel, cam.target);
+                }
+            }
+        }
 
         // Render
         let sun_d = sun_direction(snapshot.light);
@@ -217,11 +263,13 @@ fn main() -> ExitCode {
         raster.clear(snapshot.light);
         raster.rasterize(&terrain_tris, &mvp, cam_eye, sun_d, sun_c, realistic);
         raster.rasterize(&entity_tris, &mvp, cam_eye, sun_d, sun_c, realistic);
-        if realistic {
+        if realistic && zoom != ZoomLevel::Molecular {
             raster.shadow_pass(&world, sun_d);
             raster.ssao_pass();
         }
-        raster.fog_pass(cam_eye, snapshot.light);
+        if zoom != ZoomLevel::Molecular {
+            raster.fog_pass(cam_eye, snapshot.light);
+        }
 
         // Selection outline
         if sel.is_selected() {
@@ -235,13 +283,15 @@ fn main() -> ExitCode {
                 .copy_from_slice(&raster.color_buf[y * VIEWPORT_W..y * VIEWPORT_W + VIEWPORT_W]);
         }
 
-        // Render particles on top of viewport
-        particle_sys.render(&mut buffer, VIEWPORT_W, VIEWPORT_H, &mvp);
+        // Render particles on top of viewport (skip at molecular level)
+        if zoom != ZoomLevel::Molecular {
+            particle_sys.render(&mut buffer, VIEWPORT_W, VIEWPORT_H, &mvp);
+        }
 
         // Draw panel and HUD
         draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel);
         let msg = if screenshot_timer > 0 { &screenshot_msg } else { "" };
-        draw_hud(&mut buffer, paused, realistic, msg);
+        draw_hud(&mut buffer, paused, realistic, msg, &zoom);
         if screenshot_timer > 0 { screenshot_timer -= 1; }
 
         // FPS counter
@@ -251,8 +301,8 @@ fn main() -> ExitCode {
 
         // Window title
         window.set_title(&format!(
-            "oNeura Terrarium 3D | {} | P:{} Fl:{} | {:.1} FPS | {}{}",
-            world.time_label(), snapshot.plants, snapshot.flies, actual_fps,
+            "oNeura Terrarium 3D | {} | {} | P:{} Fl:{} | {:.1} FPS | {}{}",
+            world.time_label(), zoom.label(), snapshot.plants, snapshot.flies, actual_fps,
             if realistic { "Realistic" } else { "Flat" },
             if sel.is_selected() { format!(" | {}", sel.label()) } else { String::new() },
         ));

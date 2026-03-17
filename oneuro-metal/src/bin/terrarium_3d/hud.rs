@@ -223,10 +223,21 @@ fn draw_minimap(buffer: &mut [u32], world: &TerrariumWorld, x: usize, y: usize) 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y + map_h + 2, "MINIMAP", rgb(130, 136, 144));
 }
 
-pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str) {
+pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel) {
     let label = if realistic { "3D REALISTIC" } else { "3D FLAT" };
     draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 4, label.len() * 8 + 8, 14, rgb(10, 12, 16));
     draw_text(buffer, TOTAL_W, TOTAL_H, 8, 7, label, if realistic { rgb(230, 200, 88) } else { rgb(160, 160, 170) });
+    // Zoom level indicator
+    let zoom_label = zoom.label();
+    let zoom_color = match zoom {
+        super::camera::ZoomLevel::Ecosystem => rgb(100, 200, 100),
+        super::camera::ZoomLevel::Organism => rgb(100, 180, 230),
+        super::camera::ZoomLevel::Cellular => rgb(200, 160, 230),
+        super::camera::ZoomLevel::Molecular => rgb(230, 120, 230),
+    };
+    let zw = zoom_label.len() * 8 + 8;
+    draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 22, zw, 14, rgb(10, 12, 16));
+    draw_text(buffer, TOTAL_W, TOTAL_H, 8, 25, zoom_label, zoom_color);
     if paused {
         let msg = "PAUSED";
         let mx = (VIEWPORT_W - msg.len() * 8) / 2;
