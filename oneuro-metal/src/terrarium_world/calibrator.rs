@@ -1,5 +1,33 @@
 use crate::molecular_dynamics::GPUMolecularDynamics;
-use crate::terrarium::SubstrateKinetics;
+
+/// Kinetic parameters derived from molecular dynamics calibration.
+///
+/// This is a local stub replacing the removed `crate::terrarium::SubstrateKinetics`.
+/// Each field is a Vmax or rate constant for a major soil biogeochemical pathway.
+#[derive(Debug, Clone)]
+pub struct SubstrateKinetics {
+    pub mean_soil_temperature_c: f32,
+    pub respiration_vmax: f32,
+    pub nitrification_vmax: f32,
+    pub denitrification_vmax: f32,
+    pub photosynthesis_vmax: f32,
+    pub fermentation_vmax: f32,
+    pub mineralization_vmax: f32,
+}
+
+impl Default for SubstrateKinetics {
+    fn default() -> Self {
+        Self {
+            mean_soil_temperature_c: 22.0,
+            respiration_vmax: 0.12,
+            nitrification_vmax: 0.04,
+            denitrification_vmax: 0.03,
+            photosynthesis_vmax: 0.08,
+            fermentation_vmax: 0.06,
+            mineralization_vmax: 0.05,
+        }
+    }
+}
 
 pub struct MolecularRateCalibrator {
     /// MD simulation with a small probe system.

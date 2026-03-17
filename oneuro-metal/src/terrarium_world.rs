@@ -715,7 +715,7 @@ pub struct TerrariumWorld {
     /// Fly lifecycle population (egg→larva→pupa→adult with Sharpe-Schoolfield).
     fly_pop: FlyPopulation,
     /// Earthworm population (logistic growth + bioturbation).
-    earthworms: EarthwormPopulation,
+    earthworm_population: EarthwormPopulation,
     /// Nematode guilds (Lotka-Volterra bacterial/fungal grazing).
     nematode_guilds: Vec<NematodeGuild>,
     /// Telemetry events emitted during the current step batch.
@@ -940,7 +940,7 @@ impl TerrariumWorld {
             next_probe_id: 0,
             fly_metabolisms: Vec::new(),
             fly_pop: FlyPopulation::new(config.seed.wrapping_add(99)),
-            earthworms: EarthwormPopulation::new(config.width, config.height, &organic_matter),
+            earthworm_population: EarthwormPopulation::new(config.width, config.height, &organic_matter),
             organic_matter,
             nematode_guilds: vec![
                 NematodeGuild::new(NematodeKind::BacterialFeeder, config.width, config.height),
@@ -2373,7 +2373,7 @@ impl TerrariumWorld {
         let dt_hours = eco_dt / 3600.0;
         if dt_hours <= 0.0 { return; }
         let mut nitrifier_approx: Vec<f32> = self.microbial_biomass.iter().map(|b| b * 0.1).collect();
-        let _result = step_soil_fauna(&mut self.earthworms, &mut self.nematode_guilds, &mut self.microbial_biomass, &mut nitrifier_approx, &mut self.organic_matter, &mut self.substrate, &self.moisture, &self.temperature, dt_hours, (self.config.width, self.config.height, self.config.depth.max(1)));
+        let _result = step_soil_fauna(&mut self.earthworm_population, &mut self.nematode_guilds, &mut self.microbial_biomass, &mut nitrifier_approx, &mut self.organic_matter, &mut self.substrate, &self.moisture, &self.temperature, dt_hours, (self.config.width, self.config.height, self.config.depth.max(1)));
     }
 
     fn step_plant_competition(&mut self) {

@@ -1417,7 +1417,7 @@ impl WholeCellRuntimeQuantumProcessState {
                     after_result.spatial_orbital_atom_indices.iter().enumerate()
                 {
                     if atom_owner < n_atoms {
-                        per_atom[atom_owner] += raw_occ.get(orb_idx).copied().unwrap_or(0.0_f64);
+                        per_atom[atom_owner] += *raw_occ.get(orb_idx).unwrap_or(&0.0f64);
                     }
                 }
                 per_atom
@@ -3345,7 +3345,7 @@ fn prepend_site_scaffold(
 
     (
         scaffolded_reactants,
-        StructuralReactionTemplate::new(reaction.name, scaffolded_graphs, edits),
+        StructuralReactionTemplate::new(&reaction.name, scaffolded_graphs, edits),
     )
 }
 
@@ -4831,10 +4831,7 @@ fn embedded_atom_point_charges(molecule: &EmbeddedMolecule) -> Vec<f64> {
 }
 
 fn atom_embedding_screening_radius_angstrom(element: PeriodicElement) -> f64 {
-    element
-        .covalent_radius_angstrom()
-        .unwrap_or(0.85)
-        .clamp(0.35, 1.8)
+    f64::from(element.covalent_radius_angstrom()).clamp(0.35, 1.8)
 }
 
 fn bond_embedding_screening_radius_angstrom(

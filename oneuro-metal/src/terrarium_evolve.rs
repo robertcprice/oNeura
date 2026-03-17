@@ -4272,9 +4272,9 @@ mod tests {
     fn seasonal_temperature_oscillates() {
         let schedule = EnvironmentalSchedule::default();
         let mut env = EnvironmentalState::new(schedule.clone(), 42);
-        let summer = env.sample(schedule.season_period_s * 0.25); // peak
+        let _summer = env.sample(schedule.season_period_s * 0.25); // peak
         let mut env2 = EnvironmentalState::new(schedule.clone(), 42);
-        let winter = env2.sample(schedule.season_period_s * 0.75); // trough
+        let _winter = env2.sample(schedule.season_period_s * 0.75); // trough
         // Summer should be warmer than winter (with some noise)
         // Use multiple samples to average out noise
         let mut sum_temps = Vec::new();

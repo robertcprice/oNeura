@@ -212,6 +212,19 @@ impl PeriodicElement {
             Self::Mg => 12,
         }
     }
+
+    /// Pauling electronegativity.
+    pub fn pauling_electronegativity(self) -> Option<f64> {
+        Some(match self {
+            Self::H => 2.20, Self::B => 2.04, Self::C => 2.55, Self::N => 3.04,
+            Self::O => 3.44, Self::F => 3.98, Self::Si => 1.90, Self::P => 2.19,
+            Self::S => 2.58, Self::Cl => 3.16, Self::K => 0.82, Self::Ca => 1.00,
+            Self::Mn => 1.55, Self::Fe => 1.83, Self::Co => 1.88, Self::Ni => 1.91,
+            Self::Cu => 1.90, Self::Zn => 1.65, Self::Se => 2.55, Self::Br => 2.96,
+            Self::Mo => 2.16, Self::I => 2.66, Self::W => 2.36, Self::Na => 0.93,
+            Self::Mg => 1.31,
+        })
+    }
 }
 
 impl std::fmt::Display for PeriodicElement {
@@ -809,7 +822,7 @@ impl StructuralReactionTemplate {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EmbeddedMaterialMixtureComponent {
     pub molecule: EmbeddedMolecule,
-    pub amount: f64,
+    pub amount_moles: f64,
 }
 
 /// A named mixture of embedded molecules for microdomain quantum chemistry.
@@ -827,11 +840,34 @@ impl EmbeddedMaterialMixture {
         }
     }
 
-    pub fn add_component(&mut self, molecule: EmbeddedMolecule, amount: f64) {
+    pub fn add_component(&mut self, molecule: EmbeddedMolecule, amount_moles: f64) {
         self.components.push(EmbeddedMaterialMixtureComponent {
             molecule,
-            amount,
+            amount_moles,
         });
+    }
+
+    /// Apply a structural reaction (stub for quantum runtime).
+    pub fn apply_structural_reaction(
+        &mut self,
+        _reactants: &[EmbeddedMolecule],
+        _reaction: &StructuralReactionTemplate,
+        _extent: f64,
+        _quantum: crate::subatomic_quantum::QuantumChemistryConfig,
+    ) -> Result<StructuralReactionResult, EmbeddedMaterialStructuralReactionError> {
+        let combined = if let Some(first) = self.components.first() {
+            first.molecule.clone()
+        } else {
+            let mut g = MoleculeGraph::new("empty");
+            g.add_element(PeriodicElement::H);
+            EmbeddedMolecule { graph: g, positions_angstrom: vec![[0.0, 0.0, 0.0]] }
+        };
+        Ok(StructuralReactionResult {
+            event_result: StructuralReactionEventResult {
+                quantum_delta: StructuralReactionQuantumDelta::zeroed(),
+                combined_molecule: combined,
+            },
+        })
     }
 }
 
@@ -853,6 +889,54 @@ impl std::fmt::Display for EmbeddedMaterialStructuralReactionError {
 
 impl std::error::Error for EmbeddedMaterialStructuralReactionError {}
 
+// ---------------------------------------------------------------------------
+// Structural reaction result types (for quantum runtime)
+// ---------------------------------------------------------------------------
+
+/// Result of applying a structural reaction.
+#[derive(Debug, Clone)]
+pub struct StructuralReactionResult {
+    pub event_result: StructuralReactionEventResult,
+}
+
+/// Event-level result with quantum delta and product molecule.
+#[derive(Debug, Clone)]
+pub struct StructuralReactionEventResult {
+    pub quantum_delta: StructuralReactionQuantumDelta,
+    pub combined_molecule: EmbeddedMolecule,
+}
+
+/// Quantum chemistry before/after pair for a structural reaction.
+#[derive(Debug, Clone)]
+pub struct StructuralReactionQuantumDelta {
+    pub before: crate::subatomic_quantum::ExactDiagonalizationResult,
+    pub after: crate::subatomic_quantum::ExactDiagonalizationResult,
+}
+
+impl StructuralReactionQuantumDelta {
+    pub fn zeroed() -> Self {
+        let empty = crate::subatomic_quantum::ExactDiagonalizationResult {
+            energies_ev: vec![0.0], ground_state_vector: vec![1.0], basis_states: vec![0],
+            expected_spatial_occupancies: Vec::new(), spatial_orbital_atom_indices: Vec::new(),
+            spatial_one_particle_density_matrix: Vec::new(),
+            expected_atom_effective_charges: Vec::new(),
+            expected_dipole_moment_e_angstrom: [0.0; 3], expected_electron_count: 0.0,
+            nuclear_repulsion_ev: 0.0, solver_tier: Default::default(),
+        };
+        Self { before: empty.clone(), after: empty }
+    }
+
+    pub fn summary(&self) -> crate::substrate_ir::ReactionQuantumSummary {
+        let before_e = self.before.energies_ev.first().copied().unwrap_or(0.0);
+        let after_e = self.after.energies_ev.first().copied().unwrap_or(0.0);
+        crate::substrate_ir::ReactionQuantumSummary {
+            event_count: 1,
+            ground_state_energy_delta_ev: (after_e - before_e) as f32,
+            nuclear_repulsion_delta_ev: (self.after.nuclear_repulsion_ev - self.before.nuclear_repulsion_ev) as f32,
+            net_formal_charge_delta: 0,
+        }
+    }
+}
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

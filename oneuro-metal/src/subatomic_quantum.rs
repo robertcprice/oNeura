@@ -1250,6 +1250,11 @@ impl QuantumChemistryConfig {
     }
 }
 
+impl Default for QuantumChemistryConfig {
+    fn default() -> Self {
+        Self::new(None, 64)
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExactDiagonalizationResult {
     pub energies_ev: Vec<f64>,
