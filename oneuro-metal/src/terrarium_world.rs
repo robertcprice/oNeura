@@ -682,7 +682,7 @@ pub enum EcologyTelemetryEvent {
     PacketPopulationSeed { x: usize, y: usize },
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct TerrariumWorldSnapshot {
     pub plants: usize,
     pub fruits: usize,
@@ -2607,6 +2607,7 @@ impl TerrariumWorld {
             plant_species_count: 0,
             plant_species_ids: Vec::new(),
             ecology_events: Vec::new(),
+            ..Default::default()
         }
     }
 
