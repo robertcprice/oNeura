@@ -27,6 +27,12 @@ use crate::plant_organism::PlantOrganismSim;
 use crate::soil_fauna::{step_soil_fauna, EarthwormPopulation, NematodeGuild, NematodeKind};
 use crate::soil_broad::step_soil_broad_pools;
 use crate::soil_uptake::extract_root_resources_with_layers;
+use crate::substrate_coupling::{
+    build_substrate_control_fields, SubstrateControlConfig, SubstrateControlInputs,
+    project_owned_summary_pools, OwnedSummaryProjectionConfig,
+    OwnedSummaryProjectionInputs, OwnedSummaryProjectionOutputs,
+    microbial_copiotroph_target, nitrifier_aerobic_target, denitrifier_anoxic_target,
+};
 use crate::terrarium::{BatchedAtomTerrarium, TerrariumSpecies};
 use crate::terrarium_field::TerrariumSensoryField;
 
@@ -281,6 +287,8 @@ pub const EXPLICIT_MICROBE_RECRUITMENT_MIN_SCORE: f32 = 0.3;
 pub const EXPLICIT_MICROBE_RECRUITMENT_SPACING: usize = 3;
 pub const INTERACTIVE_MICROBES_PER_FRAME: usize = 4;
 pub const MICROBIAL_PACKET_TARGET_CELLS: f32 = 500.0;
+pub const NITRIFIER_PACKET_TARGET_CELLS: f32 = 500.0;
+pub const DENITRIFIER_PACKET_TARGET_CELLS: f32 = 500.0;
 pub const STOICH_RESPIRATION_CO2_PER_GLUCOSE: f32 = 6.0;
 pub const STOICH_FERMENTATION_CO2_PER_GLUCOSE: f32 = 2.0;
 pub const STOICH_NITRIFICATION_PROTON_YIELD: f32 = 2.0;
@@ -290,6 +298,10 @@ pub const CO2_PROTON_FRACTION_AT_SOIL_PH: f32 = 0.035;
 pub const CRITICAL_OXYGEN_FOR_STRESS: f32 = 0.02;
 pub const CRITICAL_GLUCOSE_FOR_STRESS: f32 = 0.01;
 pub const FICK_SURFACE_CONDUCTANCE: f32 = 0.015;
+/// Henry's law solubility (dimensionless Hcc) for O₂ in water at 25°C.
+pub const HENRY_O2: f32 = 0.032;
+/// Henry's law solubility (dimensionless Hcc) for CO₂ in water at 25°C.
+pub const HENRY_CO2: f32 = 0.83;
 
 
 fn idx2(width: usize, x: usize, y: usize) -> usize {
@@ -683,6 +695,7 @@ pub enum EcologyTelemetryEvent {
     CellDivision { x: usize, y: usize, z: usize, parent_represented_cells: f32, daughter_represented_cells: f32 },
     CellDivisionDaughter { x: usize, y: usize, z: usize, represented_cells: f32, atp_mm: f32 },
     PacketPopulationSeed { x: usize, y: usize },
+    PacketPromotion { x: usize, y: usize, z: usize, activity: f32, represented_cells: f32 },
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
