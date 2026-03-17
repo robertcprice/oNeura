@@ -16,8 +16,9 @@
 
 use oneuro_metal::{TerrariumWorld, TerrariumWorldSnapshot, ecosystem_dashboard};
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, Read as _, Write};
 use std::process::ExitCode;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -62,7 +63,7 @@ fn plant_color(canopy: f32, vitality: f32) -> (u8, u8, u8) {
     lerp_color(base, stressed, (1.0 - vitality).clamp(0.0, 1.0))
 }
 
-/// Heatmap: blue(cold) → cyan → green → yellow → red(hot)
+/// Heatmap: blue(cold) -> cyan -> green -> yellow -> red(hot)
 fn heatmap_color(value: f32) -> (u8, u8, u8) {
     let v = value.clamp(0.0, 1.0);
     if v < 0.25 {
@@ -85,7 +86,6 @@ fn heatmap_color(value: f32) -> (u8, u8, u8) {
 // ---------------------------------------------------------------------------
 
 fn terminal_size() -> (usize, usize) {
-    // Try `stty size` on unix
     if let Ok(output) = std::process::Command::new("stty")
         .arg("size")
         .stdin(std::process::Stdio::inherit())
@@ -102,7 +102,99 @@ fn terminal_size() -> (usize, usize) {
             }
         }
     }
-    (120, 45) // fallback
+    (120, 45)
+}
+
+// ---------------------------------------------------------------------------
+// Non-blocking keyboard input
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum KeyInput {
+    Char(char),
+    Up,
+    Down,
+    Left,
+    Right,
+    None,
+}
+
+fn spawn_key_reader() -> mpsc::Receiver<KeyInput> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let stdin = io::stdin();
+        let mut buf = [0u8; 8];
+        loop {
+            // Read one byte at a time in raw mode
+            match stdin.lock().read(&mut buf[..1]) {
+                Ok(1) => {
+                    let key = match buf[0] {
+                        b'q' | b'Q' => KeyInput::Char('q'),
+                        b'h' | b'H' => KeyInput::Char('h'),
+                        b'\t' => KeyInput::Char('\t'),        // Tab
+                        b'm' | b'M' => KeyInput::Char('m'),
+                        b'w' | b'W' => KeyInput::Char('w'),
+                        b'a' | b'A' => KeyInput::Char('a'),
+                        b's' | b'S' => KeyInput::Char('s'),
+                        b'd' | b'D' => KeyInput::Char('d'),
+                        b'+' | b'=' => KeyInput::Char('+'),
+                        b'-' | b'_' => KeyInput::Char('-'),
+                        b' ' => KeyInput::Char(' '),
+                        b'r' | b'R' => KeyInput::Char('r'),
+                        b'1' => KeyInput::Char('1'),
+                        b'2' => KeyInput::Char('2'),
+                        b'3' => KeyInput::Char('3'),
+                        b'4' => KeyInput::Char('4'),
+                        b'5' => KeyInput::Char('5'),
+                        27 => {
+                            // Escape sequence — read next two bytes for arrow keys
+                            if stdin.lock().read(&mut buf[1..3]).unwrap_or(0) == 2 {
+                                if buf[1] == b'[' {
+                                    match buf[2] {
+                                        b'A' => KeyInput::Up,
+                                        b'B' => KeyInput::Down,
+                                        b'C' => KeyInput::Right,
+                                        b'D' => KeyInput::Left,
+                                        _ => KeyInput::None,
+                                    }
+                                } else {
+                                    KeyInput::Char('q') // bare Esc = quit
+                                }
+                            } else {
+                                KeyInput::Char('q') // bare Esc = quit
+                            }
+                        }
+                        _ => KeyInput::None,
+                    };
+                    if key != KeyInput::None {
+                        if tx.send(key).is_err() {
+                            break;
+                        }
+                    }
+                }
+                _ => break,
+            }
+        }
+    });
+    rx
+}
+
+/// Set terminal to raw mode. Returns true if successful.
+fn set_raw_mode() -> bool {
+    std::process::Command::new("stty")
+        .args(["-echo", "raw", "-icanon", "min", "1"])
+        .stdin(std::process::Stdio::inherit())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Restore terminal to cooked mode.
+fn restore_terminal() {
+    let _ = std::process::Command::new("stty")
+        .args(["sane"])
+        .stdin(std::process::Stdio::inherit())
+        .status();
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +266,278 @@ impl ScreenBuffer {
 }
 
 // ---------------------------------------------------------------------------
+// Interactive State
+// ---------------------------------------------------------------------------
+
+struct ViewState {
+    mode: ViewMode,
+    camera_x: isize,   // camera pan offset (grid units)
+    camera_y: isize,
+    zoom: f32,          // 0.5 .. 3.0
+    paused: bool,
+    show_help: bool,
+    show_minimap: bool,
+    show_legend: bool,
+}
+
+impl ViewState {
+    fn new(mode: ViewMode, show_minimap: bool) -> Self {
+        Self {
+            mode,
+            camera_x: 0,
+            camera_y: 0,
+            zoom: 1.0,
+            paused: false,
+            show_help: false,
+            show_minimap,
+            show_legend: true,
+        }
+    }
+
+    fn cycle_mode(&mut self) {
+        self.mode = match self.mode {
+            ViewMode::Isometric => ViewMode::TopDown,
+            ViewMode::TopDown => ViewMode::Heatmap,
+            ViewMode::Heatmap => ViewMode::Dashboard,
+            ViewMode::Dashboard => ViewMode::Split,
+            ViewMode::Split => ViewMode::Isometric,
+        };
+    }
+
+    fn mode_name(&self) -> &'static str {
+        match self.mode {
+            ViewMode::Isometric => "Isometric 3D",
+            ViewMode::TopDown => "Top-Down Map",
+            ViewMode::Split => "Split View",
+            ViewMode::Heatmap => "Moisture Heatmap",
+            ViewMode::Dashboard => "Ecosystem Dashboard",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Help Overlay
+// ---------------------------------------------------------------------------
+
+fn draw_help_overlay(buf: &mut ScreenBuffer) {
+    let panel_w = 62;
+    let panel_h = 38;
+    let px = buf.width.saturating_sub(panel_w) / 2;
+    let py = buf.height.saturating_sub(panel_h) / 2;
+    let panel_bg = (20, 25, 45);
+    let border_fg = (80, 160, 255);
+    let title_fg = (0, 230, 255);
+    let heading_fg = (255, 200, 80);
+    let text_fg = (200, 210, 220);
+    let key_fg = (100, 255, 150);
+    let sym_fg = (255, 180, 60);
+    let dim_fg = (130, 130, 160);
+
+    // Draw filled background
+    for y in py..py + panel_h {
+        for x in px..px + panel_w {
+            buf.set(x, y, ' ', text_fg, panel_bg);
+        }
+    }
+
+    // Top/bottom borders
+    for x in px..px + panel_w {
+        buf.set(x, py, '\u{2550}', border_fg, panel_bg);           // ═
+        buf.set(x, py + panel_h - 1, '\u{2550}', border_fg, panel_bg);
+    }
+    // Side borders
+    for y in py..py + panel_h {
+        buf.set(px, y, '\u{2551}', border_fg, panel_bg);           // ║
+        buf.set(px + panel_w - 1, y, '\u{2551}', border_fg, panel_bg);
+    }
+    // Corners
+    buf.set(px, py, '\u{2554}', border_fg, panel_bg);               // ╔
+    buf.set(px + panel_w - 1, py, '\u{2557}', border_fg, panel_bg); // ╗
+    buf.set(px, py + panel_h - 1, '\u{255A}', border_fg, panel_bg); // ╚
+    buf.set(px + panel_w - 1, py + panel_h - 1, '\u{255D}', border_fg, panel_bg); // ╝
+
+    let mut row = py + 1;
+    let cx = px + 2; // content x
+
+    // Title
+    buf.write_str(cx, row, "   oNeuro Terrarium - Help & Legend", title_fg, panel_bg);
+    row += 2;
+
+    // ── Controls ──
+    buf.write_str(cx, row, "\u{2500}\u{2500} CONTROLS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  W/A/S/D or Arrows", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Pan camera", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  +  /  -", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Zoom in / out", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  Tab", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Cycle view mode", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  1-5", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Jump to mode (Iso/Top/Heat/Dash/Split)", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  Space", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Pause / resume simulation", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  H", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Toggle this help overlay", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  M", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Toggle minimap", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  R", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Reset camera (center, zoom 1x)", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  Q / Esc", key_fg, panel_bg);
+    buf.write_str(cx + 22, row, "Quit", text_fg, panel_bg);
+    row += 2;
+
+    // ── Symbols ──
+    buf.write_str(cx, row, "\u{2500}\u{2500} SYMBOLS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  \u{2663} \u{2663} \u{2663}", (30, 180, 30), panel_bg);
+    buf.write_str(cx + 10, row, "Plant canopy (green = healthy)", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  \u{25B2}", (150, 230, 100), panel_bg);
+    buf.write_str(cx + 10, row, "Treetop / crown", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  \u{2503}", (120, 80, 40), panel_bg);
+    buf.write_str(cx + 10, row, "Tree trunk (brown)", text_fg, panel_bg);
+    row += 1;
+    // Fruit: show green to red gradient
+    buf.write_str(cx, row, "  \u{25CF}", (100, 200, 50), panel_bg);
+    buf.write_str(cx + 4, row, "\u{25CF}", (200, 150, 40), panel_bg);
+    buf.write_str(cx + 6, row, "\u{25CF}", (255, 80, 30), panel_bg);
+    buf.write_str(cx + 10, row, "Fruit (green=unripe, red=ripe)", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  \u{2248} ~", (60, 140, 255), panel_bg);
+    buf.write_str(cx + 10, row, "Water (animated waves)", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  \u{2736} \u{2734}", (255, 230, 50), panel_bg);
+    buf.write_str(cx + 10, row, "Flying insect (animated wings)", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  \u{25C6}", (255, 200, 80), panel_bg);
+    buf.write_str(cx + 10, row, "Landed insect (resting/feeding)", text_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  \u{2593} \u{2588}", (140, 110, 60), panel_bg);
+    buf.write_str(cx + 10, row, "Terrain (top face / side face)", text_fg, panel_bg);
+    row += 2;
+
+    // ── Color Guide ──
+    buf.write_str(cx, row, "\u{2500}\u{2500} COLORS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, panel_bg);
+    row += 1;
+    // Soil gradient
+    buf.write_str(cx, row, "  Soil: ", sym_fg, panel_bg);
+    // Draw 5-step gradient from dry to wet
+    for i in 0..5 {
+        let t = i as f32 / 4.0;
+        let c = soil_color(t, t * 0.5);
+        buf.set(cx + 8 + i * 3, row, '\u{2588}', c, panel_bg);
+        buf.set(cx + 9 + i * 3, row, '\u{2588}', c, panel_bg);
+    }
+    buf.write_str(cx + 24, row, "dry sand", (180, 140, 80), panel_bg);
+    buf.write_str(cx + 33, row, "\u{2192}", dim_fg, panel_bg);
+    buf.write_str(cx + 35, row, "wet earth", (80, 60, 30), panel_bg);
+    row += 1;
+
+    // Plant gradient
+    buf.write_str(cx, row, "  Plant:", sym_fg, panel_bg);
+    let plant_steps = [(0.1, 1.0), (0.5, 0.8), (1.0, 1.0), (0.8, 0.3)];
+    for (i, &(can, vit)) in plant_steps.iter().enumerate() {
+        let c = plant_color(can, vit);
+        buf.set(cx + 8 + i * 3, row, '\u{2663}', c, panel_bg);
+        buf.set(cx + 9 + i * 3, row, '\u{2663}', c, panel_bg);
+    }
+    buf.write_str(cx + 22, row, "sparse", (100, 160, 60), panel_bg);
+    buf.write_str(cx + 29, row, "\u{2192}", dim_fg, panel_bg);
+    buf.write_str(cx + 31, row, "dense", (30, 120, 30), panel_bg);
+    buf.write_str(cx + 37, row, "\u{2192}", dim_fg, panel_bg);
+    buf.write_str(cx + 39, row, "stressed", (160, 150, 50), panel_bg);
+    row += 1;
+
+    // Height
+    buf.write_str(cx, row, "  Height = soil moisture (wetter = taller)", dim_fg, panel_bg);
+    row += 1;
+    buf.write_str(cx, row, "  Top face = bright highlight, sides = darker", dim_fg, panel_bg);
+    row += 2;
+
+    // Footer
+    buf.write_str(cx, row, "    Press H to close   |   Tab to change view", dim_fg, panel_bg);
+}
+
+// ---------------------------------------------------------------------------
+// Detailed Legend Bar (bottom of screen)
+// ---------------------------------------------------------------------------
+
+fn draw_legend_bar(buf: &mut ScreenBuffer, vs: &ViewState) {
+    let y = buf.height.saturating_sub(3);
+    let bar_bg = (20, 25, 40);
+    let sep_fg = (60, 60, 90);
+    let lbl_fg = (160, 170, 200);
+
+    // Fill two rows with background
+    for row in y..buf.height {
+        for x in 0..buf.width {
+            buf.set(x, row, ' ', lbl_fg, bar_bg);
+        }
+    }
+
+    // ── Row 1: Symbols ──
+    let mut x = 1;
+
+    // Plant
+    buf.set(x, y, '\u{2663}', (30, 180, 30), bar_bg); x += 1;
+    buf.write_str(x, y, "Plant ", lbl_fg, bar_bg); x += 6;
+    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
+
+    // Fruit
+    buf.set(x, y, '\u{25CF}', (100, 200, 50), bar_bg); x += 1;
+    buf.set(x, y, '\u{25CF}', (255, 80, 30), bar_bg); x += 1;
+    buf.write_str(x, y, "Fruit ", lbl_fg, bar_bg); x += 6;
+    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
+
+    // Water
+    buf.set(x, y, '\u{2248}', (60, 140, 255), bar_bg); x += 1;
+    buf.write_str(x, y, "Water ", lbl_fg, bar_bg); x += 6;
+    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
+
+    // Fly
+    buf.set(x, y, '\u{2736}', (255, 230, 50), bar_bg); x += 1;
+    buf.write_str(x, y, "Flying ", lbl_fg, bar_bg); x += 7;
+    buf.set(x, y, '\u{25C6}', (255, 200, 80), bar_bg); x += 1;
+    buf.write_str(x, y, "Landed ", lbl_fg, bar_bg); x += 7;
+    buf.set(x, y, '\u{2502}', sep_fg, bar_bg); x += 2;
+
+    // Soil gradient
+    buf.write_str(x, y, "Soil:", lbl_fg, bar_bg); x += 5;
+    for i in 0..8 {
+        let t = i as f32 / 7.0;
+        let c = soil_color(t, t * 0.4);
+        buf.set(x + i, y, '\u{2588}', c, bar_bg);
+    }
+    x += 8;
+    buf.write_str(x, y, " dry\u{2192}wet", (140, 140, 160), bar_bg);
+
+    // ── Row 2: Controls hint + mode indicator ──
+    let y2 = y + 1;
+    let hint_fg = (100, 120, 160);
+    let mode_fg = (0, 220, 255);
+
+    let controls = format!(
+        " [H]elp [Tab]mode [WASD]\u{2190}\u{2191}\u{2193}\u{2192}pan [+/-]zoom [Space]{} [M]inimap [R]eset [Q]uit",
+        if vs.paused { "resume" } else { "pause" },
+    );
+    buf.write_str(0, y2, &controls[..controls.len().min(buf.width)], hint_fg, bar_bg);
+
+    // Mode name right-aligned
+    let mode_str = format!(" {} ", vs.mode_name());
+    let mx = buf.width.saturating_sub(mode_str.len() + 1);
+    buf.write_str(mx, y2, &mode_str, mode_fg, bar_bg);
+}
+
+// ---------------------------------------------------------------------------
 // Isometric Renderer
 // ---------------------------------------------------------------------------
 
@@ -182,15 +546,19 @@ fn render_isometric(
     world: &TerrariumWorld,
     snapshot: &TerrariumWorldSnapshot,
     frame_idx: usize,
+    vs: &ViewState,
 ) {
     buf.clear();
     let gw = world.config.width;
     let gh = world.config.height;
     let moisture = world.moisture_field();
 
-    // Screen center offset
-    let ox = buf.width / 2;
-    let oy = 3; // top margin for header
+    // Screen center offset with camera pan and zoom
+    let z = vs.zoom;
+    let cell_w = (2.0 * z).round() as isize;
+    let cell_h_half = (z * 0.5).round().max(1.0) as isize;
+    let ox = (buf.width as isize) / 2 + vs.camera_x * cell_w;
+    let oy = 3 + vs.camera_y;
 
     // Header
     let header = format!(
@@ -200,23 +568,31 @@ fn render_isometric(
     );
     buf.write_str(0, 0, &header[..header.len().min(buf.width)], (0, 220, 255), (20, 20, 40));
     let sub = format!(
-        " moisture:{:.2} microbes:{:.3} CO2:{:.4} O2:{:.2} cells:{:.0}",
+        " moisture:{:.2} microbes:{:.3} CO2:{:.4} O2:{:.2} cells:{:.0}  zoom:{:.1}x",
         snapshot.mean_soil_moisture, snapshot.mean_microbes,
         snapshot.mean_atmospheric_co2, snapshot.mean_atmospheric_o2,
-        snapshot.total_plant_cells,
+        snapshot.total_plant_cells, vs.zoom,
     );
     buf.write_str(0, 1, &sub[..sub.len().min(buf.width)], (180, 180, 200), (20, 20, 40));
+
+    if vs.paused {
+        let pause_str = " PAUSED (Space to resume) ";
+        let pause_x = (buf.width.saturating_sub(pause_str.len())) / 2;
+        buf.write_str(pause_x, 2, pause_str, (255, 80, 80), (60, 20, 20));
+    }
 
     // Draw terrain from back to front (painter's algorithm)
     for gy in 0..gh {
         for gx in 0..gw {
-            let iso_x = (gx as isize - gy as isize) * 2 + ox as isize;
-            let iso_y = (gx as isize + gy as isize) / 2 + oy as isize;
+            let iso_x = (gx as isize - gy as isize) * cell_w + ox;
+            let iso_y = (gx as isize + gy as isize) * cell_h_half + oy;
 
             let m_idx = gy * gw + gx;
             let m = if m_idx < moisture.len() { moisture[m_idx] } else { 0.3 };
-            let height = (m * 3.0).clamp(0.0, 4.0) as isize;
+            let height = (m * 3.0 * z).clamp(0.0, 6.0) as isize;
             let color = soil_color(m, m * 0.5);
+
+            let tile_w = (cell_w as usize).max(2).min(5);
 
             for h in 0..=height {
                 let sy = iso_y - h;
@@ -230,7 +606,7 @@ fn render_isometric(
                         lerp_color(color, (0, 0, 0), 0.2)
                     };
                     let ch = if h == height { '\u{2593}' } else { '\u{2588}' };
-                    for dx in 0..3 {
+                    for dx in 0..tile_w {
                         buf.set(sxu + dx, syu, ch, face_color, (10, 10, 20));
                     }
                 }
@@ -241,13 +617,14 @@ fn render_isometric(
     // Water sources
     for water in &world.waters {
         if water.alive {
-            let iso_x = (water.x as isize - water.y as isize) * 2 + ox as isize;
-            let iso_y = (water.x as isize + water.y as isize) / 2 + oy as isize;
+            let iso_x = (water.x as isize - water.y as isize) * cell_w + ox;
+            let iso_y = (water.x as isize + water.y as isize) * cell_h_half + oy;
             if iso_x >= 0 && iso_y >= 0 {
                 let sx = iso_x as usize;
                 let sy = iso_y as usize;
                 let wave = if frame_idx % 4 < 2 { '\u{2248}' } else { '~' };
-                for dx in 0..4 {
+                let tile_w = (cell_w as usize + 1).max(3).min(6);
+                for dx in 0..tile_w {
                     buf.set(sx + dx, sy, wave, (60, 140, 255), (20, 60, 120));
                 }
                 if sy + 1 < buf.height {
@@ -259,13 +636,13 @@ fn render_isometric(
 
     // Plants
     for plant in &world.plants {
-        let iso_x = (plant.x as isize - plant.y as isize) * 2 + ox as isize;
-        let iso_y = (plant.x as isize + plant.y as isize) / 2 + oy as isize;
+        let iso_x = (plant.x as isize - plant.y as isize) * cell_w + ox;
+        let iso_y = (plant.x as isize + plant.y as isize) * cell_h_half + oy;
         if iso_x >= 0 && iso_y >= 0 {
             let sx = iso_x as usize;
             let sy = iso_y as usize;
             let cells = plant.cellular.total_cells();
-            let plant_h = (cells * 0.02).clamp(1.0, 6.0) as usize;
+            let plant_h = (cells * 0.02 * z).clamp(1.0, 6.0) as usize;
             let vitality = plant.cellular.vitality();
             let pc = plant_color(cells * 0.01, vitality);
 
@@ -290,8 +667,8 @@ fn render_isometric(
     // Fruits
     for fruit in &world.fruits {
         if fruit.source.alive && fruit.source.sugar_content > 0.01 {
-            let iso_x = (fruit.source.x as isize - fruit.source.y as isize) * 2 + ox as isize;
-            let iso_y = (fruit.source.x as isize + fruit.source.y as isize) / 2 + oy as isize;
+            let iso_x = (fruit.source.x as isize - fruit.source.y as isize) * cell_w + ox;
+            let iso_y = (fruit.source.x as isize + fruit.source.y as isize) * cell_h_half + oy;
             if iso_x >= 0 && iso_y >= 0 {
                 let ripe = fruit.source.ripeness.clamp(0.0, 1.0);
                 let c = lerp_color((100, 200, 50), (255, 80, 30), ripe);
@@ -305,9 +682,9 @@ fn render_isometric(
         let body = fly.body_state();
         let gx = body.x.round().clamp(0.0, (gw - 1) as f32) as isize;
         let gy = body.y.round().clamp(0.0, (gh - 1) as f32) as isize;
-        let iso_x = (gx - gy) * 2 + ox as isize;
-        let iso_y = (gx + gy) / 2 + oy as isize;
-        let altitude = body.z.clamp(0.0, 5.0) as isize;
+        let iso_x = (gx - gy) * cell_w + ox;
+        let iso_y = (gx + gy) * cell_h_half + oy;
+        let altitude = (body.z * z).clamp(0.0, 5.0) as isize;
 
         if iso_x >= 0 && iso_y >= altitude {
             let sy = (iso_y - altitude) as usize;
@@ -321,11 +698,6 @@ fn render_isometric(
             buf.set(sx + 1, sy, ch, color, (10, 10, 20));
         }
     }
-
-    // Legend
-    let legend_y = buf.height.saturating_sub(2);
-    let legend = " \u{2663}=plant  \u{25CF}=fruit  ~=water  \u{25C6}=fly  \u{2593}=terrain";
-    buf.write_str(0, legend_y, legend, (140, 140, 160), (20, 20, 35));
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +709,7 @@ fn render_topdown_color(
     world: &TerrariumWorld,
     snapshot: &TerrariumWorldSnapshot,
     frame_idx: usize,
+    vs: &ViewState,
 ) {
     buf.clear();
     let gw = world.config.width;
@@ -344,14 +717,16 @@ fn render_topdown_color(
     let moisture = world.moisture_field();
 
     let header = format!(
-        " Terrarium Top-Down | F:{} | {} | {:.0}C | P:{} Fl:{} Fr:{}",
+        " Terrarium Top-Down | F:{} | {} | {:.0}C | P:{} Fl:{} Fr:{}  zoom:{:.1}x",
         frame_idx, world.time_label(), snapshot.temperature,
-        snapshot.plants, snapshot.flies, snapshot.fruits,
+        snapshot.plants, snapshot.flies, snapshot.fruits, vs.zoom,
     );
     buf.write_str(0, 0, &header[..header.len().min(buf.width)], (0, 220, 255), (20, 20, 40));
 
-    let ox = (buf.width.saturating_sub(gw * 2)) / 2;
-    let oy = 2;
+    let scale = (2.0 * vs.zoom).round() as usize;
+    let scale = scale.max(1).min(6);
+    let ox = ((buf.width as isize).saturating_sub((gw * scale) as isize)) / 2 + vs.camera_x * scale as isize;
+    let oy = 2 + vs.camera_y;
 
     for gy in 0..gh {
         for gx in 0..gw {
@@ -359,8 +734,15 @@ fn render_topdown_color(
             let m = if m_idx < moisture.len() { moisture[m_idx] } else { 0.3 };
             let color = soil_color(m, m * 0.5);
             let ch = if m > 0.5 { '\u{2593}' } else if m > 0.3 { '\u{2592}' } else { '\u{2591}' };
-            buf.set(ox + gx * 2, oy + gy, ch, color, (10, 10, 20));
-            buf.set(ox + gx * 2 + 1, oy + gy, ch, color, (10, 10, 20));
+            let px = ox + (gx * scale) as isize;
+            let py = oy + gy as isize;
+            if py >= 0 {
+                for dx in 0..scale {
+                    if px + dx as isize >= 0 {
+                        buf.set((px + dx as isize) as usize, py as usize, ch, color, (10, 10, 20));
+                    }
+                }
+            }
         }
     }
 
@@ -372,8 +754,13 @@ fn render_topdown_color(
                     let wx = water.x.saturating_add(dx).saturating_sub(1);
                     let wy = water.y.saturating_add(dy).saturating_sub(1);
                     if wx < gw && wy < gh {
-                        buf.set(ox + wx * 2, oy + wy, wave, (80, 160, 255), (20, 50, 100));
-                        buf.set(ox + wx * 2 + 1, oy + wy, wave, (80, 160, 255), (20, 50, 100));
+                        let px = ox + (wx * scale) as isize;
+                        let py = oy + wy as isize;
+                        if px >= 0 && py >= 0 {
+                            for s in 0..scale {
+                                buf.set((px + s as isize) as usize, py as usize, wave, (80, 160, 255), (20, 50, 100));
+                            }
+                        }
                     }
                 }
             }
@@ -385,15 +772,25 @@ fn render_topdown_color(
         let vitality = plant.cellular.vitality();
         let pc = plant_color(cells * 0.01, vitality);
         let ch = if cells > 50.0 { '\u{2663}' } else { '\u{2022}' };
-        buf.set(ox + plant.x * 2, oy + plant.y, ch, pc, (10, 30, 10));
-        buf.set(ox + plant.x * 2 + 1, oy + plant.y, ch, pc, (10, 30, 10));
+        let px = ox + (plant.x * scale) as isize;
+        let py = oy + plant.y as isize;
+        if px >= 0 && py >= 0 {
+            buf.set(px as usize, py as usize, ch, pc, (10, 30, 10));
+            if scale > 1 {
+                buf.set((px + 1) as usize, py as usize, ch, pc, (10, 30, 10));
+            }
+        }
     }
 
     for fruit in &world.fruits {
         if fruit.source.alive && fruit.source.sugar_content > 0.01 {
             let ripe = fruit.source.ripeness.clamp(0.0, 1.0);
             let c = lerp_color((100, 200, 50), (255, 80, 30), ripe);
-            buf.set(ox + fruit.source.x * 2, oy + fruit.source.y, '\u{25CF}', c, (10, 10, 20));
+            let px = ox + (fruit.source.x * scale) as isize;
+            let py = oy + fruit.source.y as isize;
+            if px >= 0 && py >= 0 {
+                buf.set(px as usize, py as usize, '\u{25CF}', c, (10, 10, 20));
+            }
         }
     }
 
@@ -406,10 +803,14 @@ fn render_topdown_color(
         } else {
             ('\u{25C6}', (255, 200, 80))
         };
-        buf.set(ox + gx * 2, oy + gy, ch, color, (10, 10, 20));
+        let px = ox + (gx * scale) as isize;
+        let py = oy + gy as isize;
+        if px >= 0 && py >= 0 {
+            buf.set(px as usize, py as usize, ch, color, (10, 10, 20));
+        }
     }
 
-    let stats_y = oy + gh + 1;
+    let stats_y = oy.max(0) as usize + gh + 1;
     let stats = [
         format!(" Moisture:{:.3} Deep:{:.3} Glucose:{:.3}", snapshot.mean_soil_moisture, snapshot.mean_deep_moisture, snapshot.mean_soil_glucose),
         format!(" Microbes:{:.3} Symbionts:{:.3} ATP:{:.3}", snapshot.mean_microbes, snapshot.mean_symbionts, snapshot.mean_soil_atp_flux),
@@ -417,7 +818,7 @@ fn render_topdown_color(
         format!(" FlyEnergy:{:.1} FlyEC:{:.2} Seeds:{} Events:{}", snapshot.avg_fly_energy, snapshot.avg_fly_energy_charge, snapshot.seeds, snapshot.ecology_event_count),
     ];
     for (i, line) in stats.iter().enumerate() {
-        if stats_y + i < buf.height {
+        if stats_y + i < buf.height.saturating_sub(3) {
             buf.write_str(0, stats_y + i, &line[..line.len().min(buf.width)], (160, 200, 160), (15, 25, 15));
         }
     }
@@ -432,6 +833,7 @@ fn render_heatmap(
     world: &TerrariumWorld,
     snapshot: &TerrariumWorldSnapshot,
     frame_idx: usize,
+    vs: &ViewState,
 ) {
     buf.clear();
     let gw = world.config.width;
@@ -439,16 +841,17 @@ fn render_heatmap(
     let moisture = world.moisture_field();
 
     let header = format!(
-        " Moisture Heatmap | F:{} | {:.0}C | Avg:{:.3} | Plants:{} Flies:{}",
+        " Moisture Heatmap | F:{} | {:.0}C | Avg:{:.3} | Plants:{} Flies:{}  zoom:{:.1}x",
         frame_idx, snapshot.temperature, snapshot.mean_soil_moisture,
-        snapshot.plants, snapshot.flies,
+        snapshot.plants, snapshot.flies, vs.zoom,
     );
     buf.write_str(0, 0, &header[..header.len().min(buf.width)], (255, 200, 0), (30, 10, 10));
 
-    let ox = (buf.width.saturating_sub(gw * 3)) / 2;
-    let oy = 2;
+    let scale = (3.0 * vs.zoom).round() as usize;
+    let scale = scale.max(1).min(8);
+    let ox = ((buf.width as isize).saturating_sub((gw * scale) as isize)) / 2 + vs.camera_x * scale as isize;
+    let oy = 2 + vs.camera_y;
 
-    // Moisture heatmap with block characters
     for gy in 0..gh {
         for gx in 0..gw {
             let m_idx = gy * gw + gx;
@@ -458,29 +861,39 @@ fn render_heatmap(
                 else if m > 0.5 { '\u{2593}' }
                 else if m > 0.3 { '\u{2592}' }
                 else { '\u{2591}' };
-            for dx in 0..3 {
-                buf.set(ox + gx * 3 + dx, oy + gy, ch, color, (5, 5, 15));
+            let px = ox + (gx * scale) as isize;
+            let py = oy + gy as isize;
+            if py >= 0 {
+                for dx in 0..scale {
+                    if px + dx as isize >= 0 {
+                        buf.set((px + dx as isize) as usize, py as usize, ch, color, (5, 5, 15));
+                    }
+                }
             }
         }
     }
 
     // Overlay plants
     for plant in &world.plants {
-        let px = ox + plant.x * 3 + 1;
-        let py = oy + plant.y;
-        buf.set(px, py, '\u{2663}', (0, 255, 0), (5, 5, 15));
+        let px = ox + (plant.x * scale) as isize + scale as isize / 2;
+        let py = oy + plant.y as isize;
+        if px >= 0 && py >= 0 {
+            buf.set(px as usize, py as usize, '\u{2663}', (0, 255, 0), (5, 5, 15));
+        }
     }
 
     // Overlay flies
     for fly in &world.flies {
         let body = fly.body_state();
-        let fx = ox + (body.x.round().clamp(0.0, (gw - 1) as f32) as usize) * 3 + 1;
-        let fy = oy + body.y.round().clamp(0.0, (gh - 1) as f32) as usize;
-        buf.set(fx, fy, '\u{25C6}', (255, 255, 0), (5, 5, 15));
+        let fx = ox + (body.x.round().clamp(0.0, (gw - 1) as f32) as usize * scale) as isize + scale as isize / 2;
+        let fy = oy + body.y.round().clamp(0.0, (gh - 1) as f32) as isize;
+        if fx >= 0 && fy >= 0 {
+            buf.set(fx as usize, fy as usize, '\u{25C6}', (255, 255, 0), (5, 5, 15));
+        }
     }
 
-    // Color legend
-    let legend_y = oy + gh + 1;
+    // Color legend bar
+    let legend_y = (oy.max(0) as usize + gh + 1).min(buf.height.saturating_sub(5));
     buf.write_str(0, legend_y, " Moisture: ", (200, 200, 200), (15, 15, 25));
     let labels = ["0.0", "0.25", "0.5", "0.75", "1.0"];
     for (i, &label) in labels.iter().enumerate() {
@@ -505,17 +918,16 @@ fn render_dashboard(
     buf.clear();
     let dash = ecosystem_dashboard(snapshot_history, buf.width);
     for (y, line) in dash.lines().enumerate() {
-        if y >= buf.height { break; }
+        if y >= buf.height.saturating_sub(3) { break; }
         let is_header = line.starts_with('=') || line.starts_with('-');
         let fg_c = if is_header { (0, 220, 255) } else { (200, 220, 200) };
         let bg_c = if is_header { (20, 40, 60) } else { (15, 15, 25) };
         buf.write_str(0, y, &line[..line.len().min(buf.width)], fg_c, bg_c);
     }
 
-    // Frame counter in bottom right
     let frame_str = format!(" F:{frame_idx} ");
     let fx = buf.width.saturating_sub(frame_str.len() + 1);
-    buf.write_str(fx, buf.height.saturating_sub(1), &frame_str, (255, 200, 100), (30, 30, 50));
+    buf.write_str(fx, buf.height.saturating_sub(4), &frame_str, (255, 200, 100), (30, 30, 50));
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +944,6 @@ fn draw_minimap(
     let gh = world.config.height;
     let moisture = world.moisture_field();
 
-    // Draw border
     buf.write_str(map_x, map_y, "\u{250C}", (80, 80, 120), (10, 10, 20));
     for x in 1..=gw {
         buf.set(map_x + x, map_y, '\u{2500}', (80, 80, 120), (10, 10, 20));
@@ -550,21 +961,18 @@ fn draw_minimap(
         buf.set(map_x + gw + 1, map_y + gy + 1, '\u{2502}', (80, 80, 120), (10, 10, 20));
     }
 
-    // Bottom border
     buf.set(map_x, map_y + gh + 1, '\u{2514}', (80, 80, 120), (10, 10, 20));
     for x in 1..=gw {
         buf.set(map_x + x, map_y + gh + 1, '\u{2500}', (80, 80, 120), (10, 10, 20));
     }
     buf.set(map_x + gw + 1, map_y + gh + 1, '\u{2518}', (80, 80, 120), (10, 10, 20));
 
-    // Plants on minimap
     for plant in &world.plants {
         if plant.x < gw && plant.y < gh {
             buf.set(map_x + plant.x + 1, map_y + plant.y + 1, '\u{2022}', (0, 200, 0), (5, 5, 10));
         }
     }
 
-    // Flies on minimap
     for fly in &world.flies {
         let body = fly.body_state();
         let fx = body.x.round().clamp(0.0, (gw - 1) as f32) as usize;
@@ -626,6 +1034,17 @@ fn print_usage() {
     eprintln!("  --no-color       Disable ANSI colors");
     eprintln!("  --cpu-substrate  Use CPU substrate instead of GPU");
     eprintln!("  --help, -h       Show this help");
+    eprintln!();
+    eprintln!("Interactive Controls:");
+    eprintln!("  W/A/S/D or Arrows  Pan camera");
+    eprintln!("  +  /  -            Zoom in / out");
+    eprintln!("  Tab                Cycle view mode");
+    eprintln!("  1-5                Jump to view mode");
+    eprintln!("  Space              Pause / resume");
+    eprintln!("  H                  Toggle help overlay");
+    eprintln!("  M                  Toggle minimap");
+    eprintln!("  R                  Reset camera");
+    eprintln!("  Q / Esc            Quit");
 }
 
 fn parse_args() -> Result<Cli, String> {
@@ -671,9 +1090,7 @@ fn main() -> ExitCode {
         Err(e) => { eprintln!("failed to build terrarium: {e}"); return ExitCode::FAILURE; }
     };
 
-    // Auto-detect terminal size
     let (term_width, term_height) = terminal_size();
-
     let mut buf = ScreenBuffer::new(term_width, term_height);
 
     let frame_budget = if cli.fps > 0 {
@@ -682,8 +1099,12 @@ fn main() -> ExitCode {
         None
     };
 
-    // Keep snapshot history for dashboard mode
     let mut snapshot_history: Vec<TerrariumWorldSnapshot> = Vec::with_capacity(256);
+    let mut vs = ViewState::new(cli.mode, cli.show_minimap);
+
+    // Enable raw terminal mode for keyboard input
+    let raw_ok = set_raw_mode();
+    let key_rx = if raw_ok { Some(spawn_key_reader()) } else { None };
 
     // Hide cursor, clear screen
     print!("\x1b[?25l\x1b[2J");
@@ -693,73 +1114,173 @@ fn main() -> ExitCode {
     let mut last_fps = 0.0f32;
     let mut fps_timer = Instant::now();
     let mut fps_frames = 0usize;
+    let mut quit = false;
 
     loop {
-        let started = Instant::now();
-        if let Err(e) = world.step_frame() {
-            eprintln!("step failed: {e}");
-            break;
-        }
-        frame_idx += 1;
-        let snapshot = world.snapshot();
-
-        // Keep last 200 snapshots for dashboard
-        if snapshot_history.len() >= 200 {
-            snapshot_history.remove(0);
-        }
-        snapshot_history.push(snapshot.clone());
-
-        match cli.mode {
-            ViewMode::Isometric => {
-                render_isometric(&mut buf, &world, &snapshot, frame_idx);
-                if cli.show_minimap {
-                    let mx = buf.width.saturating_sub(world.config.width + 4);
-                    draw_minimap(&mut buf, &world, mx, 3);
+        // Handle keyboard input (non-blocking)
+        if let Some(ref rx) = key_rx {
+            while let Ok(key) = rx.try_recv() {
+                match key {
+                    KeyInput::Char('q') => { quit = true; }
+                    KeyInput::Char('h') => { vs.show_help = !vs.show_help; }
+                    KeyInput::Char('\t') => { vs.cycle_mode(); }
+                    KeyInput::Char('m') => { vs.show_minimap = !vs.show_minimap; }
+                    KeyInput::Char(' ') => { vs.paused = !vs.paused; }
+                    KeyInput::Char('r') => {
+                        vs.camera_x = 0;
+                        vs.camera_y = 0;
+                        vs.zoom = 1.0;
+                    }
+                    KeyInput::Char('w') | KeyInput::Up => { vs.camera_y += 2; }
+                    KeyInput::Char('s') | KeyInput::Down => { vs.camera_y -= 2; }
+                    KeyInput::Char('a') | KeyInput::Left => { vs.camera_x += 2; }
+                    KeyInput::Char('d') | KeyInput::Right => { vs.camera_x -= 2; }
+                    KeyInput::Char('+') => {
+                        vs.zoom = (vs.zoom + 0.2).min(3.0);
+                    }
+                    KeyInput::Char('-') => {
+                        vs.zoom = (vs.zoom - 0.2).max(0.4);
+                    }
+                    KeyInput::Char('1') => { vs.mode = ViewMode::Isometric; }
+                    KeyInput::Char('2') => { vs.mode = ViewMode::TopDown; }
+                    KeyInput::Char('3') => { vs.mode = ViewMode::Heatmap; }
+                    KeyInput::Char('4') => { vs.mode = ViewMode::Dashboard; }
+                    KeyInput::Char('5') => { vs.mode = ViewMode::Split; }
+                    _ => {}
                 }
             }
-            ViewMode::TopDown => {
-                render_topdown_color(&mut buf, &world, &snapshot, frame_idx);
-                if cli.show_minimap {
-                    let mx = buf.width.saturating_sub(world.config.width + 4);
-                    draw_minimap(&mut buf, &world, mx, 3);
-                }
+        }
+
+        if quit { break; }
+
+        // Step simulation (unless paused)
+        if !vs.paused {
+            let started = Instant::now();
+            if let Err(e) = world.step_frame() {
+                eprintln!("\x1b[?25h\x1b[0m\nstep failed: {e}");
+                restore_terminal();
+                return ExitCode::FAILURE;
             }
-            ViewMode::Split => {
-                let half_w = term_width / 2;
-                let mut left = ScreenBuffer::new(half_w, term_height);
-                let mut right = ScreenBuffer::new(half_w, term_height);
-                render_isometric(&mut left, &world, &snapshot, frame_idx);
-                render_topdown_color(&mut right, &world, &snapshot, frame_idx);
-                buf.clear();
-                for y in 0..term_height {
-                    for x in 0..half_w {
-                        let lc = &left.cells[y * half_w + x];
-                        buf.set(x, y, lc.ch, lc.fg, lc.bg);
-                        if x < right.width {
-                            let rc = &right.cells[y * right.width + x];
-                            buf.set(x + half_w, y, rc.ch, rc.fg, rc.bg);
+            frame_idx += 1;
+            let snapshot = world.snapshot();
+
+            if snapshot_history.len() >= 200 {
+                snapshot_history.remove(0);
+            }
+            snapshot_history.push(snapshot.clone());
+
+            // Render the scene
+            match vs.mode {
+                ViewMode::Isometric => {
+                    render_isometric(&mut buf, &world, &snapshot, frame_idx, &vs);
+                    if vs.show_minimap {
+                        let mx = buf.width.saturating_sub(world.config.width + 4);
+                        draw_minimap(&mut buf, &world, mx, 3);
+                    }
+                }
+                ViewMode::TopDown => {
+                    render_topdown_color(&mut buf, &world, &snapshot, frame_idx, &vs);
+                    if vs.show_minimap {
+                        let mx = buf.width.saturating_sub(world.config.width + 4);
+                        draw_minimap(&mut buf, &world, mx, 3);
+                    }
+                }
+                ViewMode::Split => {
+                    let half_w = term_width / 2;
+                    let mut left = ScreenBuffer::new(half_w, term_height);
+                    let mut right = ScreenBuffer::new(half_w, term_height);
+                    render_isometric(&mut left, &world, &snapshot, frame_idx, &vs);
+                    render_topdown_color(&mut right, &world, &snapshot, frame_idx, &vs);
+                    buf.clear();
+                    for y in 0..term_height {
+                        for x in 0..half_w {
+                            let lc = &left.cells[y * half_w + x];
+                            buf.set(x, y, lc.ch, lc.fg, lc.bg);
+                            if x < right.width {
+                                let rc = &right.cells[y * right.width + x];
+                                buf.set(x + half_w, y, rc.ch, rc.fg, rc.bg);
+                            }
                         }
                     }
                 }
+                ViewMode::Heatmap => {
+                    render_heatmap(&mut buf, &world, &snapshot, frame_idx, &vs);
+                }
+                ViewMode::Dashboard => {
+                    render_dashboard(&mut buf, &snapshot_history, frame_idx);
+                }
             }
-            ViewMode::Heatmap => {
-                render_heatmap(&mut buf, &world, &snapshot, frame_idx);
+
+            // FPS counter
+            fps_frames += 1;
+            if fps_timer.elapsed().as_secs_f32() >= 1.0 {
+                last_fps = fps_frames as f32 / fps_timer.elapsed().as_secs_f32();
+                fps_frames = 0;
+                fps_timer = Instant::now();
             }
-            ViewMode::Dashboard => {
-                render_dashboard(&mut buf, &snapshot_history, frame_idx);
+
+            // --- compute step time for display ---
+            let _step_ms = started.elapsed().as_millis();
+        } else {
+            // Even when paused, re-render the last frame so overlays update
+            if let Some(snapshot) = snapshot_history.last() {
+                match vs.mode {
+                    ViewMode::Isometric => {
+                        render_isometric(&mut buf, &world, snapshot, frame_idx, &vs);
+                        if vs.show_minimap {
+                            let mx = buf.width.saturating_sub(world.config.width + 4);
+                            draw_minimap(&mut buf, &world, mx, 3);
+                        }
+                    }
+                    ViewMode::TopDown => {
+                        render_topdown_color(&mut buf, &world, snapshot, frame_idx, &vs);
+                        if vs.show_minimap {
+                            let mx = buf.width.saturating_sub(world.config.width + 4);
+                            draw_minimap(&mut buf, &world, mx, 3);
+                        }
+                    }
+                    ViewMode::Split => {
+                        let half_w = term_width / 2;
+                        let mut left = ScreenBuffer::new(half_w, term_height);
+                        let mut right = ScreenBuffer::new(half_w, term_height);
+                        render_isometric(&mut left, &world, snapshot, frame_idx, &vs);
+                        render_topdown_color(&mut right, &world, snapshot, frame_idx, &vs);
+                        buf.clear();
+                        for y in 0..term_height {
+                            for x in 0..half_w {
+                                let lc = &left.cells[y * half_w + x];
+                                buf.set(x, y, lc.ch, lc.fg, lc.bg);
+                                if x < right.width {
+                                    let rc = &right.cells[y * right.width + x];
+                                    buf.set(x + half_w, y, rc.ch, rc.fg, rc.bg);
+                                }
+                            }
+                        }
+                    }
+                    ViewMode::Heatmap => {
+                        render_heatmap(&mut buf, &world, snapshot, frame_idx, &vs);
+                    }
+                    ViewMode::Dashboard => {
+                        render_dashboard(&mut buf, &snapshot_history, frame_idx);
+                    }
+                }
             }
         }
 
-        // FPS counter
-        fps_frames += 1;
-        if fps_timer.elapsed().as_secs_f32() >= 1.0 {
-            last_fps = fps_frames as f32 / fps_timer.elapsed().as_secs_f32();
-            fps_frames = 0;
-            fps_timer = Instant::now();
-        }
+        // Draw FPS in top-right
         let fps_str = format!(" FPS: {last_fps:.1} ");
         let fps_x = buf.width.saturating_sub(fps_str.len() + 1);
         buf.write_str(fps_x, 0, &fps_str, (255, 255, 100), (20, 20, 40));
+
+        // Draw legend bar (always visible at bottom)
+        if vs.show_legend {
+            draw_legend_bar(&mut buf, &vs);
+        }
+
+        // Draw help overlay on top of everything
+        if vs.show_help {
+            draw_help_overlay(&mut buf);
+        }
 
         let rendered = buf.render(cli.use_color);
         print!("{rendered}");
@@ -770,15 +1291,18 @@ fn main() -> ExitCode {
         }
 
         if let Some(target) = frame_budget {
-            let elapsed = started.elapsed();
-            if elapsed < target {
-                thread::sleep(target - elapsed);
-            }
+            // Sleep for remaining frame budget (use shorter sleep when paused for responsiveness)
+            let target = if vs.paused { Duration::from_millis(50) } else { target };
+            let elapsed = Instant::now() - fps_timer + Duration::from_secs_f32(fps_frames as f32 / cli.fps.max(1) as f32);
+            let _ = elapsed; // not used for sleep calc; use simple approach
+            thread::sleep(target);
         }
     }
 
-    // Show cursor
-    print!("\x1b[?25h");
+    // Restore terminal
+    restore_terminal();
+    print!("\x1b[?25h\x1b[0m\n");
     let _ = io::stdout().flush();
+    println!("Terrarium exited after {frame_idx} frames.");
     ExitCode::SUCCESS
 }
