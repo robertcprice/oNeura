@@ -13,7 +13,7 @@
 
 use crate::gpu;
 #[cfg(target_os = "macos")]
-use crate::gpu::terrarium_substrate::dispatch_terrarium_substrate;
+use crate::gpu::terrarium_substrate::{dispatch_terrarium_substrate, dispatch_terrarium_substrate_persistent};
 
 #[cfg(target_os = "macos")]
 use crate::gpu::GpuContext;
@@ -128,6 +128,16 @@ pub struct BatchedAtomTerrarium {
     backend: TerrariumBackend,
     #[cfg(target_os = "macos")]
     gpu: Option<GpuContext>,
+    #[cfg(target_os = "macos")]
+    gpu_buf_current: Option<metal::Buffer>,
+    #[cfg(target_os = "macos")]
+    gpu_buf_next: Option<metal::Buffer>,
+    #[cfg(target_os = "macos")]
+    gpu_buf_hydration: Option<metal::Buffer>,
+    #[cfg(target_os = "macos")]
+    gpu_buf_microbes: Option<metal::Buffer>,
+    #[cfg(target_os = "macos")]
+    gpu_buf_plants: Option<metal::Buffer>,
     time_ms: f32,
     step_count: u64,
 }
@@ -148,10 +158,23 @@ impl BatchedAtomTerrarium {
         };
 
         #[cfg(target_os = "macos")]
-        let gpu = if backend == TerrariumBackend::Metal {
-            GpuContext::new().ok()
+        let (gpu, gpu_buf_current, gpu_buf_next, gpu_buf_hydration, gpu_buf_microbes, gpu_buf_plants) = if backend == TerrariumBackend::Metal {
+            if let Some(gpu_ctx) = GpuContext::new().ok() {
+                let size_species = (TERRARIUM_SPECIES_COUNT * total_voxels * std::mem::size_of::<f32>()) as u64;
+                let size_scalar = (total_voxels * std::mem::size_of::<f32>()) as u64;
+                
+                let buf_current = gpu_ctx.buffer_of_size(size_species);
+                let buf_next = gpu_ctx.buffer_of_size(size_species);
+                let buf_hydration = gpu_ctx.buffer_of_size(size_scalar);
+                let buf_microbes = gpu_ctx.buffer_of_size(size_scalar);
+                let buf_plants = gpu_ctx.buffer_of_size(size_scalar);
+                
+                (Some(gpu_ctx), Some(buf_current), Some(buf_next), Some(buf_hydration), Some(buf_microbes), Some(buf_plants))
+            } else {
+                (None, None, None, None, None, None)
+            }
         } else {
-            None
+            (None, None, None, None, None, None)
         };
 
         let backend = {
@@ -184,6 +207,16 @@ impl BatchedAtomTerrarium {
             backend,
             #[cfg(target_os = "macos")]
             gpu,
+            #[cfg(target_os = "macos")]
+            gpu_buf_current,
+            #[cfg(target_os = "macos")]
+            gpu_buf_next,
+            #[cfg(target_os = "macos")]
+            gpu_buf_hydration,
+            #[cfg(target_os = "macos")]
+            gpu_buf_microbes,
+            #[cfg(target_os = "macos")]
+            gpu_buf_plants,
             time_ms: 0.0,
             step_count: 0,
         };
@@ -461,19 +494,44 @@ impl BatchedAtomTerrarium {
                 #[cfg(target_os = "macos")]
                 {
                     if let Some(ref gpu) = self.gpu {
-                        dispatch_terrarium_substrate(
-                            gpu,
-                            &self.current,
-                            &mut self.next,
-                            &self.hydration,
-                            &self.microbial_activity,
-                            &self.plant_drive,
-                            self.x_dim,
-                            self.y_dim,
-                            self.z_dim,
-                            self.voxel_size_mm,
-                            dt_ms,
-                        );
+                        // Use persistent buffers if available, otherwise fall back to per-frame allocation
+                        if let (Some(ref buf_current), Some(ref buf_next), Some(ref buf_hydration), 
+                                Some(ref buf_microbes), Some(ref buf_plants)) = 
+                            (&self.gpu_buf_current, &self.gpu_buf_next, &self.gpu_buf_hydration, 
+                             &self.gpu_buf_microbes, &self.gpu_buf_plants) {
+                            dispatch_terrarium_substrate_persistent(
+                                gpu,
+                                buf_current,
+                                buf_next,
+                                buf_hydration,
+                                buf_microbes,
+                                buf_plants,
+                                &self.current,
+                                &mut self.next,
+                                &self.hydration,
+                                &self.microbial_activity,
+                                &self.plant_drive,
+                                self.x_dim,
+                                self.y_dim,
+                                self.z_dim,
+                                self.voxel_size_mm,
+                                dt_ms,
+                            );
+                        } else {
+                            dispatch_terrarium_substrate(
+                                gpu,
+                                &self.current,
+                                &mut self.next,
+                                &self.hydration,
+                                &self.microbial_activity,
+                                &self.plant_drive,
+                                self.x_dim,
+                                self.y_dim,
+                                self.z_dim,
+                                self.voxel_size_mm,
+                                dt_ms,
+                            );
+                        }
                     } else {
                         self.cpu_step_into_next(dt_ms);
                     }

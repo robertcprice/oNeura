@@ -86,3 +86,99 @@ pub fn dispatch_terrarium_substrate(
     _dt_ms: f32,
 ) {
 }
+
+#[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_terrarium_substrate_persistent(
+    gpu: &GpuContext,
+    buf_current: &metal::Buffer,
+    buf_next: &metal::Buffer,
+    buf_hydration: &metal::Buffer,
+    buf_microbes: &metal::Buffer,
+    buf_plants: &metal::Buffer,
+    current: &[f32],
+    next: &mut [f32],
+    hydration: &[f32],
+    microbes: &[f32],
+    plant_drive: &[f32],
+    x_dim: usize,
+    y_dim: usize,
+    z_dim: usize,
+    voxel_size_mm: f32,
+    dt_ms: f32,
+) {
+    let total_voxels = (x_dim * y_dim * z_dim) as u64;
+    if total_voxels == 0 {
+        return;
+    }
+
+    // Copy input data into persistent buffers
+    unsafe {
+        let ptr_current = buf_current.contents() as *mut f32;
+        std::ptr::copy_nonoverlapping(current.as_ptr(), ptr_current, current.len());
+        
+        let ptr_hydration = buf_hydration.contents() as *mut f32;
+        std::ptr::copy_nonoverlapping(hydration.as_ptr(), ptr_hydration, hydration.len());
+        
+        let ptr_microbes = buf_microbes.contents() as *mut f32;
+        std::ptr::copy_nonoverlapping(microbes.as_ptr(), ptr_microbes, microbes.len());
+        
+        let ptr_plants = buf_plants.contents() as *mut f32;
+        std::ptr::copy_nonoverlapping(plant_drive.as_ptr(), ptr_plants, plant_drive.len());
+    }
+
+    let params = TerrariumParams {
+        x_dim: x_dim as u32,
+        y_dim: y_dim as u32,
+        z_dim: z_dim as u32,
+        voxel_size_mm,
+        dt_ms,
+    };
+    let param_bytes = unsafe {
+        std::slice::from_raw_parts(
+            &params as *const TerrariumParams as *const u8,
+            std::mem::size_of::<TerrariumParams>(),
+        )
+    };
+
+    gpu.dispatch_1d(
+        &gpu.pipelines.terrarium_substrate,
+        &[
+            (buf_current, 0),
+            (buf_next, 0),
+            (buf_hydration, 0),
+            (buf_microbes, 0),
+            (buf_plants, 0),
+        ],
+        Some((param_bytes, 5)),
+        total_voxels,
+    );
+
+    // Copy results back
+    unsafe {
+        let ptr = buf_next.contents() as *const f32;
+        std::ptr::copy_nonoverlapping(ptr, next.as_mut_ptr(), next.len());
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_terrarium_substrate_persistent(
+    _gpu: &super::GpuContext,
+    _buf_current: &(),
+    _buf_next: &(),
+    _buf_hydration: &(),
+    _buf_microbes: &(),
+    _buf_plants: &(),
+    _current: &[f32],
+    _next: &mut [f32],
+    _hydration: &[f32],
+    _microbes: &[f32],
+    _plant_drive: &[f32],
+    _x_dim: usize,
+    _y_dim: usize,
+    _z_dim: usize,
+    _voxel_size_mm: f32,
+    _dt_ms: f32,
+) {
+}

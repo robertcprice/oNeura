@@ -1152,6 +1152,8 @@ pub struct TerrariumWorld {
     pub md_calibrator: Option<calibrator::MolecularRateCalibrator>,
     pub packet_populations: Vec<packet::GenotypePacketPopulation>,
     pub air_pressure_kpa: Vec<f32>,
+    /// Global substep counter for multi-rate scheduling.
+    substep_counter: u64,
 }
 
 impl TerrariumWorld {
@@ -1431,6 +1433,7 @@ impl TerrariumWorld {
             md_calibrator: None,
             packet_populations: Vec::new(),
             air_pressure_kpa: vec![101.325; plane],
+            substep_counter: 0,
             config,
         })
     }
@@ -2661,24 +2664,45 @@ impl TerrariumWorld {
     pub fn step_frame(&mut self) -> Result<(), String> {
         self.ecology_events.clear();
         let eco_dt = self.config.world_dt_s * self.config.time_warp;
-        for _ in 0..self.config.substeps.max(1) {
-            self.rebuild_ecology_fields()?;
+        let substeps = self.config.substeps.max(1);
+
+        // Rebuild ecology fields once at frame start (not 2x per substep)
+        self.rebuild_ecology_fields()?;
+
+        for _ in 0..substeps {
+            let sc = self.substep_counter;
+
+            // ── Every substep: core chemistry + fly behavior ──
             self.step_broad_soil(eco_dt)?;
-            self.step_soil_fauna(eco_dt);
             self.sync_substrate_controls()?;
             self.substrate.step(self.config.substrate_dt_ms);
-            self.step_plant_competition();
-            self.step_plants(eco_dt)?;
-            self.rebuild_ecology_fields()?;
-            self.step_world_fields()?;
             self.step_flies()?;
             self.step_fly_metabolism(eco_dt);
-            self.step_fly_population(eco_dt);
-            self.step_food_patches_native(eco_dt)?;
-            self.step_seeds_native(eco_dt)?;
-            self.step_atomistic_probes();
-            crate::enzyme_probes::apply_probe_catalytic_feedback(self);
+
+            // ── Every 2 substeps: plant growth, world fields ──
+            if sc % 2 == 0 {
+                self.step_plants(eco_dt * 2.0)?;
+                self.step_world_fields()?;
+                self.step_food_patches_native(eco_dt * 2.0)?;
+                self.step_seeds_native(eco_dt * 2.0)?;
+            }
+
+            // ── Every 5 substeps: plant competition, fly population ──
+            if sc % 5 == 0 {
+                self.step_plant_competition();
+                self.step_fly_population(eco_dt * 5.0);
+                self.rebuild_ecology_fields()?;
+            }
+
+            // ── Every 10 substeps: soil fauna, atomistic probes ──
+            if sc % 10 == 0 {
+                self.step_soil_fauna(eco_dt * 10.0);
+                self.step_atomistic_probes();
+                crate::enzyme_probes::apply_probe_catalytic_feedback(self);
+            }
+
             self.time_s += eco_dt;
+            self.substep_counter += 1;
         }
         Ok(())
     }
