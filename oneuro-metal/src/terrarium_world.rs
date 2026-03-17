@@ -731,7 +731,7 @@ pub struct TerrariumWorld {
     /// Telemetry events emitted during the current step batch.
     ecology_events: Vec<EcologyTelemetryEvent>,
     /// Atomistic/MD probes embedded in the terrarium grid.
-    atomistic_probes: Vec<AtomisticProbe>,
+    pub(crate) atomistic_probes: Vec<AtomisticProbe>,
     /// Next probe ID for spawn_probe().
     next_probe_id: u32,
     /// Per-cell ownership map — determines which biology is authoritative.
@@ -1916,6 +1916,11 @@ impl TerrariumWorld {
     /// Read-only access to the probes.
     pub fn probes(&self) -> &[AtomisticProbe] {
         &self.atomistic_probes
+    }
+
+    /// Mutable access to the probes (for temperature coupling).
+    pub fn probes_mut(&mut self) -> &mut Vec<AtomisticProbe> {
+        &mut self.atomistic_probes
     }
 
     pub fn step_frame(&mut self) -> Result<(), String> {
