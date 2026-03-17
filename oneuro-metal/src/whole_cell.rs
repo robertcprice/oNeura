@@ -57,7 +57,7 @@ mod initialization;
 mod local_chemistry;
 mod membrane;
 mod spatial;
-mod stochastic_expression;
+pub(crate) mod stochastic_expression;
 #[cfg(test)]
 mod tests;
 

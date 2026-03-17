@@ -241,7 +241,9 @@ cargo build --profile fast --no-default-features --bin terrarium_evolve
 ./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
 ```
 
-Modes: Standard, NSGA-II Pareto (7 objectives), Stress-Test (drought+heat), Coevolution (fly brain).
+Modes: Standard, NSGA-II Pareto (7 objectives), Stress-Test (drought+heat), Coevolution (fly brain), **Bet-Hedging** (noise-driven evolution exploiting stochastic gene expression for phenotypic variance).
+
+Includes **persister cell modeling** — simulates antibiotic persistence where stochastically dormant cells survive treatment, with biphasic kill curve detection and treatment protocol simulation (Balaban et al. 2004).
 
 ### Whole-Cell Simulation — Syn3A Minimal Cell (Rust)
 
@@ -365,10 +367,11 @@ cd oneuro-metal
 cargo build --profile fast --no-default-features --bin terrarium_evolve --bin terrarium_native
 ./target/fast/terrarium_evolve --population 8 --generations 5 --frames 100 --fitness biomass --lite
 
-# Run 90-test regression suite (includes stochastic expression)
+# Run 109-test regression suite (includes bet-hedging, persisters, stochastic)
 cargo test --no-default-features --lib -- substrate_stays_bounded guild_activity \
   soil_atmosphere terrarium_evolve drosophila_population plant_competition soil_fauna \
-  fly_metabolism field_coupling seed_cellular terrarium_world organism_metabolism stochastic
+  fly_metabolism field_coupling seed_cellular terrarium_world organism_metabolism \
+  stochastic phenotypic persister bet_hedging benchmark
 ```
 
 ## How dONNs Differ from ANNs

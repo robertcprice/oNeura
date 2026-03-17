@@ -113,13 +113,17 @@ Located in `oneuro-metal/src/whole_cell/stochastic_expression.rs`.
 | WorldGenome seeding (plants/water/fruits/flies) | Working |
 | Telemetry export to JSON | Working |
 | Convergence: fitness 62 to 85 over 5 generations | Verified |
-| 11 unit tests | All pass |
+| Noise-driven bet-hedging evolution | Working |
+| Persister cell antibiotic survival modeling | Working |
+| Per-fly phenotypic noise from stochastic expression | Working |
+| Biphasic kill curve detection | Working |
+| 22 unit tests | All pass |
 
 ## Test Counts (2026-03-16)
 
-90 tests pass in comprehensive regression (0 failures):
+109 tests pass in comprehensive regression (0 failures):
 - terrarium_world: 14
-- terrarium_evolve: 11
+- terrarium_evolve: 22
 - stochastic_expression: 10
 - plant_competition: 10
 - fly_metabolism: 10

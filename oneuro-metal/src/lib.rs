@@ -106,9 +106,11 @@ pub(crate) mod whole_cell_scale_reducers;
 #[allow(dead_code)]
 pub(crate) mod whole_cell_signal_estimators;
 
-// ===== Quantum runtime (220 API errors — see Task #6) =====
-// pub mod subatomic_quantum;
-// pub mod whole_cell_quantum_runtime;
+// ===== Quantum runtime =====
+pub mod subatomic_quantum;
+// NOTE: whole_cell_quantum_runtime depends on missing atomistic_chemistry types
+// (EmbeddedMaterialMixture, StructuralReactionTemplate, etc.). DO NOT uncomment.
+// pub(crate) mod whole_cell_quantum_runtime;
 
 // ===== Terrarium Evolution re-exports =====
 pub use terrarium_evolve::{
@@ -151,6 +153,10 @@ pub mod seed_cellular;
 pub mod fly_metabolism;
 pub mod substrate_coupling;
 pub mod plant_competition;
+
+// NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
+// terrarium_render_pipeline are orphaned and depend on missing APIs.
+// DO NOT add mod declarations for them.
 
 // ===== CUDA simulation modules =====
 #[cfg(feature = "cuda")]
