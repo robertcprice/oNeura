@@ -46,6 +46,8 @@ fn parse_args() -> Args {
                     "microbial" => FitnessObjective::MaxMicrobialHealth,
                     "fly" => FitnessObjective::MaxFlyEcosystem,
                     "metabolism" | "fly_metabolism" => FitnessObjective::MaxFlyMetabolism,
+                    "enzyme" | "enzyme_efficacy" => FitnessObjective::MaxEnzymeEfficacy,
+                    "ecosystem" | "ecosystem_integrity" => FitnessObjective::MaxEcosystemIntegrity,
                     _ => FitnessObjective::MaxBiomass,
                 };
                 i += 1;
@@ -139,7 +141,7 @@ fn print_help() {
     println!("  --generations <N>      Number of generations to run (default: 10)");
     println!("  --frames <N>           Frames to run each world (default: 100)");
     println!("  --fitness <OBJ>        Primary fitness objective (default: biomass)");
-    println!("                         Values: biomass, biodiversity, stability, carbon, fruit, microbial, fly");
+    println!("                         Values: biomass, biodiversity, stability, carbon, fruit, microbial, fly, enzyme, ecosystem");
     println!("  --lite                 Use lite mode (10x8x2 world)");
     println!("  --stress-test          Run stress-test evolution (drought + heat spikes)");
     println!("  --pareto               Run NSGA-II Pareto multi-objective optimization");

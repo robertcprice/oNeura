@@ -90,7 +90,7 @@ impl Xorshift64 {
 // ---------------------------------------------------------------------------
 
 /// IPCC Representative Concentration Pathway or custom climate trajectory.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ClimateScenario {
     /// RCP 2.6: strong mitigation, +1.0 C by 2100, CO2 peaks ~490 ppm.
     Rcp26,
@@ -107,7 +107,7 @@ pub enum ClimateScenario {
 /// Tunable parameters defining a climate trajectory over time.
 ///
 /// All trends are expressed per decade to match IPCC reporting conventions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClimateParams {
     /// Global mean surface temperature at simulation start (degrees C).
     pub base_temp_c: f64,

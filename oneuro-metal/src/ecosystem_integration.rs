@@ -34,7 +34,7 @@ use crate::metabolic_flux::{MetabolicNetwork, soil_microbe_generic};
 // ─── Integrated ecosystem snapshot ──────────────────────────────────────────
 
 /// A snapshot of the entire integrated ecosystem at a single time point.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EcosystemSnapshot {
     /// Current simulation time in days
     pub time_days: f64,
@@ -81,7 +81,7 @@ pub struct EcosystemSnapshot {
 }
 
 /// Configuration for the integrated ecosystem simulation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EcosystemConfig {
     pub climate_scenario: ClimateScenario,
     pub initial_pop_size: usize,
@@ -111,7 +111,7 @@ impl Default for EcosystemConfig {
 }
 
 /// Time series of ecosystem snapshots collected during a simulation run.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EcosystemTimeSeries {
     pub snapshots: Vec<EcosystemSnapshot>,
     pub total_days: f64,

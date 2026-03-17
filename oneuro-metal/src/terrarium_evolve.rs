@@ -328,6 +328,7 @@ pub enum FitnessObjective {
     MaxFlyEcosystem,
     MaxFlyMetabolism,
     MaxEnzymeEfficacy,
+    MaxEcosystemIntegrity,
 }
 
 impl Default for FitnessObjective {
@@ -348,6 +349,7 @@ impl std::fmt::Display for FitnessObjective {
             Self::MaxFlyEcosystem => write!(f, "MaxFlyEcosystem"),
             Self::MaxFlyMetabolism => write!(f, "MaxFlyMetabolism"),
             Self::MaxEnzymeEfficacy => write!(f, "MaxEnzymeEfficacy"),
+            Self::MaxEcosystemIntegrity => write!(f, "MaxEcosystemIntegrity"),
         }
     }
 }
@@ -403,6 +405,21 @@ pub fn evaluate_fitness(objective: FitnessObjective, snapshot: &TerrariumWorldSn
             let organic_matter_improvement = (1.0 - snapshot.mean_soil_redox.abs()).max(0.0);
             probe_stability + nutrient_bonus + organic_matter_improvement * 2.0
         }
+        FitnessObjective::MaxEcosystemIntegrity => {
+            // Multi-trophic ecosystem health score using snapshot fields:
+            // 1. Soil biodiversity (microbial + symbiont density)
+            let soil_bio = (snapshot.mean_microbes + snapshot.mean_symbionts).min(10.0);
+            // 2. Nutrient cycling efficiency (glucose + ammonium turnover proxy)
+            let nutrient_cycling = (snapshot.mean_soil_glucose + snapshot.mean_soil_ammonium).min(10.0);
+            // 3. Trophic balance (plants + flies + microbial diversity)
+            let trophic = snapshot.plants as f32 * 0.5
+                + snapshot.flies as f32 * 2.0
+                + snapshot.mean_microbes * 0.3;
+            // 4. Stability (soil moisture as habitat suitability proxy)
+            let stability = snapshot.mean_soil_moisture * 5.0;
+            // Combined score
+            soil_bio + nutrient_cycling + trophic + stability
+        }
     }
 }
 
@@ -417,6 +434,7 @@ pub struct MultiObjectiveFitness {
     pub microbial: f32,
     pub fly_metabolism: f32,
     pub enzyme_efficacy: f32,
+    pub ecosystem_integrity: f32,
 }
 
 impl MultiObjectiveFitness {
@@ -431,6 +449,7 @@ impl MultiObjectiveFitness {
             microbial: evaluate_fitness(FitnessObjective::MaxMicrobialHealth, snapshot, periodic),
             fly_metabolism: evaluate_fitness(FitnessObjective::MaxFlyMetabolism, snapshot, periodic),
             enzyme_efficacy: evaluate_fitness(FitnessObjective::MaxEnzymeEfficacy, snapshot, periodic),
+            ecosystem_integrity: evaluate_fitness(FitnessObjective::MaxEcosystemIntegrity, snapshot, periodic),
         }
     }
 }
@@ -1307,6 +1326,7 @@ fn compute_crowding_distance(results: &mut [ParetoResult]) {
         |r: &ParetoResult| r.objectives.fruit,
         |r: &ParetoResult| r.objectives.microbial,
         |r: &ParetoResult| r.objectives.enzyme_efficacy,
+        |r: &ParetoResult| r.objectives.ecosystem_integrity,
     ];
 
     for obj_fn in objectives {

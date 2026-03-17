@@ -15,11 +15,12 @@ pub fn build_plant_meshes(plants: &[TerrariumPlant], gw: usize, gh: usize, moist
         let base_y = terrain_height(gx, gy, gw, gh, moisture, seed);
         let wx = gx as f32 * CELL_SIZE;
         let wz = gy as f32 * CELL_SIZE;
-        let plant_h = (plant.physiology.height_mm() * 0.15).clamp(0.3, 2.5);
-        let canopy_r = (plant.canopy_radius_cells() as f32 * 0.12).clamp(0.15, 0.8);
+        // Scale up for visibility (2x bigger)
+        let plant_h = (plant.physiology.height_mm() * 0.30).clamp(0.6, 4.0);
+        let canopy_r = (plant.canopy_radius_cells() as f32 * 0.24).clamp(0.3, 1.4);
         let vit = plant.cellular.vitality();
         let canopy_density = (plant.cellular.total_cells() * 0.01).clamp(0.0, 1.0);
-        let mut plant_tris = make_billboard_quad(v3(wx, base_y, wz), 0.06, plant_h, [0.47, 0.31, 0.16], 4.0);
+        let mut plant_tris = make_billboard_quad(v3(wx, base_y, wz), 0.12, plant_h, [0.47, 0.31, 0.16], 4.0);
         plant_tris.extend(make_diamond(v3(wx, base_y + plant_h, wz), canopy_r, canopy_r * 0.7, canopy_r, plant_color_v3(canopy_density, vit), 8.0));
         tag_all(&mut plant_tris, EntityTag::Plant(i));
         tris.extend(plant_tris);

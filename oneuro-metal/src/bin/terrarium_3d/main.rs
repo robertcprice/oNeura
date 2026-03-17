@@ -119,6 +119,19 @@ fn main() -> ExitCode {
         Err(e) => { eprintln!("failed to build terrarium: {e}"); return ExitCode::FAILURE; }
     };
 
+    // Add more visible entities for better demo
+    for i in 0..20 {
+        let x = (i * 7 + 3) % (world.config.width - 2);
+        let y = (i * 11 + 2) % (world.config.height - 2);
+        let _ = world.add_plant(x, y, None, None);
+    }
+    for i in 0..12 {
+        use oneuro_metal::drosophila::DrosophilaScale;
+        let x = 3.0 + (i as f32 * 3.1) % (world.config.width as f32 - 6.0);
+        let y = 3.0 + (i as f32 * 2.3) % (world.config.height as f32 - 6.0);
+        world.add_fly(DrosophilaScale::Tiny, x, y, seed + i as u64);
+    }
+
     let terrain_seed = world.config.width as u64 * 31 + world.config.height as u64;
 
     let mut window = match Window::new("oNeura Terrarium 3D", TOTAL_W, TOTAL_H, WindowOptions { resize: false, ..WindowOptions::default() }) {
