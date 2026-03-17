@@ -12,14 +12,17 @@ use crate::constants::clamp;
 pub(super) const INTERNAL_SECONDARY_GENOTYPE_AXES: usize = 6;
 pub(super) const PUBLIC_STRAIN_BANKS: usize = 3;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(super) struct SecondaryGenotypeRecord {
     pub(super) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
+    pub(super) genotype_divergence: f32,
+    pub(super) generation: f32,
+    pub(super) novelty: f32,
 }
 
 impl Default for SecondaryGenotypeRecord {
     fn default() -> Self {
-        Self { genes: [0.5; INTERNAL_SECONDARY_GENOTYPE_AXES] }
+        Self { genes: [0.5; INTERNAL_SECONDARY_GENOTYPE_AXES], genotype_divergence: 0.0, generation: 0.0, novelty: 0.0 }
     }
 }
 
@@ -50,7 +53,9 @@ pub(super) struct SecondaryCatalogBankEntryRecord {
 pub(super) struct SecondaryCatalogBankEntry {
     pub(super) occupancy: u32,
     pub(super) packet_mass: f32,
-    pub(super) record: SecondaryCatalogBankEntryRecord,
+    pub(super) record: SecondaryGenotypeRecord,
+    pub(super) catalog: SecondaryGenotypeCatalogRecord,
+    pub(super) genes: [f32; INTERNAL_SECONDARY_GENOTYPE_AXES],
 }
 
 impl SecondaryCatalogBankEntry {
@@ -342,7 +347,20 @@ impl PublicSecondaryBanks {
         axes
     }
 
-    pub(super) fn from_compat_parts(
+    pub(super) fn new(total: usize) -> Self {
+        let empty_bank = || PublicSecondaryBankEntry {
+            packets: vec![0.0; total],
+            trait_a: vec![0.5; total],
+            trait_b: vec![0.5; total],
+            catalog_bank: vec![SecondaryCatalogBankEntry::default(); total.min(64)],
+            catalog_slots: vec![0u32; total],
+        };
+        Self {
+            banks: (0..PUBLIC_STRAIN_BANKS).map(|_| empty_bank()).collect(),
+        }
+    }
+
+        pub(super) fn from_compat_parts(
         packets: [Vec<f32>; PUBLIC_STRAIN_BANKS],
         trait_a: [Vec<f32>; PUBLIC_STRAIN_BANKS],
         trait_b: [Vec<f32>; PUBLIC_STRAIN_BANKS],

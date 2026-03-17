@@ -584,7 +584,7 @@ pub fn recombination(parent_a: &EnzymeVariant, parent_b: &EnzymeVariant, rng: &m
 // ---------------------------------------------------------------------------
 
 /// Compute fitness of a variant for a given target.
-fn compute_fitness(variant: &EnzymeVariant, target: FitnessTarget) -> f64 {
+pub fn compute_fitness(variant: &EnzymeVariant, target: FitnessTarget) -> f64 {
     match target {
         FitnessTarget::Kcat => variant.kcat,
         FitnessTarget::Km => 1.0 / variant.km_um.max(0.001), // lower Km = higher fitness

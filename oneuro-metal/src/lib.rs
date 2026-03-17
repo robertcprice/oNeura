@@ -161,6 +161,9 @@ pub mod cross_scale_coupling;
 pub mod drug_discovery;
 pub mod enzyme_engineering;
 pub mod enzyme_probes;
+pub mod probe_coupling;
+pub mod enzyme_evolution;
+pub mod bioremediation;
 
 // NOTE: terrarium_render, terrarium_scene_query, terrarium_contact,
 // terrarium_render_pipeline are orphaned and depend on missing APIs.
