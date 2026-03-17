@@ -120,6 +120,8 @@ fn main() -> ExitCode {
     let mut screenshot_msg = String::new();
     let mut screenshot_timer = 0u32;
     let mut pop_history: VecDeque<(usize, usize)> = VecDeque::with_capacity(120);
+    let mut sim_speed: u32 = 1;
+    let mut auto_orbit = false;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let started = Instant::now();
@@ -131,6 +133,9 @@ fn main() -> ExitCode {
         if window.is_key_pressed(Key::F, KeyRepeat::No) {
             if sel.is_selected() { cam.following = !cam.following; } else { cam.following = false; }
         }
+        if window.is_key_pressed(Key::T, KeyRepeat::No) { auto_orbit = !auto_orbit; }
+        if window.is_key_pressed(Key::LeftBracket, KeyRepeat::No) { sim_speed = (sim_speed / 2).max(1); }
+        if window.is_key_pressed(Key::RightBracket, KeyRepeat::No) { sim_speed = (sim_speed * 2).min(8); }
 
         // Tab: cycle entity selection
         if window.is_key_pressed(Key::Tab, KeyRepeat::No) {
@@ -183,9 +188,14 @@ fn main() -> ExitCode {
             sel.select(tag);
         }
 
-        // Simulation step
+        // Auto-orbit: slow rotation for demo mode
+        if auto_orbit { cam.yaw += 0.003; }
+
+        // Simulation step (speed-adjusted)
         if !paused {
-            if let Err(e) = world.step_frame() { eprintln!("step failed: {e}"); return ExitCode::FAILURE; }
+            for _ in 0..sim_speed {
+                if let Err(e) = world.step_frame() { eprintln!("step failed: {e}"); return ExitCode::FAILURE; }
+            }
             frame_idx += 1;
 
             // Spawn particles from entities
@@ -352,7 +362,7 @@ fn main() -> ExitCode {
         // Draw panel and HUD
         draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel, &pop_history);
         let msg = if screenshot_timer > 0 { &screenshot_msg } else { "" };
-        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following);
+        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit);
         if screenshot_timer > 0 { screenshot_timer -= 1; }
 
         // FPS counter
@@ -362,9 +372,10 @@ fn main() -> ExitCode {
 
         // Window title
         window.set_title(&format!(
-            "oNeura Terrarium 3D | {} | {} | P:{} Fl:{} | {:.1} FPS | {}{}",
+            "oNeura Terrarium 3D | {} | {} | P:{} Fl:{} | {:.1} FPS | {}{}{}",
             world.time_label(), zoom.label(), snapshot.plants, snapshot.flies, actual_fps,
             if realistic { "Realistic" } else { "Flat" },
+            if sim_speed > 1 { format!(" | {}x", sim_speed) } else { String::new() },
             if sel.is_selected() { format!(" | {}", sel.label()) } else { String::new() },
         ));
 
