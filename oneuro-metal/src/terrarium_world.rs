@@ -707,13 +707,13 @@ pub struct TerrariumWorld {
     canopy_cover: Vec<f32>,
     root_density: Vec<f32>,
     water_mask: Vec<f32>,
-    moisture: Vec<f32>,
+    pub(crate) moisture: Vec<f32>,
     deep_moisture: Vec<f32>,
-    dissolved_nutrients: Vec<f32>,
-    mineral_nitrogen: Vec<f32>,
+    pub(crate) dissolved_nutrients: Vec<f32>,
+    pub(crate) mineral_nitrogen: Vec<f32>,
     shallow_nutrients: Vec<f32>,
     deep_minerals: Vec<f32>,
-    organic_matter: Vec<f32>,
+    pub(crate) organic_matter: Vec<f32>,
     litter_carbon: Vec<f32>,
     microbial_biomass: Vec<f32>,
     symbiont_biomass: Vec<f32>,
@@ -1937,6 +1937,7 @@ impl TerrariumWorld {
             self.step_food_patches_native(eco_dt)?;
             self.step_seeds_native(eco_dt)?;
             self.step_atomistic_probes();
+            crate::enzyme_probes::apply_probe_catalytic_feedback(self);
             self.time_s += eco_dt;
         }
         Ok(())
