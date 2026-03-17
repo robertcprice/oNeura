@@ -1814,7 +1814,7 @@ impl super::TerrariumWorld {
                 let cohort = &self.explicit_microbes[idx];
                 Self::explicit_microbe_step_count(&cohort.simulator, eco_dt)
             };
-            let flux = self.step_single_explicit_microbe(idx, eco_dt, step_count as u64)?;
+            let flux = self.step_single_explicit_microbe(idx as usize, eco_dt, step_count as u64)?;
             atmospheric_fluxes.push(flux);
         }
 
@@ -1866,7 +1866,12 @@ impl super::TerrariumWorld {
                 cumulative_proton_release: 0.0,
                 material_inventory: parent_material_inventory.clone(),
                 simulator: daughter_a,
-                last_snapshot: snap_a,
+                guild: 0,
+                whole_cell: None,
+                patch_radius: EXPLICIT_MICROBE_PATCH_RADIUS,
+                age_steps: 0,
+                idx: 0,
+                last_snapshot: WholeCellSnapshot::from_whole_cell(&snap_a),
             };
 
             // Emit division telemetry event.
@@ -1902,7 +1907,12 @@ impl super::TerrariumWorld {
                     cumulative_proton_release: 0.0,
                     material_inventory: parent_material_inventory,
                     simulator: daughter_b,
-                    last_snapshot: snap_b,
+                guild: 0,
+                whole_cell: None,
+                patch_radius: EXPLICIT_MICROBE_PATCH_RADIUS,
+                age_steps: 0,
+                idx: 0,
+                    last_snapshot: WholeCellSnapshot::from_whole_cell(&snap_b),
                 });
             } else {
                 // At max cohorts: demote daughter B to coarse packet.
@@ -1914,8 +1924,9 @@ impl super::TerrariumWorld {
                     represented_cells: daughter_represented_cells,
                     atp_mm: snap_b.atp_mm,
                 });
+                let snap_b_local = WholeCellSnapshot::from_whole_cell(&snap_b);
                 self.bridge_explicit_to_coarse_packet(
-                    parent_x, parent_y, parent_z, &snap_b, &parent_identity, daughter_represented_cells,
+                    parent_x, parent_y, parent_z, &snap_b_local, &parent_identity, daughter_represented_cells,
                 );
             }
         }
@@ -1964,15 +1975,15 @@ impl super::TerrariumWorld {
 
         let n = self.explicit_microbes.len();
         let per_frame = INTERACTIVE_MICROBES_PER_FRAME.min(n);
-        let start_idx = self.next_microbe_idx % n;
+        let start_idx = (self.next_microbe_idx as usize) % n;
 
         for offset in 0..per_frame {
             let idx = (start_idx + offset) % n;
             // Interactive mode: only 1 ODE step per microbe.
-            let _ = self.step_single_explicit_microbe(idx, eco_dt, 1)?;
+            let _ = self.step_single_explicit_microbe(idx as usize, eco_dt, 1)?;
         }
 
-        self.next_microbe_idx = (start_idx + per_frame) % n.max(1);
+        self.next_microbe_idx = ((start_idx as usize + per_frame) % n.max(1)) as u64;
         // Handle cell division: check which cohorts are ready to split.
         let mut division_indices: Vec<usize> = Vec::new();
         for (idx, cohort) in self.explicit_microbes.iter().enumerate() {
@@ -2018,7 +2029,12 @@ impl super::TerrariumWorld {
                 cumulative_proton_release: 0.0,
                 material_inventory: parent_material_inventory.clone(),
                 simulator: daughter_a,
-                last_snapshot: snap_a,
+                guild: 0,
+                whole_cell: None,
+                patch_radius: EXPLICIT_MICROBE_PATCH_RADIUS,
+                age_steps: 0,
+                idx: 0,
+                last_snapshot: WholeCellSnapshot::from_whole_cell(&snap_a),
             };
 
             // Emit division telemetry event.
@@ -2054,7 +2070,12 @@ impl super::TerrariumWorld {
                     cumulative_proton_release: 0.0,
                     material_inventory: parent_material_inventory,
                     simulator: daughter_b,
-                    last_snapshot: snap_b,
+                guild: 0,
+                whole_cell: None,
+                patch_radius: EXPLICIT_MICROBE_PATCH_RADIUS,
+                age_steps: 0,
+                idx: 0,
+                    last_snapshot: WholeCellSnapshot::from_whole_cell(&snap_b),
                 });
             } else {
                 // At max cohorts: demote daughter B to coarse packet.
@@ -2066,8 +2087,9 @@ impl super::TerrariumWorld {
                     represented_cells: daughter_represented_cells,
                     atp_mm: snap_b.atp_mm,
                 });
+                let snap_b_local = WholeCellSnapshot::from_whole_cell(&snap_b);
                 self.bridge_explicit_to_coarse_packet(
-                    parent_x, parent_y, parent_z, &snap_b, &parent_identity, daughter_represented_cells,
+                    parent_x, parent_y, parent_z, &snap_b_local, &parent_identity, daughter_represented_cells,
                 );
             }
         }

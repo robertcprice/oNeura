@@ -52,6 +52,8 @@ pub(crate) use genotype::{
 };
 pub(crate) use packet::{GenotypePacket, GenotypePacketPopulation, GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS};
 pub(crate) use calibrator::{SubstrateKinetics, MolecularRateCalibrator};
+pub(crate) use crate::guild_latent::{step_latent_guild_banks, LatentGuildState, LatentGuildConfig, LatentGuildResult};
+
 
 
 // ===== Microdomain Ownership Infrastructure =====
@@ -276,6 +278,14 @@ pub const EXPLICIT_MICROBE_RADIUS_EXPAND_2_CELLS: f32 = 5000.0;
 pub const EXPLICIT_MICROBE_RADIUS_EXPAND_2_ENERGY: f32 = 0.8;
 pub const EXPLICIT_MICROBE_RECRUITMENT_MIN_SCORE: f32 = 0.3;
 pub const EXPLICIT_MICROBE_RECRUITMENT_SPACING: usize = 3;
+// ── Constants for advanced submodules ──
+pub(crate) const NITRIFIER_PACKET_TARGET_CELLS: f32 = 500.0;
+pub(crate) const DENITRIFIER_PACKET_TARGET_CELLS: f32 = 500.0;
+pub(crate) const HENRY_O2: f32 = 1.3e-3;   // mol/(L·atm) at 25°C
+pub(crate) const HENRY_CO2: f32 = 3.4e-2;   // mol/(L·atm) at 25°C
+pub(crate) const ATMOS_PRESSURE_BASELINE_KPA: f32 = 101.325;
+pub(crate) const ATMOS_DENSITY_BASELINE_KG_M3: f32 = 1.225;
+
 pub const INTERACTIVE_MICROBES_PER_FRAME: usize = 4;
 pub const MICROBIAL_PACKET_TARGET_CELLS: f32 = 500.0;
 pub const STOICH_RESPIRATION_CO2_PER_GLUCOSE: f32 = 6.0;
@@ -943,6 +953,24 @@ pub struct WholeCellSnapshot {
     pub division_progress: f32,
     pub local_chemistry: Option<LocalChemistryReport>,
 }
+
+impl WholeCellSnapshot {
+    /// Convert from the full crate::whole_cell::WholeCellSnapshot to the local simplified version.
+    pub(crate) fn from_whole_cell(snap: &crate::whole_cell::WholeCellSnapshot) -> Self {
+        Self {
+            atp_mm: snap.atp_mm,
+            glucose_mm: snap.glucose_mm,
+            oxygen_mm: snap.oxygen_mm,
+            amino_acids_mm: snap.amino_acids_mm,
+            nucleotides_mm: snap.nucleotides_mm,
+            membrane_precursors_mm: snap.membrane_precursors_mm,
+            metabolic_load: snap.metabolic_load,
+            division_progress: snap.division_progress,
+            local_chemistry: None,
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, Copy, Default)]
 #[allow(dead_code)]
@@ -2681,6 +2709,7 @@ mod genotype;
 mod packet;
 mod calibrator;
 mod flora;
+#[cfg(feature = "terrarium_advanced")]
 #[cfg(feature = "terrarium_advanced")]
 mod soil;
 #[cfg(feature = "terrarium_advanced")]
