@@ -50,7 +50,7 @@ impl super::TerrariumWorld {
         } else {
             self.flies.iter().map(|fly| fly.body_state().z).sum::<f32>() / self.flies.len() as f32
         };
-        let fly_census = self.fly_pop.stage_census();
+        let fly_census = self.fly_population.stage_census();
         let total_plant_cells = self
             .plants
             .iter()

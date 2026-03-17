@@ -91,11 +91,14 @@ impl TerrariumWorld {
         )?;
         self.substrate
             .set_hydration_field(&control_fields.hydration)?;
-        // set_soil_temperature_field not available on current substrate API
+        self.substrate
+            .set_soil_temperature_field(&control_fields.soil_temperature)?;
         self.substrate
             .set_microbial_activity_field(&control_fields.decomposers)?;
-        // set_nitrifier_activity_field not available on current substrate API
-        // set_denitrifier_activity_field not available on current substrate API
+        self.substrate
+            .set_nitrifier_activity_field(&control_fields.nitrifiers)?;
+        self.substrate
+            .set_denitrifier_activity_field(&control_fields.denitrifiers)?;
         self.substrate
             .set_plant_drive_field(&control_fields.plant_drive)?;
         Ok(())
