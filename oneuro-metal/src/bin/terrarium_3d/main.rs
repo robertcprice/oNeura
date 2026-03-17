@@ -31,7 +31,7 @@ mod charts;
 mod narration;
 
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
-use oneuro_metal::TerrariumWorld;
+use oneuro_metal::{TerrariumWorld, TerrariumWorldSnapshot};
 use std::env;
 use std::process::ExitCode;
 use std::thread;

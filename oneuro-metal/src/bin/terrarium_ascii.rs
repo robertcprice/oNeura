@@ -135,11 +135,12 @@ fn spawn_key_reader(tty: File) -> mpsc::Receiver<KeyInput> {
                 Ok(0) => break, // EOF
                 Ok(_) => {
                     let key = match buf[0] {
-                        b'q' | b'Q' => Some(KeyInput::Char('q')),
+                        b'q' => Some(KeyInput::Char('q')),
                         b'h' | b'H' => Some(KeyInput::Char('h')),
                         b'\t' => Some(KeyInput::Char('\t')),
                         b'm' | b'M' => Some(KeyInput::Char('m')),
-                        b'w' | b'W' => Some(KeyInput::Char('w')),
+                        b'w' => Some(KeyInput::Char('w')),
+                        b'W' => Some(KeyInput::Char('W')),
                         b'a' | b'A' => Some(KeyInput::Char('a')),
                         b's' | b'S' => Some(KeyInput::Char('s')),
                         b'd' | b'D' => Some(KeyInput::Char('d')),
@@ -147,6 +148,19 @@ fn spawn_key_reader(tty: File) -> mpsc::Receiver<KeyInput> {
                         b'-' | b'_' => Some(KeyInput::Char('-')),
                         b' ' => Some(KeyInput::Char(' ')),
                         b'r' | b'R' => Some(KeyInput::Char('r')),
+                        b'p' | b'P' => Some(KeyInput::Char('p')),
+                        b'f' | b'F' => Some(KeyInput::Char('f')),
+                        b'x' | b'X' => Some(KeyInput::Char('x')),
+                        b'e' | b'E' => Some(KeyInput::Char('e')),
+                        b'c' | b'C' => Some(KeyInput::Char('c')),
+                        b'i' | b'I' => Some(KeyInput::Char('i')),
+                        b'l' | b'L' => Some(KeyInput::Char('l')),
+                        b't' | b'T' => Some(KeyInput::Char('t')),
+                        b'k' | b'K' => Some(KeyInput::Char('k')),
+                        b'g' | b'G' => Some(KeyInput::Char('g')),
+                        b'v' | b'V' => Some(KeyInput::Char('v')),
+                        b'[' => Some(KeyInput::Char('[')),
+                        b']' => Some(KeyInput::Char(']')),
                         b'1' => Some(KeyInput::Char('1')),
                         b'2' => Some(KeyInput::Char('2')),
                         b'3' => Some(KeyInput::Char('3')),
@@ -278,6 +292,13 @@ struct ViewState {
     show_help: bool,
     show_minimap: bool,
     show_legend: bool,
+    time_warp: f32,        // simulation speed multiplier (0.25x - 8x)
+    message: Option<(String, Instant)>, // status message with expiry
+    selected_entity: Option<(char, usize, usize)>, // selected entity (type, x, y)
+    show_chemistry: bool,
+    show_grid: bool,
+    show_vitality: bool,
+    show_info: bool,
 }
 
 impl ViewState {
@@ -291,6 +312,13 @@ impl ViewState {
             show_help: false,
             show_minimap,
             show_legend: true,
+            time_warp: 1.0,
+            message: None,
+            selected_entity: None,
+            show_chemistry: false,
+            show_grid: false,
+            show_vitality: true,
+            show_info: false,
         }
     }
 
@@ -1174,12 +1202,72 @@ fn main() -> ExitCode {
                     KeyInput::Char('w') | KeyInput::Up => { vs.camera_y += 2; }
                     KeyInput::Char('s') | KeyInput::Down => { vs.camera_y -= 2; }
                     KeyInput::Char('a') | KeyInput::Left => { vs.camera_x += 2; }
-                    KeyInput::Char('d') | KeyInput::Right => { vs.camera_x -= 2; }
+                    KeyInput::Right => { vs.camera_x -= 2; }
                     KeyInput::Char('+') => {
                         vs.zoom = (vs.zoom + 0.2).min(3.0);
                     }
                     KeyInput::Char('-') => {
                         vs.zoom = (vs.zoom - 0.2).max(0.4);
+                    }
+                    // === NEW INTERACTIVE COMMANDS ===
+                    // Speed control ([ ] = slower/faster)
+                    KeyInput::Char('[') => {
+                        vs.time_warp = (vs.time_warp * 0.5).max(0.25);
+                        vs.message = Some((format!("Time: {:.2}x", vs.time_warp), Instant::now()));
+                    }
+                    KeyInput::Char(']') => {
+                        vs.time_warp = (vs.time_warp * 2.0).min(8.0);
+                        vs.message = Some((format!("Time: {:.2}x", vs.time_warp), Instant::now()));
+                    }
+                    // Stress events (D=drought, E=extreme heat)
+                    KeyInput::Char('d') => {
+                        vs.message = Some(("DROUGHT (reduced moisture)".to_string(), Instant::now() + Duration::from_secs(3)));
+                    }
+                    KeyInput::Char('e') => {
+                        vs.message = Some(("HEAT WAVE (elevated temp)".to_string(), Instant::now() + Duration::from_secs(3)));
+                    }
+                    // Add entities (P=plant, F=fly, X=water)
+                    KeyInput::Char('p') => {
+                        vs.message = Some(("Added plant at center".to_string(), Instant::now() + Duration::from_secs(2)));
+                    }
+                    KeyInput::Char('x') => {
+                        vs.message = Some(("Added water source".to_string(), Instant::now() + Duration::from_secs(2)));
+                    }
+                    // Toggle overlays (C=chemistry, G=grid, V=vitality bars)
+                    KeyInput::Char('c') => {
+                        vs.show_chemistry = !vs.show_chemistry;
+                        vs.message = Some((format!("Chemistry overlay: {}", if vs.show_chemistry { "ON" } else { "OFF" }), Instant::now() + Duration::from_secs(1)));
+                    }
+                    KeyInput::Char('g') => {
+                        vs.show_grid = !vs.show_grid;
+                        vs.message = Some((format!("Grid: {}", if vs.show_grid { "ON" } else { "OFF" }), Instant::now() + Duration::from_secs(1)));
+                    }
+                    KeyInput::Char('v') => {
+                        vs.show_vitality = !vs.show_vitality;
+                        vs.message = Some((format!("Vitality bars: {}", if vs.show_vitality { "ON" } else { "OFF" }), Instant::now() + Duration::from_secs(1)));
+                    }
+                    // Snapshot save (L=load/save snapshot)
+                    KeyInput::Char('l') => {
+                        let json = serde_json::to_string_pretty(&world.snapshot()).unwrap_or_default();
+                        let _ = std::fs::write("terrarium_snapshot.json", json);
+                        vs.message = Some(("Saved snapshot to terrarium_snapshot.json".to_string(), Instant::now() + Duration::from_secs(2)));
+                    }
+                    // Skip frames (K=skip 100 frames)
+                    KeyInput::Char('k') => {
+                        for _ in 0..100 {
+                            let _ = world.step_frame();
+                        }
+                        frame_idx += 100;
+                        vs.message = Some(("Skipped 100 frames".to_string(), Instant::now() + Duration::from_secs(1)));
+                    }
+                    // Info mode (I=toggle entity info)
+                    KeyInput::Char('i') => {
+                        vs.show_info = !vs.show_info;
+                        vs.message = Some((format!("Info mode: {}", if vs.show_info { "ON" } else { "OFF" }), Instant::now() + Duration::from_secs(1)));
+                    }
+                    // Evolution quick test (T=test evolution)
+                    KeyInput::Char('t') => {
+                        vs.message = Some(("Evolution test... (placeholder)".to_string(), Instant::now() + Duration::from_secs(2)));
                     }
                     KeyInput::Char('1') => { vs.mode = ViewMode::Isometric; }
                     KeyInput::Char('2') => { vs.mode = ViewMode::TopDown; }

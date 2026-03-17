@@ -94,6 +94,139 @@ const TOTAL_ADENYLATE: f32 = 5.5; // mM
 pub const CROP_SUGAR_PER_BITE: f32 = 2.0; // mg sugar per unit food consumed
 
 // ============================================================================
+// Chronobiology Configuration
+// ============================================================================
+
+/// Configuration for chronobiology experiments (circadian and lunar rhythms).
+///
+/// Allows varying lunar period for experimental protocols, enabling studies
+/// of circadian/lunar interactions in insect metabolism and behavior.
+///
+/// # Scientific Basis
+///
+/// Drosophila exhibits circadian rhythms regulated by:
+/// - **Clock genes**: period (per), timeless (tim), Clock (Clk), cycle (cyc)
+/// - **Light entrainment**: Cryptochrome (CRY) mediates light input to clock neurons
+/// - **Output pathways**: PDF neurons control activity rhythms
+///
+/// Lunar effects on insects include:
+/// - **Moonlight attraction**: Many nocturnal insects increase activity under full moon
+/// - **Tidal synchronization**: Coastal species synchronize emergence to lunar tides
+/// - **Reproductive timing**: Some species synchronize mating to lunar phase
+///
+/// References:
+/// - Konopka & Benzer (1971) PNAS 68:2112-2116 — clock mutants
+/// - Emery et al. (1998) Neuron 20:1099-1109 — CRY photoreception
+/// - Dacke et al. (2004) Nature 424:33 — dung beetle lunar navigation
+#[derive(Clone, Debug)]
+pub struct ChronobiologyConfig {
+    /// Lunar period in days. Default: 29.53 (synodic month).
+    /// Set lower (e.g., 7.0) for accelerated chronobiology experiments.
+    pub lunar_period_days: f32,
+    /// Enable circadian gene expression modeling (opt-in).
+    pub circadian_genes: bool,
+    /// Melatonin rhythm strength (0-1). Affects sleep/activity cycles.
+    /// Insects don't produce melatonin, but this models equivalent
+    /// neuroendocrine signals (e.g., PDF, sNPF) that regulate rest.
+    pub melatonin_rhythm_strength: f32,
+    /// Lunar activity multiplier (0-1). How much moonlight affects behavior.
+    /// 0.0 = moon-blind; 1.0 = strong moonlight response.
+    pub lunar_activity_multiplier: f32,
+}
+
+impl Default for ChronobiologyConfig {
+    fn default() -> Self {
+        Self {
+            lunar_period_days: 29.53, // Synodic month (Earth)
+            circadian_genes: false,   // Opt-in for now
+            melatonin_rhythm_strength: 0.5,
+            lunar_activity_multiplier: 0.4, // 40% boost at full moon
+        }
+    }
+}
+
+// ============================================================================
+// Circadian State
+// ============================================================================
+
+/// Per-fly circadian rhythm state for chronobiology research.
+///
+/// Tracks the fly's internal clock phase and activity modulation,
+/// enabling study of circadian/lunar interactions in metabolism.
+#[derive(Clone, Debug, Default)]
+pub struct CircadianState {
+    /// Phase 0-24 hours (time of day in fly's internal clock).
+    /// Drifts without light entrainment.
+    pub phase_hours: f32,
+    /// Activity level (0-1) modulated by circadian and lunar rhythms.
+    /// Higher during subjective day, lower at subjective night.
+    pub activity_level: f32,
+    /// Rest accumulation (arbitrary units). Accumulates during rest periods.
+    /// Used for sleep debt analysis in chronobiology experiments.
+    pub rest_accumulation: f32,
+    /// Time since last light pulse (hours). Used for phase response curves.
+    pub last_light_pulse_hours: f32,
+}
+
+impl CircadianState {
+    /// Advance circadian phase by `dt` seconds, modulating activity.
+    ///
+    /// # Arguments
+    /// * `dt` - Time step in seconds
+    /// * `daylight` - Current daylight intensity (0-1)
+    /// * `moonlight` - Current moonlight intensity (0-1)
+    /// * `config` - Chronobiology configuration
+    pub fn step(&mut self, dt: f32, daylight: f32, moonlight: f32, config: &ChronobiologyConfig) {
+        // Advance phase (24-hour period)
+        let dt_hours = dt / 3600.0;
+        self.phase_hours = (self.phase_hours + dt_hours) % 24.0;
+
+        // Light entrainment: shift phase toward solar noon (hour 12)
+        // Weak zeitgeber effect (flies have multiple clocks)
+        if daylight > 0.1 {
+            let light_intensity = daylight.min(1.0);
+            // Phase advances in morning, delays in evening
+            let hour_of_day = (self.phase_hours - 12.0 + 24.0) % 24.0;
+            if hour_of_day < 12.0 {
+                // Morning: advance clock
+                self.phase_hours += light_intensity * 0.1 * dt_hours;
+            } else {
+                // Evening: delay clock
+                self.phase_hours -= light_intensity * 0.05 * dt_hours;
+            }
+            self.last_light_pulse_hours = 0.0;
+        } else {
+            self.last_light_pulse_hours += dt_hours;
+        }
+
+        // Circadian activity modulation
+        // Peak activity at subjective midday (phase ≈ 12), trough at subjective midnight
+        let subjective_hour = (self.phase_hours - 6.0 + 24.0) % 24.0; // Dawn at 6
+        let circadian_factor = 0.3 + 0.7 * (std::f32::consts::PI * subjective_hour / 12.0).cos().max(0.0);
+
+        // Lunar activity boost (nocturnal species more active under moonlight)
+        let lunar_boost = 1.0 + config.lunar_activity_multiplier * (1.0 - daylight) * moonlight;
+
+        // Combined activity level
+        self.activity_level = (circadian_factor * lunar_boost).clamp(0.1, 1.5);
+
+        // Rest accumulation during inactive periods
+        if self.activity_level < 0.5 {
+            self.rest_accumulation += dt_hours * (0.5 - self.activity_level);
+        }
+
+        // Clamp phase
+        self.phase_hours = self.phase_hours.clamp(0.0, 24.0);
+    }
+
+    /// Check if fly is in subjective day (active period).
+    pub fn is_subjective_day(&self) -> bool {
+        let hour = (self.phase_hours - 6.0 + 24.0) % 24.0;
+        hour >= 0.0 && hour < 12.0
+    }
+}
+
+// ============================================================================
 // Activity level (set externally each frame)
 // ============================================================================
 
@@ -135,6 +268,10 @@ pub struct FlyMetabolism {
     // ---- Environment ----
     /// Ambient O2 mole fraction (0.21 = atmospheric normoxia).
     pub ambient_o2_fraction: f32,
+    // ---- Chronobiology ----
+    /// Circadian rhythm state for chronobiology research.
+    /// Tracks phase, activity modulation, rest accumulation.
+    pub circadian: CircadianState,
 }
 
 impl Default for FlyMetabolism {
@@ -150,6 +287,7 @@ impl Default for FlyMetabolism {
             activity: FlyActivity::Resting,
             neural_activity_fraction: 0.0,
             ambient_o2_fraction: 0.21,
+            circadian: CircadianState::default(),
         }
     }
 }
@@ -174,6 +312,18 @@ impl FlyMetabolism {
     /// Set ambient O2 mole fraction. Call before `step()` in terrarium.
     pub fn set_ambient_o2(&mut self, o2_fraction: f32) {
         self.ambient_o2_fraction = o2_fraction.clamp(0.0, 1.0);
+    }
+
+    /// Step circadian rhythm with light cues.
+    /// Updates internal phase and activity level based on daylight/moonlight.
+    ///
+    /// # Arguments
+    /// * `dt` - Time step in seconds
+    /// * `daylight` - Current daylight intensity (0-1)
+    /// * `moonlight` - Current moonlight intensity (0-1)
+    /// * `config` - Chronobiology configuration
+    pub fn step_circadian(&mut self, dt: f32, daylight: f32, moonlight: f32, config: &ChronobiologyConfig) {
+        self.circadian.step(dt, daylight, moonlight, config);
     }
 
     /// Reverse-map a legacy energy value (uJ) into glycogen + lipid reserves.
