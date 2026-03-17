@@ -42,13 +42,13 @@ use lighting::{sun_direction, sun_color};
 use particles::ParticleSystem;
 use rasterizer::Rasterizer;
 use selection::Selection;
-use terrain::build_terrain_mesh_overlay;
+use terrain::{build_terrain_mesh, build_terrain_mesh_overlay};
 use export::{export_snapshot, TimeLapse};
 use plants::build_plant_meshes;
 use flies::build_fly_meshes;
 use water::build_water_meshes;
 use fruits::build_fruit_meshes;
-use zoom::{build_organism_detail, build_cellular_detail, build_molecular_detail};
+use zoom::{build_organism_detail, build_cellular_detail, build_molecular_detail, build_chemistry_overlay};
 
 const VIEWPORT_W: usize = 960;
 const VIEWPORT_H: usize = 640;
@@ -76,6 +76,25 @@ fn print_usage() {
     eprintln!("  --fps <N>         Target framerate (default: 30)");
     eprintln!("  --frames <N>      Quit after N frames");
     eprintln!("  --cpu-substrate   Use CPU substrate backend");
+}
+
+fn find_nearest_entity(world: &TerrariumWorld, target: [f32; 3], cell_size: f32) -> mesh::EntityTag {
+    let mut best_tag = mesh::EntityTag::None;
+    let mut best_dist = f32::MAX;
+    for (i, plant) in world.plants.iter().enumerate() {
+        let px = plant.x as f32 * cell_size;
+        let pz = plant.y as f32 * cell_size;
+        let d = (px - target[0]).powi(2) + (pz - target[2]).powi(2);
+        if d < best_dist { best_dist = d; best_tag = mesh::EntityTag::Plant(i); }
+    }
+    for (i, fly) in world.flies.iter().enumerate() {
+        let b = fly.body_state();
+        let fx = b.x * cell_size;
+        let fz = b.y * cell_size;
+        let d = (fx - target[0]).powi(2) + (fz - target[2]).powi(2);
+        if d < best_dist { best_dist = d; best_tag = mesh::EntityTag::Fly(i); }
+    }
+    best_tag
 }
 
 fn main() -> ExitCode {
@@ -126,6 +145,9 @@ fn main() -> ExitCode {
     let mut auto_orbit = false;
     let mut overlay_mode = OverlayMode::Default;
     let mut timelapse = TimeLapse::new();
+    let mut prev_zoom = ZoomLevel::Ecosystem;
+    let mut sim_ms = 0.0f32;
+    let mut render_ms = 0.0f32;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let started = Instant::now();
@@ -138,13 +160,23 @@ fn main() -> ExitCode {
             if sel.is_selected() { cam.following = !cam.following; } else { cam.following = false; }
         }
         if window.is_key_pressed(Key::T, KeyRepeat::No) { auto_orbit = !auto_orbit; }
-        // Overlay mode keys (1-6)
+        // Overlay mode keys (1-8)
         if window.is_key_pressed(Key::Key1, KeyRepeat::No) { overlay_mode = OverlayMode::Default; }
         if window.is_key_pressed(Key::Key2, KeyRepeat::No) { overlay_mode = OverlayMode::Moisture; }
         if window.is_key_pressed(Key::Key3, KeyRepeat::No) { overlay_mode = OverlayMode::Temperature; }
         if window.is_key_pressed(Key::Key4, KeyRepeat::No) { overlay_mode = OverlayMode::Organic; }
         if window.is_key_pressed(Key::Key5, KeyRepeat::No) { overlay_mode = OverlayMode::Chemistry; }
         if window.is_key_pressed(Key::Key6, KeyRepeat::No) { overlay_mode = OverlayMode::Elevation; }
+        if window.is_key_pressed(Key::Key7, KeyRepeat::No) { overlay_mode = OverlayMode::SubstrateO2; }
+        if window.is_key_pressed(Key::Key8, KeyRepeat::No) { overlay_mode = OverlayMode::SubstrateGlucose; }
+        // CSV export (E key)
+        if window.is_key_pressed(Key::E, KeyRepeat::No) {
+            let snapshot = world.snapshot();
+            match export_snapshot(&world, &snapshot, frame_idx) {
+                Ok(dir) => { screenshot_msg = format!("Exported: {}", dir); screenshot_timer = 120; }
+                Err(e) => { screenshot_msg = format!("Export error: {}", e); screenshot_timer = 120; }
+            }
+        }
         // Time-lapse recording toggle (V key)
         if window.is_key_pressed(Key::V, KeyRepeat::No) {
             screenshot_msg = timelapse.toggle();
@@ -198,6 +230,12 @@ fn main() -> ExitCode {
         if window.is_key_pressed(Key::Equal, KeyRepeat::Yes) { cam.distance = (cam.distance - zoom_step).max(0.005); }
         if window.is_key_pressed(Key::Minus, KeyRepeat::Yes) { cam.distance = cam.distance + zoom_step; }
 
+        // Auto-select nearest entity on zoom transition Ecosystem → Organism
+        if prev_zoom == ZoomLevel::Ecosystem && zoom == ZoomLevel::Organism && !sel.is_selected() {
+            let nearest = find_nearest_entity(&world, cam.target, CELL_SIZE);
+            sel.select(nearest);
+        }
+
         // Mouse input — returns click event if user clicked without dragging
         if let Some(click) = input_state.handle(&window, &mut cam) {
             let tag = raster.tag_at(click.x, click.y);
@@ -207,12 +245,14 @@ fn main() -> ExitCode {
         // Auto-orbit: slow rotation for demo mode
         if auto_orbit { cam.yaw += 0.003; }
 
-        // Simulation step (speed-adjusted)
+        // === SIMULATION SECTION (TIMED) ===
+        let sim_start = Instant::now();
         if !paused {
             for _ in 0..sim_speed {
                 if let Err(e) = world.step_frame() { eprintln!("step failed: {e}"); return ExitCode::FAILURE; }
             }
             frame_idx += 1;
+            let light = world.snapshot().light;
 
             // Spawn particles from entities
             let gw = world.config.width;
@@ -232,6 +272,12 @@ fn main() -> ExitCode {
                 let base_y = terrain::terrain_height(gx, gy, gw, gh, &moisture, terrain_seed);
                 let h = (plant.physiology.height_mm() * 0.15).clamp(0.3, 2.5);
                 particle_sys.spawn_pollen(gx as f32 * CELL_SIZE, base_y + h, gy as f32 * CELL_SIZE, frame_idx, i);
+                // Photosynthesis energy (sun -> plant) — only during daytime
+                if light > 0.3 && light < 0.8 {
+                    particle_sys.spawn_photosynthesis(gx as f32 * CELL_SIZE, base_y + h, gy as f32 * CELL_SIZE, frame_idx, i);
+                }
+                // Plant respiration (CO2 upward)
+                particle_sys.spawn_respiration(gx as f32 * CELL_SIZE, base_y + h * 0.5, gy as f32 * CELL_SIZE, frame_idx, i + 1000);
             }
             for (i, fruit) in world.fruits.iter().enumerate() {
                 if fruit.source.alive && fruit.source.ripeness > 0.7 {
@@ -253,6 +299,8 @@ fn main() -> ExitCode {
                         b.heading, b.speed, frame_idx, i,
                     );
                 }
+                // Fly respiration (CO2 upward)
+                particle_sys.spawn_respiration(b.x * CELL_SIZE, base_y + b.z * 0.4 + 0.15, b.y * CELL_SIZE, frame_idx, i + 2000);
             }
 
             particle_sys.update(1.0 / fps.max(1) as f32);
@@ -262,16 +310,13 @@ fn main() -> ExitCode {
             pop_history.push_back((snap.plants, snap.flies));
             if pop_history.len() > 120 { pop_history.pop_front(); }
         }
+        sim_ms = sim_start.elapsed().as_secs_f32() * 1000.0;
 
+        // === RENDER SECTION (TIMED) ===
+        let render_start = Instant::now();
+        
         // Build scene geometry (varies by zoom level)
         let snapshot = world.snapshot();
-        // CSV export (E key) — needs snapshot in scope
-        if window.is_key_pressed(Key::E, KeyRepeat::No) {
-            match export_snapshot(&world, &snapshot, frame_idx) {
-                Ok(dir) => { screenshot_msg = format!("Exported: {}", dir); screenshot_timer = 120; }
-                Err(e) => { screenshot_msg = format!("Export error: {}", e); screenshot_timer = 120; }
-            }
-        }
         let gw = world.config.width;
         let gh = world.config.height;
         let moisture = world.moisture_field();
@@ -337,6 +382,8 @@ fn main() -> ExitCode {
                 if sel.is_selected() {
                     entity_tris.extend(build_cellular_detail(&world, &sel, cam.target));
                 }
+                // Substrate chemistry overlay at cellular zoom
+                entity_tris.extend(build_chemistry_overlay(&world, cam.target, CELL_SIZE));
             }
             ZoomLevel::Molecular => {
                 // Only detail meshes at molecular scale — no terrain
@@ -370,6 +417,8 @@ fn main() -> ExitCode {
             raster.draw_selection_outline(sel.tag);
         }
 
+        render_ms = render_start.elapsed().as_secs_f32() * 1000.0;
+
         // Composite viewport into display buffer
         buffer.fill(rgb(14, 16, 18));
         for y in 0..VIEWPORT_H {
@@ -385,7 +434,7 @@ fn main() -> ExitCode {
         // Draw panel and HUD
         draw_panel(&mut buffer, &world, &snapshot, paused, realistic, actual_fps, &cam, &sel, &pop_history);
         let msg = if screenshot_timer > 0 { &screenshot_msg } else { "" };
-        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit, &overlay_mode, timelapse.recording);
+        draw_hud(&mut buffer, paused, realistic, msg, &zoom, cam.following, sim_speed, auto_orbit, &overlay_mode, timelapse.recording, sim_ms, render_ms);
         if screenshot_timer > 0 { screenshot_timer -= 1; }
 
         // FPS counter
@@ -421,6 +470,9 @@ fn main() -> ExitCode {
         let target = Duration::from_secs_f64(1.0 / fps.max(1) as f64);
         let elapsed = started.elapsed();
         if elapsed < target { thread::sleep(target - elapsed); }
+        
+        // Update zoom state tracking
+        prev_zoom = zoom;
     }
     ExitCode::SUCCESS
 }

@@ -3,7 +3,7 @@
 use oneuro_metal::TerrariumWorld;
 use super::math::*;
 use super::color::{rgb_f, u32_to_v3, blend};
-use super::lighting::sky_color_at;
+use super::lighting::{sky_color_at, sky_gradient};
 use super::mesh::{Triangle, EntityTag};
 use super::{NEAR, HEIGHT_SCALE, FOG_NEAR, FOG_FAR, CELL_SIZE, SHADOW_STEPS, SHADOW_STEP_SIZE, SHADOW_DARKEN};
 
@@ -30,11 +30,14 @@ impl Rasterizer {
     }
 
     pub fn clear(&mut self, light: f32) {
+        let (horizon, zenith) = sky_gradient(light);
         for y in 0..self.height {
             let t = y as f32 / self.height as f32;
-            let sky = sky_color_at(light, t);
+            let sky_c = lerp3(horizon, zenith, t);
+            let sky = rgb_f(sky_c[0], sky_c[1], sky_c[2]);
+            let row_start = y * self.width;
             for x in 0..self.width {
-                let idx = y * self.width + x;
+                let idx = row_start + x;
                 self.color_buf[idx] = sky;
                 self.z_buf[idx] = f32::MAX;
                 self.world_pos_buf[idx] = [0.0; 3];

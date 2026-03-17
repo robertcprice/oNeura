@@ -144,7 +144,7 @@ pub fn draw_panel(
     for (i, line) in [
         "L-drag  rotate", "R-drag  pan", "scroll  zoom", "click   select",
         "Tab     cycle", "WASD    pan", "L       lighting", "F       follow",
-        "T       orbit", "[/]     speed", "1-6     overlay", "E       export CSV",
+        "T       orbit", "[/]     speed", "1-8     overlay", "E       export CSV",
         "V       record", "space   pause", "F12     screenshot",
         "R       reset cam", "esc     quit",
     ].iter().enumerate() {
@@ -261,7 +261,7 @@ fn draw_minimap(buffer: &mut [u32], world: &TerrariumWorld, x: usize, y: usize) 
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y + map_h + 2, "MINIMAP", rgb(130, 136, 144));
 }
 
-pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool, overlay: &OverlayMode, recording: bool) {
+pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_msg: &str, zoom: &super::camera::ZoomLevel, following: bool, sim_speed: u32, auto_orbit: bool, overlay: &OverlayMode, recording: bool, sim_ms: f32, render_ms: f32) {
     let label = if realistic { "3D REALISTIC" } else { "3D FLAT" };
     draw_rect(buffer, TOTAL_W, TOTAL_H, 4, 4, label.len() * 8 + 8, 14, rgb(10, 12, 16));
     draw_text(buffer, TOTAL_W, TOTAL_H, 8, 7, label, if realistic { rgb(230, 200, 88) } else { rgb(160, 160, 170) });
@@ -325,4 +325,9 @@ pub fn draw_hud(buffer: &mut [u32], paused: bool, realistic: bool, screenshot_ms
         draw_rect(buffer, TOTAL_W, TOTAL_H, sx, TOTAL_H - 24, sw, 16, rgb(20, 60, 20));
         draw_text(buffer, TOTAL_W, TOTAL_H, sx + 4, TOTAL_H - 21, screenshot_msg, rgb(120, 240, 120));
     }
+    
+    // Frame timing display (bottom-left corner)
+    let timing_y = TOTAL_H - 26;
+    draw_text(buffer, TOTAL_W, TOTAL_H, 4, timing_y, &format!("Sim: {:.1}ms", sim_ms), rgb(160, 220, 160));
+    draw_text(buffer, TOTAL_W, TOTAL_H, 4, timing_y + 12, &format!("Render: {:.1}ms", render_ms), rgb(220, 180, 160));
 }

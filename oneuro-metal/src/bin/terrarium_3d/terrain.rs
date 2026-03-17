@@ -2,7 +2,7 @@
 
 use oneuro_metal::TerrariumWorld;
 use super::math::*;
-use super::color::{soil_color_v3, OverlayMode, heatmap_v3, elevation_v3, chemistry_v3, organic_v3};
+use super::color::{soil_color_v3, OverlayMode, heatmap_v3, elevation_v3, chemistry_v3, organic_v3, substrate_o2_v3, substrate_glucose_v3};
 use super::mesh::{Vertex, Triangle, EntityTag};
 use super::{CELL_SIZE, HEIGHT_SCALE};
 
@@ -98,6 +98,25 @@ pub fn build_terrain_mesh_overlay(world: &TerrariumWorld, overlay: OverlayMode) 
                     chemistry_v3(m * 0.7 + height_factor * 0.3)
                 }
                 OverlayMode::Elevation => elevation_v3(y, HEIGHT_SCALE),
+                OverlayMode::SubstrateO2 => {
+                    use oneuro_metal::terrarium::TerrariumSpecies;
+                    let field = world.substrate.species_field(TerrariumSpecies::OxygenGas);
+                    // Local voxel index: y_layer=0, z=gy, x=gx
+                    let local_idx = 0 * world.substrate.y_dim * world.substrate.x_dim
+                        + gy.min(world.substrate.y_dim.saturating_sub(1)) * world.substrate.x_dim
+                        + gx.min(world.substrate.x_dim.saturating_sub(1));
+                    let val = field.get(local_idx).copied().unwrap_or(0.0);
+                    substrate_o2_v3((val / 1.0).clamp(0.0, 1.0))
+                }
+                OverlayMode::SubstrateGlucose => {
+                    use oneuro_metal::terrarium::TerrariumSpecies;
+                    let field = world.substrate.species_field(TerrariumSpecies::Glucose);
+                    let local_idx = 0 * world.substrate.y_dim * world.substrate.x_dim
+                        + gy.min(world.substrate.y_dim.saturating_sub(1)) * world.substrate.x_dim
+                        + gx.min(world.substrate.x_dim.saturating_sub(1));
+                    let val = field.get(local_idx).copied().unwrap_or(0.0);
+                    substrate_glucose_v3((val / 2.0).clamp(0.0, 1.0))
+                }
             };
             colors.push(color);
         }

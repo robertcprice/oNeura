@@ -29,6 +29,40 @@ pub fn sun_color(light: f32) -> V3 {
     }
 }
 
+/// Sky color gradient based on time of day (light = 0..1).
+/// Returns (horizon_color, zenith_color) for sky rendering.
+pub fn sky_gradient(light: f32) -> (V3, V3) {
+    let t = light.clamp(0.0, 1.0);
+    if t < 0.15 {
+        // Night: deep blue-black
+        ([0.02, 0.02, 0.06], [0.01, 0.01, 0.03])
+    } else if t < 0.3 {
+        // Dawn: orange-pink horizon, purple-blue zenith
+        let s = (t - 0.15) / 0.15;
+        let h = lerp3([0.02, 0.02, 0.06], [0.8, 0.4, 0.2], s);
+        let z = lerp3([0.01, 0.01, 0.03], [0.3, 0.2, 0.5], s);
+        (h, z)
+    } else if t < 0.7 {
+        // Day: bright blue sky
+        let s = ((t - 0.3) / 0.4).min(1.0);
+        let h = lerp3([0.8, 0.4, 0.2], [0.6, 0.75, 0.95], s);
+        let z = lerp3([0.3, 0.2, 0.5], [0.3, 0.5, 0.9], s);
+        (h, z)
+    } else if t < 0.85 {
+        // Dusk: golden-red horizon
+        let s = (t - 0.7) / 0.15;
+        let h = lerp3([0.6, 0.75, 0.95], [0.9, 0.4, 0.15], s);
+        let z = lerp3([0.3, 0.5, 0.9], [0.2, 0.15, 0.4], s);
+        (h, z)
+    } else {
+        // Night transition
+        let s = (t - 0.85) / 0.15;
+        let h = lerp3([0.9, 0.4, 0.15], [0.02, 0.02, 0.06], s);
+        let z = lerp3([0.2, 0.15, 0.4], [0.01, 0.01, 0.03], s);
+        (h, z)
+    }
+}
+
 pub fn sky_color_at(light: f32, screen_y: f32) -> u32 {
     let sun_height = (light * std::f32::consts::PI).sin().max(0.0);
     let day_top     = [0.30, 0.50, 0.85];

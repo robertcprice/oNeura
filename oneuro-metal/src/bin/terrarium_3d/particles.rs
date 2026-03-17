@@ -94,6 +94,30 @@ impl ParticleSystem {
         }
     }
 
+    /// Spawn photosynthesis energy beam (sun -> plant) — golden particles drifting down.
+    pub fn spawn_photosynthesis(&mut self, wx: f32, wy: f32, wz: f32, frame: usize, idx: usize) {
+        if frame % 20 != (idx * 7) % 20 { return; }
+        self.spawn(
+            [wx, wy + 2.0, wz],
+            [0.0, -0.05, 0.0],
+            [1.0, 0.95, 0.3], // golden yellow
+            30.0,
+        );
+    }
+
+    /// Spawn respiration CO2 (plant/fly -> upward) — gray particles drifting up.
+    pub fn spawn_respiration(&mut self, wx: f32, wy: f32, wz: f32, frame: usize, idx: usize) {
+        if frame % 40 != (idx * 13) % 40 { return; }
+        let vx = ((idx * 37 % 100) as f32 - 50.0) * 0.0004;
+        let vz = ((idx * 53 % 100) as f32 - 50.0) * 0.0004;
+        self.spawn(
+            [wx, wy, wz],
+            [vx, 0.015, vz],
+            [0.5, 0.5, 0.55], // gray CO2
+            40.0,
+        );
+    }
+
     /// Render particles as 2x2 alpha-blended dots to the viewport buffer.
     pub fn render(&self, buffer: &mut [u32], bw: usize, bh: usize, mvp: &M4) {
         for p in &self.particles {

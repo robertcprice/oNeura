@@ -2,15 +2,17 @@
 
 use super::math::{V3, lerp3};
 
-/// Terrain visualization mode — number keys 1-6 switch between overlays.
+/// Terrain visualization mode — number keys 1-8 switch between overlays.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OverlayMode {
-    Default,     // 1 — soil color from moisture + organic
-    Moisture,    // 2 — blue-green heatmap of soil moisture
-    Temperature, // 3 — cool blue → warm red temperature gradient
-    Organic,     // 4 — dark-to-green organic matter density
-    Chemistry,   // 5 — magenta-to-cyan soil chemistry activity
-    Elevation,   // 6 — topographic elevation bands
+    Default,          // 1 — soil color from moisture + organic
+    Moisture,         // 2 — blue-green heatmap of soil moisture
+    Temperature,      // 3 — cool blue → warm red temperature gradient
+    Organic,          // 4 — dark-to-green organic matter density
+    Chemistry,        // 5 — magenta-to-cyan soil chemistry activity
+    Elevation,        // 6 — topographic elevation bands
+    SubstrateO2,      // 7 — real O2 concentration from substrate grid
+    SubstrateGlucose, // 8 — real glucose concentration from substrate grid
 }
 
 impl OverlayMode {
@@ -22,6 +24,8 @@ impl OverlayMode {
             OverlayMode::Organic => "ORGANIC",
             OverlayMode::Chemistry => "CHEMISTRY",
             OverlayMode::Elevation => "ELEVATION",
+            OverlayMode::SubstrateO2 => "SUBSTRATE O2",
+            OverlayMode::SubstrateGlucose => "SUBSTRATE GLUCOSE",
         }
     }
 }
@@ -124,4 +128,24 @@ pub fn plant_color_v3(canopy: f32, vitality: f32) -> V3 {
     let v = (1.0 - vitality).clamp(0.0, 1.0);
     let base = lerp3(sparse, dense, c);
     lerp3(base, stressed, v)
+}
+
+/// O2 overlay: deep blue (anoxic=0) -> sky blue -> white (saturated=1).
+pub fn substrate_o2_v3(o2: f32) -> V3 {
+    let t = o2.clamp(0.0, 1.0);
+    if t < 0.5 {
+        lerp3([0.05, 0.05, 0.2], [0.2, 0.5, 0.9], t * 2.0)
+    } else {
+        lerp3([0.2, 0.5, 0.9], [0.9, 0.95, 1.0], (t - 0.5) * 2.0)
+    }
+}
+
+/// Glucose overlay: pale yellow (depleted=0) -> amber -> deep orange (concentrated=1).
+pub fn substrate_glucose_v3(gluc: f32) -> V3 {
+    let t = gluc.clamp(0.0, 1.0);
+    if t < 0.5 {
+        lerp3([0.2, 0.18, 0.1], [0.8, 0.6, 0.1], t * 2.0)
+    } else {
+        lerp3([0.8, 0.6, 0.1], [1.0, 0.4, 0.0], (t - 0.5) * 2.0)
+    }
 }

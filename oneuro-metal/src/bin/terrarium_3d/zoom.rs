@@ -286,3 +286,52 @@ pub fn build_molecular_detail(world: &TerrariumWorld, _sel: &Selection, focus: V
     }
     tris
 }
+
+/// Build translucent chemistry overlay spheres showing local substrate concentrations.
+/// Samples a 5x5 grid of voxels around the focus position and renders them as
+/// color-coded semi-transparent spheres sized by concentration.
+pub fn build_chemistry_overlay(world: &TerrariumWorld, focus: V3, cell_size: f32) -> Vec<Triangle> {
+    let mut tris = Vec::new();
+    let gw = world.config.width;
+    let gh = world.config.height;
+    
+    // Center grid position
+    let cx = (focus[0] / cell_size).round() as i32;
+    let cz = (focus[2] / cell_size).round() as i32;
+    
+    // Species to visualize with their colors
+    use oneuro_metal::terrarium::TerrariumSpecies;
+    let species_vis: [(TerrariumSpecies, V3, f32); 4] = [
+        (TerrariumSpecies::Glucose, [0.2, 0.7, 1.0], 2.0),
+        (TerrariumSpecies::OxygenGas, [0.9, 0.3, 0.3], 1.0),
+        (TerrariumSpecies::CarbonDioxide, [0.6, 0.6, 0.6], 0.5),
+        (TerrariumSpecies::AtpFlux, [1.0, 0.85, 0.0], 0.3),
+    ];
+    
+    for dx in -2..=2 {
+        for dz in -2..=2 {
+            let gx = (cx + dx).clamp(0, gw as i32 - 1) as usize;
+            let gz = (cz + dz).clamp(0, gh as i32 - 1) as usize;
+            
+            for (si, (species, color, max_val)) in species_vis.iter().enumerate() {
+                // Read species value using species_field and index
+                let field = world.substrate.species_field(*species);
+                let idx = world.substrate.index(*species, gx, 0, gz);
+                let val = field.get(idx).copied().unwrap_or(0.0);
+                
+                let fill = (val / max_val).clamp(0.0, 1.0);
+                if fill < 0.05 { continue; }
+                
+                let wx = gx as f32 * cell_size;
+                let wz = gz as f32 * cell_size;
+                let layer_y = si as f32 * 0.03;
+                let pos = v3(wx, focus[1] + 0.02 + layer_y, wz);
+                let size = 0.01 + fill * 0.03;
+                let mut sphere = make_sphere(pos, size, *color, 16.0);
+                tag_all(&mut sphere, EntityTag::Metabolite(100 + si * 25 + gx % 5 * 5 + gz % 5));
+                tris.extend(sphere);
+            }
+        }
+    }
+    tris
+}
