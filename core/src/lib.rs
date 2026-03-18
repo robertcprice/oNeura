@@ -47,6 +47,7 @@ pub mod plant_competition;
 pub mod seed_cellular;
 pub mod organism_metabolism;
 pub mod fly_metabolism;
+pub mod organism_catalog;
 pub mod molecular_dynamics;
 pub mod network;
 pub mod brain_regions;
