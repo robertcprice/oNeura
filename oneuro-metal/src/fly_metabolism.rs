@@ -200,9 +200,14 @@ impl CircadianState {
         }
 
         // Circadian activity modulation
-        // Peak activity at subjective midday (phase ≈ 12), trough at subjective midnight
-        let subjective_hour = (self.phase_hours - 6.0 + 24.0) % 24.0; // Dawn at 6
-        let circadian_factor = 0.3 + 0.7 * (std::f32::consts::PI * subjective_hour / 12.0).cos().max(0.0);
+        // Peak activity at subjective midday (phase ≈ 12), trough at subjective midnight (phase ≈ 0)
+        // subjective_hour=6 → dawn, subjective_hour=18 → dusk
+        let subjective_hour = (self.phase_hours - 6.0 + 24.0) % 24.0;
+        // Cosine: cos(0)=1 at subjective dawn (6AM), cos(π)=-1 at subjective dusk (6PM)
+        // We want peak at noon (12), so shift: cos((hour - 6) * π/12)
+        // At hour 12 (noon): cos(0.5π) = 0, so we use 1 - cos² or a sine
+        // Better: sin(hour * π/12) peaks at 6 (noon relative to dawn at 0)
+        let circadian_factor = 0.3 + 0.7 * (std::f32::consts::PI * subjective_hour / 12.0).sin().max(0.0);
 
         // Lunar activity boost (nocturnal species more active under moonlight)
         let lunar_boost = 1.0 + config.lunar_activity_multiplier * (1.0 - daylight) * moonlight;
@@ -712,5 +717,105 @@ mod tests {
                 "set_reserves_from_uj({target_uj}) → energy_compat_uj()={actual:.1}, diff={diff:.1}"
             );
         }
+    }
+
+    #[test]
+    fn circadian_state_initialization() {
+        let m = FlyMetabolism::default();
+        assert_eq!(m.circadian.phase_hours, 0.0);
+        assert_eq!(m.circadian.activity_level, 0.0);
+        assert_eq!(m.circadian.rest_accumulation, 0.0);
+    }
+
+    #[test]
+    fn circadian_step_advances_phase() {
+        let mut m = FlyMetabolism::default();
+        let config = ChronobiologyConfig::default();
+
+        // Step 6 hours in constant darkness
+        m.step_circadian(6.0 * 3600.0, 0.0, 0.0, &config);
+
+        assert!((m.circadian.phase_hours - 6.0).abs() < 0.1,
+            "phase should be ~6h after 6h step, got {}", m.circadian.phase_hours);
+    }
+
+    #[test]
+    fn circadian_activity_peaks_at_subjective_day() {
+        let config = ChronobiologyConfig::default();
+
+        // Test activity at different phases
+        let mut m_morning = FlyMetabolism::default();
+        m_morning.circadian.phase_hours = 6.0; // Dawn
+
+        let mut m_noon = FlyMetabolism::default();
+        m_noon.circadian.phase_hours = 12.0; // Midday
+
+        let mut m_midnight = FlyMetabolism::default();
+        m_midnight.circadian.phase_hours = 0.0; // Midnight
+
+        // Step each with neutral light
+        for m in [&mut m_morning, &mut m_noon, &mut m_midnight] {
+            m.step_circadian(1.0, 0.5, 0.0, &config);
+        }
+
+        // Midday should have highest activity
+        assert!(m_noon.circadian.activity_level >= m_morning.circadian.activity_level,
+            "noon activity >= morning activity");
+        assert!(m_noon.circadian.activity_level >= m_midnight.circadian.activity_level,
+            "noon activity >= midnight activity");
+    }
+
+    #[test]
+    fn moonlight_boosts_nocturnal_activity() {
+        let config = ChronobiologyConfig {
+            lunar_activity_multiplier: 0.5,
+            ..Default::default()
+        };
+
+        // Two flies at midnight
+        let mut m_dark = FlyMetabolism::default();
+        let mut m_moonlit = FlyMetabolism::default();
+
+        // Dark night vs full moon night
+        m_dark.step_circadian(1.0, 0.0, 0.0, &config);   // No moon
+        m_moonlit.step_circadian(1.0, 0.0, 1.0, &config); // Full moon
+
+        assert!(m_moonlit.circadian.activity_level > m_dark.circadian.activity_level,
+            "moonlit fly should have higher activity: moonlit={}, dark={}",
+            m_moonlit.circadian.activity_level, m_dark.circadian.activity_level);
+    }
+
+    #[test]
+    fn rest_accumulates_during_inactive_periods() {
+        let config = ChronobiologyConfig::default();
+
+        let mut m = FlyMetabolism::default();
+        // Set phase to subjective night (low activity)
+        m.circadian.phase_hours = 0.0;
+
+        // Step for many hours in darkness (simulating night)
+        for _ in 0..360 {
+            m.step_circadian(60.0, 0.0, 0.0, &config);
+        }
+
+        assert!(m.circadian.rest_accumulation > 0.0,
+            "rest should accumulate during inactive period");
+    }
+
+    #[test]
+    fn is_subjective_day_correct() {
+        let mut circ = CircadianState::default();
+
+        circ.phase_hours = 6.0;  // 6 AM = subjective day
+        assert!(circ.is_subjective_day());
+
+        circ.phase_hours = 12.0; // Noon
+        assert!(circ.is_subjective_day());
+
+        circ.phase_hours = 18.0; // 6 PM = subjective night
+        assert!(!circ.is_subjective_day());
+
+        circ.phase_hours = 0.0;  // Midnight
+        assert!(!circ.is_subjective_day());
     }
 }

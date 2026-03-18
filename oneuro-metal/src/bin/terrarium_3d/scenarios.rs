@@ -17,6 +17,9 @@ pub enum Scenario {
     NightEcology,
     StressResilience,
     MicrobialWorld,
+    ClimateImpact,
+    AmrEmergence,
+    SoilHealth,
 }
 
 impl Scenario {
@@ -30,6 +33,9 @@ impl Scenario {
             Scenario::NightEcology => "NIGHT ECOLOGY",
             Scenario::StressResilience => "STRESS RESILIENCE",
             Scenario::MicrobialWorld => "MICROBIAL WORLD",
+            Scenario::ClimateImpact => "CLIMATE IMPACT",
+            Scenario::AmrEmergence => "AMR EMERGENCE",
+            Scenario::SoilHealth => "SOIL HEALTH",
         }
     }
 
@@ -43,6 +49,9 @@ impl Scenario {
             Scenario::NightEcology => "Start at dusk. Observe how moonlight, tidal moisture, and nocturnal activity patterns shape ecosystem behavior after dark.",
             Scenario::StressResilience => "Harsh conditions with temperature extremes. Organisms that survive demonstrate stress tolerance mechanisms.",
             Scenario::MicrobialWorld => "Minimal macro-organisms, rich substrate chemistry. Zoom to molecular level to observe soil chemistry dynamics.",
+            Scenario::ClimateImpact => "RCP4.5 climate scenario. Rising CO2 and temperature drive nutrient cycling, microbial shifts, and eco-evolutionary feedbacks across 11 integrated modules.",
+            Scenario::AmrEmergence => "Antibiotic resistance under selective pressure. Horizontal gene transfer, biofilm formation, and resistance evolution emerge from microbial community dynamics.",
+            Scenario::SoilHealth => "Soil biogeochemistry focus. Carbon, nitrogen, and phosphorus cycling coupled to microbial community assembly, metabolic flux, and phylogenetic diversification.",
         }
     }
 
@@ -56,7 +65,10 @@ impl Scenario {
             Scenario::PopulationBoom => Scenario::NightEcology,
             Scenario::NightEcology => Scenario::StressResilience,
             Scenario::StressResilience => Scenario::MicrobialWorld,
-            Scenario::MicrobialWorld => Scenario::Default,
+            Scenario::MicrobialWorld => Scenario::ClimateImpact,
+            Scenario::ClimateImpact => Scenario::AmrEmergence,
+            Scenario::AmrEmergence => Scenario::SoilHealth,
+            Scenario::SoilHealth => Scenario::Default,
         }
     }
 
@@ -125,6 +137,30 @@ impl Scenario {
                 241..=420 => Some("Zoom to cellular level (++ key) to see individual soil cell chemistry."),
                 421..=600 => Some("At molecular zoom (+++ key), each TerrariumSpecies shows as a density bar."),
                 601..=900 => Some("Michaelis-Menten kinetics govern all reactions. Substrate concentrations drive rates."),
+                _ => None,
+            },
+            Scenario::ClimateImpact => match frame {
+                0..=90 => Some("CLIMATE: RCP4.5 scenario — rising CO2 and temperature drive ecosystem change across 11 integrated modules."),
+                91..=240 => Some("Nutrient cycling accelerates with warming: C/N/P mineralization rates increase, CO2 flux rises."),
+                241..=420 => Some("Microbial community shifts: thermophilic taxa gain advantage as mesophiles decline."),
+                421..=600 => Some("Eco-evolutionary feedback: traits under selection shift as environmental conditions change."),
+                601..=900 => Some("Phylogenetic diversification: new lineages emerge under novel selective pressures."),
+                _ => None,
+            },
+            Scenario::AmrEmergence => match frame {
+                0..=90 => Some("AMR: Antibiotic pressure selects for resistance. Watch MDR strains emerge through HGT and mutation."),
+                91..=240 => Some("Horizontal gene transfer spreads resistance plasmids through the biofilm community."),
+                241..=420 => Some("Biofilm formation: cells produce EPS matrix, enabling quorum sensing and cooperative resistance."),
+                421..=600 => Some("MIC fold-change increases: resistant strains tolerate higher antibiotic concentrations."),
+                601..=900 => Some("Resistance is costly: fitness trade-offs shape the balance between resistant and susceptible populations."),
+                _ => None,
+            },
+            Scenario::SoilHealth => match frame {
+                0..=90 => Some("SOIL: Biogeochemistry focus — carbon, nitrogen, and phosphorus cycling in a living soil."),
+                91..=240 => Some("Microbiome assembly: diverse taxa partition resources through metabolic specialization."),
+                241..=420 => Some("FBA metabolic flux analysis estimates microbial growth yields from available substrates."),
+                421..=600 => Some("Guild dynamics: latent ecological variables track unobserved community structure."),
+                601..=900 => Some("Soil health emerges from the interaction of all 11 modules — no single process dominates."),
                 _ => None,
             },
         }
@@ -270,6 +306,59 @@ pub fn apply_scenario(world: &mut TerrariumWorld, scenario: Scenario, seed: u64)
             // Boost moisture for microbial activity
             for m in world.moisture_field_mut().iter_mut() {
                 *m = (*m * 2.0).min(0.98);
+            }
+        }
+        Scenario::ClimateImpact => {
+            // Rich ecosystem to observe climate-driven changes
+            for i in 0..16 {
+                let x = 3 + (i * 5) % (world.config.width - 4);
+                let y = 3 + (i * 6) % (world.config.height - 4);
+                let _ = world.add_plant(x, y, None, None);
+            }
+            for i in 0..3 {
+                let x = 5 + i * 12;
+                let y = 5 + i * 8;
+                world.add_water(x.min(world.config.width - 2), y.min(world.config.height - 2), 120.0, 0.0006);
+            }
+            for i in 0..8 {
+                let x = 4.0 + (i as f32 * 4.5) % (world.config.width as f32 - 8.0);
+                let y = 4.0 + (i as f32 * 3.2) % (world.config.height as f32 - 8.0);
+                world.add_fly(DrosophilaScale::Tiny, x, y, seed + i);
+            }
+        }
+        Scenario::AmrEmergence => {
+            // Dense microbial environment with few macro-organisms
+            for i in 0..6 {
+                let x = 5 + (i * 7) % (world.config.width - 4);
+                let y = 5 + (i * 9) % (world.config.height - 4);
+                let _ = world.add_plant(x, y, None, None);
+            }
+            world.add_fly(DrosophilaScale::Tiny, 15.0, 10.0, seed);
+            // High moisture for biofilm formation
+            for m in world.moisture_field_mut().iter_mut() {
+                *m = (*m * 1.8).min(0.95);
+            }
+        }
+        Scenario::SoilHealth => {
+            // Diverse plant community with rich soil
+            for i in 0..20 {
+                let x = 2 + (i * 4) % (world.config.width - 3);
+                let y = 2 + (i * 5) % (world.config.height - 3);
+                let _ = world.add_plant(x, y, None, None);
+            }
+            for i in 0..4 {
+                let x = 8 + i * 10;
+                let y = 6 + i * 8;
+                world.add_water(x.min(world.config.width - 2), y.min(world.config.height - 2), 180.0, 0.0005);
+            }
+            for i in 0..6 {
+                let x = 5.0 + (i as f32 * 5.5) % (world.config.width as f32 - 10.0);
+                let y = 5.0 + (i as f32 * 4.3) % (world.config.height as f32 - 10.0);
+                world.add_fly(DrosophilaScale::Tiny, x, y, seed + i);
+            }
+            // Rich moisture for nutrient cycling
+            for m in world.moisture_field_mut().iter_mut() {
+                *m = (*m * 1.6).min(0.92);
             }
         }
     }

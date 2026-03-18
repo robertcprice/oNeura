@@ -13,7 +13,7 @@ use crate::drosophila::{DrosophilaScale, DrosophilaSim};
 use crate::drosophila_population::FlyPopulation;
 use crate::ecology_events::{step_food_patches, step_seed_bank};
 use crate::ecology_fields::build_dual_radial_fields;
-use crate::fly_metabolism::{FlyActivity, FlyMetabolism};
+use crate::fly_metabolism::{ChronobiologyConfig, CircadianState, FlyActivity, FlyMetabolism};
 use crate::organism_metabolism::OrganismMetabolism;
 use crate::molecular_atmosphere::{
     odorant_channel_params, step_molecular_world_fields, FruitSourceState, OdorantChannelParams,
@@ -1160,6 +1160,8 @@ pub struct TerrariumWorld {
     pub air_pressure_kpa: Vec<f32>,
     /// Global substep counter for multi-rate scheduling.
     substep_counter: u64,
+    /// Chronobiology configuration for circadian/lunar rhythm experiments.
+    pub chronobiology_config: ChronobiologyConfig,
 }
 
 impl TerrariumWorld {
@@ -1440,6 +1442,7 @@ impl TerrariumWorld {
             packet_populations: Vec::new(),
             air_pressure_kpa: vec![101.325; plane],
             substep_counter: 0,
+            chronobiology_config: ChronobiologyConfig::default(),
             config,
         })
     }
@@ -1593,12 +1596,14 @@ impl TerrariumWorld {
 
     // ── Lunar cycle ──────────────────────────────────────────────────────────
 
-    /// Synodic month in seconds (29.530589 days).
+    /// Synodic month in seconds (29.530589 days) — default, but configurable via chronobiology_config.
     const LUNAR_PERIOD_S: f32 = 29.530589 * 86_400.0;
 
     /// Lunar phase 0..1 (0 = new moon, 0.5 = full moon, 1.0 wraps to new moon).
+    /// Uses configurable period from chronobiology_config for experimental protocols.
     pub fn lunar_phase(&self) -> f32 {
-        (self.time_s / Self::LUNAR_PERIOD_S).rem_euclid(1.0)
+        let period_s = self.chronobiology_config.lunar_period_days * 86_400.0;
+        (self.time_s / period_s).rem_euclid(1.0)
     }
 
     /// Moonlight intensity 0..1. Peaks at full moon (phase=0.5), zero at new moon.
@@ -1622,10 +1627,11 @@ impl TerrariumWorld {
     }
 
     /// Nocturnal activity boost for insects under moonlight.
-    /// At night with full moon, activity increases ~40%. Daytime: no effect.
+    /// At night with full moon, activity increases based on lunar_activity_multiplier.
+    /// Daytime: no effect.
     pub fn nocturnal_activity_factor(&self) -> f32 {
         let darkness = 1.0 - self.daylight();
-        1.0 + 0.4 * darkness * self.moonlight()
+        1.0 + self.chronobiology_config.lunar_activity_multiplier * darkness * self.moonlight()
     }
 
     /// Moon phase name for display.
@@ -2189,6 +2195,11 @@ impl TerrariumWorld {
         while self.fly_metabolisms.len() < self.flies.len() { self.fly_metabolisms.push(FlyMetabolism::default()); }
         self.fly_metabolisms.truncate(self.flies.len());
 
+        // Get current light levels for circadian entrainment
+        let daylight = self.daylight();
+        let moonlight = self.moonlight();
+        let chrono_config = self.chronobiology_config.clone();
+
         // Capture pre-step state for telemetry threshold detection.
         let pre_charges: Vec<f32> = self.fly_metabolisms.iter().map(|m| m.energy_charge()).collect();
         let pre_trehalose: Vec<f32> = self.fly_metabolisms.iter().map(|m| m.hemolymph_trehalose_mm).collect();
@@ -2199,7 +2210,24 @@ impl TerrariumWorld {
             let by = body.y;
             let is_flying = body.is_flying;
             let speed = body.speed;
-            let activity = if is_flying { FlyActivity::Flying(0.5) } else if speed > 0.1 { FlyActivity::Walking((speed / 2.0).clamp(0.0, 1.0)) } else { FlyActivity::Resting };
+
+            // Step circadian rhythm for chronobiology experiments
+            self.fly_metabolisms[i].step_circadian(eco_dt, daylight, moonlight, &chrono_config);
+
+            // Activity can be modulated by circadian state (when enabled)
+            let circadian_mod = if chrono_config.circadian_genes {
+                self.fly_metabolisms[i].circadian.activity_level
+            } else {
+                1.0
+            };
+
+            let activity = if is_flying {
+                FlyActivity::Flying(0.5 * circadian_mod)
+            } else if speed > 0.1 {
+                FlyActivity::Walking((speed / 2.0).clamp(0.0, 1.0) * circadian_mod)
+            } else {
+                FlyActivity::Resting
+            };
             self.fly_metabolisms[i].set_activity(activity);
             self.fly_metabolisms[i].step(eco_dt);
             let new_energy = self.fly_metabolisms[i].energy_compat_uj();
@@ -3229,5 +3257,98 @@ mod tests {
         assert!(moisture_after >= 0.0);
         assert!((moisture_after - moisture_before).abs() < moisture_before * 10.0,
             "moisture changed reasonably");
+    }
+
+    #[test]
+    fn configurable_lunar_period_affects_phase() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        world.time_s = 0.0;
+
+        // With default 29.53-day period, 14.77 days = phase 0.5
+        world.chronobiology_config.lunar_period_days = 29.53;
+        world.time_s = 14.765 * 86_400.0;
+        let phase_default = world.lunar_phase();
+        assert!((phase_default - 0.5).abs() < 0.01, "default period phase ~0.5");
+
+        // With 7-day period, 3.5 days = phase 0.5
+        world.chronobiology_config.lunar_period_days = 7.0;
+        world.time_s = 3.5 * 86_400.0;
+        let phase_accelerated = world.lunar_phase();
+        assert!((phase_accelerated - 0.5).abs() < 0.01, "accelerated period phase ~0.5");
+
+        // With 7-day period, 7.0 days = phase 1.0 (= 0.0)
+        world.time_s = 7.0 * 86_400.0;
+        let phase_wrapped = world.lunar_phase();
+        assert!(phase_wrapped < 0.01, "wrapped phase near 0");
+    }
+
+    #[test]
+    fn circadian_state_tracks_phase() {
+        use crate::fly_metabolism::{ChronobiologyConfig, CircadianState};
+
+        let mut circadian = CircadianState::default();
+        let config = ChronobiologyConfig::default();
+
+        // After 12 hours, phase should be 12
+        circadian.step(12.0 * 3600.0, 0.0, 0.0, &config);
+        assert!((circadian.phase_hours - 12.0).abs() < 0.1,
+            "phase should be ~12h after 12h step");
+
+        // After another 12 hours, phase wraps to 0
+        circadian.step(12.0 * 3600.0, 0.0, 0.0, &config);
+        assert!(circadian.phase_hours < 0.1 || circadian.phase_hours >= 24.0 - 0.1,
+            "phase should wrap to 0 or near 24");
+    }
+
+    #[test]
+    fn circadian_light_entrainment_shifts_phase() {
+        use crate::fly_metabolism::{ChronobiologyConfig, CircadianState};
+
+        let config = ChronobiologyConfig::default();
+
+        // Two flies: one in constant darkness, one with light
+        let mut circ_dark = CircadianState { phase_hours: 6.0, ..Default::default() };
+        let mut circ_light = CircadianState { phase_hours: 6.0, ..Default::default() };
+
+        // 6 hours of steps
+        for _ in 0..360 {
+            circ_dark.step(60.0, 0.0, 0.0, &config);    // Darkness
+            circ_light.step(60.0, 0.8, 0.0, &config);   // Bright light
+        }
+
+        // Light-exposed fly should have different phase due to entrainment
+        // (Light in morning advances the clock)
+        assert_ne!(
+            circ_dark.phase_hours, circ_light.phase_hours,
+            "light should shift circadian phase"
+        );
+
+        // Light pulse time should be reset for light-exposed fly
+        assert!(circ_light.last_light_pulse_hours < circ_dark.last_light_pulse_hours,
+            "light-exposed fly should have shorter time since last light");
+    }
+
+    #[test]
+    fn nocturnal_activity_factor_uses_config() {
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        // Set time to night with full moon
+        world.time_s = 29.530589 * 86_400.0 * 0.5; // Full moon
+        // Set time of day to midnight
+        world.time_s += 0.5 * 86_400.0 / 24.0; // Add half a day to get to night
+
+        // With default multiplier (0.4), expect ~1.4 at night + full moon
+        let factor_default = world.nocturnal_activity_factor();
+
+        // With multiplier 0.8, expect higher boost
+        world.chronobiology_config.lunar_activity_multiplier = 0.8;
+        let factor_high = world.nocturnal_activity_factor();
+        assert!(factor_high > factor_default,
+            "higher multiplier should increase nocturnal activity");
+
+        // With multiplier 0, expect no boost (factor = 1.0 during night with moon)
+        world.chronobiology_config.lunar_activity_multiplier = 0.0;
+        let factor_zero = world.nocturnal_activity_factor();
+        assert!((factor_zero - 1.0).abs() < 0.01 || factor_zero < factor_default,
+            "zero multiplier should give minimal boost");
     }
 }

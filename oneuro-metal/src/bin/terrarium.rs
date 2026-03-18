@@ -39,6 +39,9 @@ use oneuro_metal::{
     EvolutionConfig, FitnessObjective, GenomeConstraints, FitnessConfig,
     SearchStrategy, EnvironmentalSchedule, CoevolutionMode,
 };
+use oneuro_metal::ecosystem_integration::{
+    self, EcosystemConfig, IntegratedEcosystem,
+};
 
 // Conditional imports for web feature
 #[cfg(feature = "web")]
@@ -70,6 +73,7 @@ fn print_main_usage() {
     println!();
     println!("Commands:");
     println!("  evolve       Evolution engine (NSGA-II, Pareto, stress-test)");
+    println!("  ecosystem    Integrated 11-module ecosystem simulation");
     println!("  zoom         Multi-scale semantic zoom renderer (ASCII)");
     println!("  sensitivity  Parameter sensitivity analysis");
     println!("  stress       Ecosystem stress benchmark suite");
@@ -84,6 +88,7 @@ fn print_main_usage() {
     println!();
     println!("Examples:");
     println!("  terrarium evolve --population 10 --generations 5 --fitness biomass");
+    println!("  terrarium ecosystem --scenario climate --days 365");
     println!("  terrarium zoom --seed 7 --fps 15 --mode iso");
     println!("  terrarium sensitivity --param temperature_c --resolution 20");
     println!("  terrarium stress --scenario drought --frames 100");
@@ -183,7 +188,6 @@ fn run_evolve(args: &[String]) {
     exec_evolve(config);
 }
 
-#[derive(Default)]
 struct EvolveArgs {
     population: usize,
     generations: usize,
@@ -420,7 +424,6 @@ fn run_sensitivity(args: &[String]) {
     exec_sensitivity(config);
 }
 
-#[derive(Default)]
 struct SensitivityArgs {
     param: Option<String>,
     frames: usize,
@@ -859,6 +862,157 @@ fn print_run_help() {
 }
 
 // ---------------------------------------------------------------------------
+// ECOSYSTEM SUBCOMMAND
+// ---------------------------------------------------------------------------
+
+fn run_ecosystem(args: &[String]) {
+    let mut scenario = "climate".to_string();
+    let mut seed = 42u64;
+    let mut days = 30.0f64;
+    let mut output: Option<String> = None;
+    let mut json_export = false;
+    let mut step_by_step = false;
+    let mut report_interval = 10.0f64;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--scenario" | "-s" => { scenario = args.get(i+1).cloned().unwrap_or(scenario); i += 1; }
+            "--seed" => { seed = args.get(i+1).and_then(|s| s.parse().ok()).unwrap_or(seed); i += 1; }
+            "--days" | "-d" => { days = args.get(i+1).and_then(|s| s.parse().ok()).unwrap_or(days); i += 1; }
+            "--output" | "-o" => { output = args.get(i+1).cloned(); i += 1; }
+            "--json" => json_export = true,
+            "--step" => step_by_step = true,
+            "--report-interval" => { report_interval = args.get(i+1).and_then(|s| s.parse().ok()).unwrap_or(report_interval); i += 1; }
+            "--help" | "-h" => { print_ecosystem_help(); std::process::exit(0); }
+            _ => { eprintln!("Unknown argument: {}", args[i]); print_ecosystem_help(); std::process::exit(1); }
+        }
+        i += 1;
+    }
+
+    eprintln!("=== Integrated Ecosystem Simulation ===");
+    eprintln!("Scenario: {}  Seed: {}  Days: {}", scenario, seed, days);
+
+    let mut ecosystem = match scenario.as_str() {
+        "climate" | "climate_impact" => ecosystem_integration::climate_impact_scenario(seed),
+        "amr" | "amr_emergence" => ecosystem_integration::amr_emergence_scenario(seed),
+        "soil" | "soil_health" => ecosystem_integration::soil_health_scenario(seed),
+        other => {
+            eprintln!("Unknown scenario: {}. Use: climate, amr, soil", other);
+            std::process::exit(1);
+        }
+    };
+
+    eprintln!("Config: {:?}", ecosystem.config);
+    eprintln!();
+
+    if step_by_step {
+        // Step-by-step mode with periodic reports
+        let dt = ecosystem.config.dt_days;
+        let total_steps = (days / dt).ceil() as usize;
+        let report_every = (report_interval / dt).ceil() as usize;
+
+        for step in 0..total_steps {
+            let snapshot = ecosystem.step();
+            if step % report_every == 0 || step == total_steps - 1 {
+                eprintln!("[Day {:.1}] T={:.1}C CO2={:.0}ppm Microbes={:.1} Resist={} Biofilm={} Fitness={:.3}",
+                    snapshot.time_days, snapshot.temperature_c, snapshot.co2_ppm,
+                    snapshot.total_microbial_biomass, snapshot.resistance_events,
+                    snapshot.biofilm_cell_count, snapshot.mean_fitness);
+            }
+        }
+    } else {
+        // Batch run mode
+        let start = Instant::now();
+        let timeseries = ecosystem.run(days);
+        let elapsed = start.elapsed();
+
+        eprintln!();
+        eprintln!("=== Simulation Complete ===");
+        eprintln!("Days simulated: {:.1}  Snapshots: {}  Time: {:.2}s",
+            timeseries.total_days, timeseries.snapshots.len(), elapsed.as_secs_f64());
+
+        // Print summary from last snapshot
+        if let Some(last) = timeseries.snapshots.last() {
+            eprintln!();
+            eprintln!("--- Final State ---");
+            eprintln!("  Temperature:  {:.1} C", last.temperature_c);
+            eprintln!("  CO2:          {:.0} ppm", last.co2_ppm);
+            eprintln!("  Precip:       {:.1} mm", last.precipitation_mm);
+            eprintln!("  Soil C:       {:.2} g", last.soil_organic_c_g);
+            eprintln!("  Soil N:       {:.2} g", last.soil_mineral_n_g);
+            eprintln!("  Soil P:       {:.2} g", last.soil_mineral_p_g);
+            eprintln!("  Microbes:     {} taxa, Shannon={:.2}, Biomass={:.1}",
+                last.microbial_richness, last.microbial_shannon, last.total_microbial_biomass);
+            eprintln!("  Resistance:   {} events, {} MDR strains, MIC={:.1}x",
+                last.resistance_events, last.mdr_strain_count, last.mean_mic_fold);
+            eprintln!("  HGT:          freq={:.3}, fitness={:.3}",
+                last.hgt_resistance_freq, last.hgt_mean_fitness);
+            eprintln!("  Biofilm:      {} cells, {:.1} biomass, EPS={:.1}%, QS={:.1}%",
+                last.biofilm_cell_count, last.biofilm_biomass, last.eps_coverage * 100.0, last.quorum_activated * 100.0);
+            eprintln!("  Eco-evo:      fitness={:.3}, variance={:.3}, births={}, deaths={}",
+                last.mean_fitness, last.genetic_variance_sum, last.eco_evo_births, last.eco_evo_deaths);
+            eprintln!("  Phylogenetics: {} nodes, diversity={:.2}, {} speciation events",
+                last.phylo_tree_size, last.phylo_diversity, last.speciation_events);
+            eprintln!("  FBA:          growth={:.4} ({})", last.fba_growth_rate, last.fba_status);
+        }
+
+        // Export
+        if let Some(ref path) = output {
+            let content = if json_export {
+                serde_json::to_string_pretty(&timeseries).unwrap_or_default()
+            } else {
+                // CSV export
+                let mut csv = String::from("day,temp_c,co2_ppm,precip_mm,soil_c,soil_n,soil_p,microbe_richness,microbe_shannon,microbe_biomass,resistance_events,mdr_strains,mic_fold,hgt_freq,biofilm_cells,biofilm_biomass,eps_cov,qs_active,mean_fitness,genetic_var,births,deaths,phylo_size,phylo_div,speciation,fba_growth\n");
+                for s in &timeseries.snapshots {
+                    csv.push_str(&format!("{:.2},{:.2},{:.1},{:.1},{:.2},{:.2},{:.2},{},{:.3},{:.1},{},{},{:.2},{:.4},{},{:.1},{:.3},{:.3},{:.4},{:.4},{},{},{},{:.2},{},{:.6}\n",
+                        s.time_days, s.temperature_c, s.co2_ppm, s.precipitation_mm,
+                        s.soil_organic_c_g, s.soil_mineral_n_g, s.soil_mineral_p_g,
+                        s.microbial_richness, s.microbial_shannon, s.total_microbial_biomass,
+                        s.resistance_events, s.mdr_strain_count, s.mean_mic_fold,
+                        s.hgt_resistance_freq, s.biofilm_cell_count, s.biofilm_biomass,
+                        s.eps_coverage, s.quorum_activated, s.mean_fitness,
+                        s.genetic_variance_sum, s.eco_evo_births, s.eco_evo_deaths,
+                        s.phylo_tree_size, s.phylo_diversity, s.speciation_events,
+                        s.fba_growth_rate));
+                }
+                csv
+            };
+            let _ = fs::write(path, &content);
+            eprintln!("\nExported to: {}", path);
+        }
+    }
+
+}
+
+fn print_ecosystem_help() {
+    println!("Integrated Ecosystem Simulation (11 modules)");
+    println!();
+    println!("Usage: terrarium ecosystem [options]");
+    println!();
+    println!("Orchestrates climate, nutrients, microbiome, AMR, HGT, biofilm,");
+    println!("eco-evo feedback, population genetics, phylogenetics, metabolic flux,");
+    println!("and guild dynamics in a single coherent simulation loop.");
+    println!();
+    println!("Options:");
+    println!("  --scenario <NAME>       Preset scenario (default: climate)");
+    println!("                          Values: climate, amr, soil");
+    println!("  --seed <N>              Random seed (default: 42)");
+    println!("  --days <N>              Days to simulate (default: 30)");
+    println!("  --step                  Step-by-step mode with periodic reports");
+    println!("  --report-interval <N>   Days between reports in step mode (default: 10)");
+    println!("  --output <PATH>         Export results to file (CSV by default)");
+    println!("  --json                  Export as JSON instead of CSV");
+    println!("  --help, -h              Show this help");
+    println!();
+    println!("Examples:");
+    println!("  terrarium ecosystem --scenario climate --days 365");
+    println!("  terrarium ecosystem --scenario amr --days 100 --step");
+    println!("  terrarium ecosystem --scenario soil --days 730 --output results.csv");
+    println!("  terrarium ecosystem --scenario climate --days 365 --json --output eco.json");
+}
+
+// ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
@@ -867,6 +1021,7 @@ fn main() {
 
     match command.as_deref() {
         Some("evolve") => run_evolve(&args),
+        Some("ecosystem") | Some("eco") => run_ecosystem(&args),
         Some("sensitivity") => run_sensitivity(&args),
         Some("stress") => run_stress(&args),
         Some("profile") => run_profile(&args),

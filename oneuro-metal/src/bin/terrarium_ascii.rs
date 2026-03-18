@@ -619,18 +619,27 @@ fn render_isometric(
     let ox = (buf.width as isize) / 2 + vs.camera_x * cell_w;
     let oy = 3 + vs.camera_y;
 
-    // Header
+    // Header with lunar phase emoji
+    let moon_emoji = world.moon_phase_emoji();
     let header = format!(
-        " oNeura Terrarium 3D | F:{} | {} | {:.0}C | plants:{} flies:{} fruit:{}",
-        frame_idx, world.time_label(), snapshot.temperature,
+        " oNeura Terrarium 3D | F:{} | {} | {:.0}C | {} plants:{} flies:{} fruit:{}",
+        frame_idx, world.time_label(), snapshot.temperature, moon_emoji,
         snapshot.plants, snapshot.flies, snapshot.fruits,
     );
     buf.write_str(0, 0, &header[..header.len().min(buf.width)], (0, 220, 255), (20, 20, 40));
+
+    // Lunar/circadian status line
+    let lunar_status = format!(
+        " moon:{:.0}% tide:{:+.0}% | circadian:{}",
+        snapshot.moonlight * 100.0,
+        (snapshot.tidal_moisture_factor - 1.0) * 100.0,
+        if snapshot.light > 0.3 { "day" } else if snapshot.moonlight > 0.3 { "moonlit-night" } else { "dark-night" },
+    );
     let sub = format!(
-        " moisture:{:.2} microbes:{:.3} CO2:{:.4} O2:{:.2} cells:{:.0}  zoom:{:.1}x",
+        " moisture:{:.2} microbes:{:.3} CO2:{:.4} O2:{:.2} cells:{:.0} zoom:{:.1}x | {}",
         snapshot.mean_soil_moisture, snapshot.mean_microbes,
         snapshot.mean_atmospheric_co2, snapshot.mean_atmospheric_o2,
-        snapshot.total_plant_cells, vs.zoom,
+        snapshot.total_plant_cells, vs.zoom, lunar_status,
     );
     buf.write_str(0, 1, &sub[..sub.len().min(buf.width)], (180, 180, 200), (20, 20, 40));
 
@@ -775,12 +784,22 @@ fn render_topdown_color(
     let gh = world.config.height;
     let moisture = world.moisture_field();
 
+    let moon_emoji = world.moon_phase_emoji();
     let header = format!(
-        " Terrarium Top-Down | F:{} | {} | {:.0}C | P:{} Fl:{} Fr:{}  zoom:{:.1}x",
-        frame_idx, world.time_label(), snapshot.temperature,
+        " Terrarium Top-Down | F:{} | {} | {:.0}C | {} P:{} Fl:{} Fr:{}  zoom:{:.1}x",
+        frame_idx, world.time_label(), snapshot.temperature, moon_emoji,
         snapshot.plants, snapshot.flies, snapshot.fruits, vs.zoom,
     );
     buf.write_str(0, 0, &header[..header.len().min(buf.width)], (0, 220, 255), (20, 20, 40));
+
+    // Lunar/circadian status line
+    let lunar_status = format!(
+        " moon:{:.0}% tide:{:+.0}% | {}",
+        snapshot.moonlight * 100.0,
+        (snapshot.tidal_moisture_factor - 1.0) * 100.0,
+        if snapshot.light > 0.3 { "day" } else if snapshot.moonlight > 0.3 { "moonlit-night" } else { "dark-night" },
+    );
+    buf.write_str(0, 1, &lunar_status[..lunar_status.len().min(buf.width)], (180, 180, 200), (20, 20, 40));
 
     let scale = (2.0 * vs.zoom).round() as usize;
     let scale = scale.max(1).min(6);

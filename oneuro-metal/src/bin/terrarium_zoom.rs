@@ -92,7 +92,7 @@ fn heatmap_color(value: f32) -> (u8, u8, u8) {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum ScenarioPreset { Normal, Drought, Heat, Competition, Dormancy, Feast }
+enum ScenarioPreset { Normal, Drought, Heat, Competition, Dormancy, Feast, Climate, Amr, Soil }
 
 impl ScenarioPreset {
     fn label(&self) -> &'static str {
@@ -103,6 +103,9 @@ impl ScenarioPreset {
             Self::Competition => "COMPETITION",
             Self::Dormancy => "DORMANCY STRESS",
             Self::Feast => "FEAST",
+            Self::Climate => "CLIMATE IMPACT",
+            Self::Amr => "AMR EMERGENCE",
+            Self::Soil => "SOIL HEALTH",
         }
     }
     fn color(&self) -> (u8, u8, u8) {
@@ -113,6 +116,9 @@ impl ScenarioPreset {
             Self::Competition => (40, 200, 40),
             Self::Dormancy => (120, 80, 200),
             Self::Feast => (60, 200, 255),
+            Self::Climate => (200, 120, 40),
+            Self::Amr => (255, 80, 80),
+            Self::Soil => (140, 200, 80),
         }
     }
 }
@@ -152,13 +158,28 @@ fn apply_scenario(world: &mut TerrariumWorld, preset: ScenarioPreset) {
                 world.fruits.push(fp);
             }
         },
+        ScenarioPreset::Climate => {
+            // Gradual warming — start with slightly elevated temperatures
+            for v in world.temperature_field_mut().iter_mut() { *v += 3.0; }
+            // Boost moisture for active nutrient cycling
+            for v in world.moisture_field_mut().iter_mut() { *v = (*v * 1.3).min(0.95); }
+        },
+        ScenarioPreset::Amr => {
+            // High moisture for biofilm-promoting conditions
+            for v in world.moisture_field_mut().iter_mut() { *v = (*v * 1.8).min(0.95); }
+        },
+        ScenarioPreset::Soil => {
+            // Rich soil conditions — high moisture, moderate temperature
+            for v in world.moisture_field_mut().iter_mut() { *v = (*v * 1.5).min(0.92); }
+        },
     }
 }
 
 /// Per-frame progressive scenario stress (called each step).
 fn apply_scenario_step(world: &mut TerrariumWorld, preset: ScenarioPreset, frame: usize) {
     match preset {
-        ScenarioPreset::Normal | ScenarioPreset::Competition | ScenarioPreset::Feast => {},
+        ScenarioPreset::Normal | ScenarioPreset::Competition | ScenarioPreset::Feast
+        | ScenarioPreset::Climate | ScenarioPreset::Amr | ScenarioPreset::Soil => {},
         ScenarioPreset::Drought => {
             if frame % 10 == 0 {
                 for v in world.moisture_field_mut().iter_mut() { *v = (*v - 0.005).max(0.0); }
@@ -1169,7 +1190,7 @@ fn print_usage() {
     eprintln!("  --mode <MODE>    iso/top/split/heat/dash (default: iso)");
     eprintln!("  --minimap        Show minimap");
     eprintln!("  --no-color       Disable ANSI colors");
-    eprintln!("  --scenario <S>   Scenario preset: normal/drought/heat/competition/dormancy/feast");
+    eprintln!("  --scenario <S>   Scenario preset: normal/drought/heat/competition/dormancy/feast/climate/amr/soil");
     eprintln!("  --cpu-substrate  Use CPU substrate\n");
     eprintln!("Semantic Zoom: 0.4-1.5x Ecosystem | 1.5-2.5x Organism | 2.5-3.5x Cellular | 3.5x+ Molecular");
     eprintln!("Scenario keys: D=drought H=heat N=normal C=competition F=feast");
@@ -1192,6 +1213,9 @@ fn parse_args() -> Result<Cli, String> {
                 "normal" => ScenarioPreset::Normal, "drought" => ScenarioPreset::Drought,
                 "heat" => ScenarioPreset::Heat, "competition" => ScenarioPreset::Competition,
                 "dormancy" => ScenarioPreset::Dormancy, "feast" => ScenarioPreset::Feast,
+                "climate" | "climate_impact" => ScenarioPreset::Climate,
+                "amr" | "amr_emergence" => ScenarioPreset::Amr,
+                "soil" | "soil_health" => ScenarioPreset::Soil,
                 o => return Err(format!("unknown scenario: {o}")),
             },
             "--minimap" => cli.show_minimap = true,

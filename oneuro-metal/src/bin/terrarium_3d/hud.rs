@@ -118,6 +118,16 @@ pub fn draw_panel(
     let tide_color = if tf > 1.05 { rgb(100, 180, 240) } else if tf < 0.95 { rgb(180, 140, 100) } else { rgb(150, 160, 170) };
     draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &tide_label, tide_color); y += 14;
 
+    // Circadian rhythm display — show average fly circadian phase
+    let metabolisms = world.fly_metabolisms();
+    if !metabolisms.is_empty() {
+        let avg_phase: f32 = metabolisms.iter().map(|m| m.circadian.phase_hours).sum::<f32>() / metabolisms.len() as f32;
+        let avg_activity: f32 = metabolisms.iter().map(|m| m.circadian.activity_level).sum::<f32>() / metabolisms.len() as f32;
+        let phase_label = format!("Circadian: {:02.0}:{:02.0}", avg_phase.floor(), (avg_phase.fract() * 60.0).floor());
+        draw_text(buffer, TOTAL_W, TOTAL_H, x, y, &phase_label, rgb(200, 180, 220)); y += 11;
+        draw_bar(buffer, TOTAL_W, TOTAL_H, x, y, PANEL_W - 28, 6, avg_activity / 1.5, rgb(180, 120, 220)); y += 14;
+    }
+
     // Ecosystem energy budget — photosynthesis vs respiration carbon balance
     let photosynthesis = snapshot.mean_atmospheric_o2 * snapshot.light;
     let respiration = snapshot.mean_atmospheric_co2 * (1.0 + snapshot.flies as f32 * 0.01);

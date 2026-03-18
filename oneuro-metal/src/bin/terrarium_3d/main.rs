@@ -126,6 +126,9 @@ fn main() -> ExitCode {
                         "night" | "nocturnal" => Scenario::NightEcology,
                         "stress" => Scenario::StressResilience,
                         "microbes" | "microbial" => Scenario::MicrobialWorld,
+                        "climate" | "climate_impact" => Scenario::ClimateImpact,
+                        "amr" | "amr_emergence" => Scenario::AmrEmergence,
+                        "soil" | "soil_health" => Scenario::SoilHealth,
                         _ => Scenario::Default,
                     };
                 }
