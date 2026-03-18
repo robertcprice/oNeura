@@ -352,16 +352,18 @@ fn draw_help_overlay(buf: &mut ScreenBuffer) {
     let panel_h = 38;
     let px = buf.width.saturating_sub(panel_w) / 2;
     let py = buf.height.saturating_sub(panel_h) / 2;
-    let panel_bg = (20, 25, 45);
-    let border_fg = (80, 160, 255);
-    let title_fg = (0, 230, 255);
-    let heading_fg = (255, 200, 80);
-    let text_fg = (200, 210, 220);
-    let key_fg = (100, 255, 150);
-    let sym_fg = (255, 180, 60);
-    let dim_fg = (130, 130, 160);
 
-    // Draw filled background
+    // Classic dark theme with teal/green accents - reliable across all terminals
+    let panel_bg = (20, 35, 40);        // Dark teal background
+    let border_fg = (80, 180, 160);     // Bright teal border
+    let title_fg = (100, 220, 200);     // Bright cyan-teal for title
+    let heading_fg = (120, 200, 160);   // Green-teal for headings
+    let text_fg = (200, 220, 210);      // Light gray-green text
+    let key_fg = (150, 255, 180);       // Bright green for keys
+    let sym_fg = (255, 220, 100);       // Yellow for symbols
+    let dim_fg = (120, 140, 135);       // Muted text
+
+    // Draw solid background
     for y in py..py + panel_h {
         for x in px..px + panel_w {
             buf.set(x, y, ' ', text_fg, panel_bg);
@@ -370,129 +372,129 @@ fn draw_help_overlay(buf: &mut ScreenBuffer) {
 
     // Top/bottom borders
     for x in px..px + panel_w {
-        buf.set(x, py, '\u{2550}', border_fg, panel_bg);           // ═
+        buf.set(x, py, '\u{2550}', border_fg, panel_bg);
         buf.set(x, py + panel_h - 1, '\u{2550}', border_fg, panel_bg);
     }
     // Side borders
     for y in py..py + panel_h {
-        buf.set(px, y, '\u{2551}', border_fg, panel_bg);           // ║
+        buf.set(px, y, '\u{2551}', border_fg, panel_bg);
         buf.set(px + panel_w - 1, y, '\u{2551}', border_fg, panel_bg);
     }
     // Corners
-    buf.set(px, py, '\u{2554}', border_fg, panel_bg);               // ╔
-    buf.set(px + panel_w - 1, py, '\u{2557}', border_fg, panel_bg); // ╗
-    buf.set(px, py + panel_h - 1, '\u{255A}', border_fg, panel_bg); // ╚
-    buf.set(px + panel_w - 1, py + panel_h - 1, '\u{255D}', border_fg, panel_bg); // ╝
+    buf.set(px, py, '\u{2554}', border_fg, panel_bg);
+    buf.set(px + panel_w - 1, py, '\u{2557}', border_fg, panel_bg);
+    buf.set(px, py + panel_h - 1, '\u{255A}', border_fg, panel_bg);
+    buf.set(px + panel_w - 1, py + panel_h - 1, '\u{255D}', border_fg, panel_bg);
 
     let mut row = py + 1;
     let cx = px + 2; // content x
 
     // Title
-    buf.write_str(cx, row, "   oNeura Terrarium - Help & Legend", title_fg, panel_bg);
+    buf.write_str(cx, row, "   oNeura Terrarium - Help & Legend", title_fg, row_bg(row));
     row += 2;
 
     // ── Controls ──
-    buf.write_str(cx, row, "\u{2500}\u{2500} CONTROLS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, panel_bg);
+    buf.write_str(cx, row, "\u{2500}\u{2500} CONTROLS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  W/A/S/D or Arrows", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Pan camera", text_fg, panel_bg);
+    buf.write_str(cx, row, "  W/A/S/D or Arrows", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Pan camera", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  +  /  -", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Zoom in / out", text_fg, panel_bg);
+    buf.write_str(cx, row, "  +  /  -", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Zoom in / out", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  Tab", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Cycle view mode", text_fg, panel_bg);
+    buf.write_str(cx, row, "  Tab", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Cycle view mode", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  1-5", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Jump to mode (Iso/Top/Heat/Dash/Split)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  1-5", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Jump to mode (Iso/Top/Heat/Dash/Split)", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  Space", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Pause / resume simulation", text_fg, panel_bg);
+    buf.write_str(cx, row, "  Space", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Pause / resume simulation", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  H", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Toggle this help overlay", text_fg, panel_bg);
+    buf.write_str(cx, row, "  H", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Toggle this help overlay", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  M", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Toggle minimap", text_fg, panel_bg);
+    buf.write_str(cx, row, "  M", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Toggle minimap", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  R", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Reset camera (center, zoom 1x)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  R", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Reset camera (center, zoom 1x)", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  Q / Esc", key_fg, panel_bg);
-    buf.write_str(cx + 22, row, "Quit", text_fg, panel_bg);
+    buf.write_str(cx, row, "  Q / Esc", key_fg, row_bg(row));
+    buf.write_str(cx + 22, row, "Quit", text_fg, row_bg(row));
     row += 2;
 
     // ── Symbols ──
-    buf.write_str(cx, row, "\u{2500}\u{2500} SYMBOLS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, panel_bg);
+    buf.write_str(cx, row, "\u{2500}\u{2500} SYMBOLS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  \u{2663} \u{2663} \u{2663}", (30, 180, 30), panel_bg);
-    buf.write_str(cx + 10, row, "Plant canopy (green = healthy)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{2663} \u{2663} \u{2663}", (20, 100, 20), row_bg(row));
+    buf.write_str(cx + 10, row, "Plant canopy (green = healthy)", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  \u{25B2}", (150, 230, 100), panel_bg);
-    buf.write_str(cx + 10, row, "Treetop / crown", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{25B2}", (40, 120, 30), row_bg(row));
+    buf.write_str(cx + 10, row, "Treetop / crown", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  \u{2503}", (120, 80, 40), panel_bg);
-    buf.write_str(cx + 10, row, "Tree trunk (brown)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{2503}", (80, 50, 20), row_bg(row));
+    buf.write_str(cx + 10, row, "Tree trunk (brown)", text_fg, row_bg(row));
     row += 1;
     // Fruit: show green to red gradient
-    buf.write_str(cx, row, "  \u{25CF}", (100, 200, 50), panel_bg);
-    buf.write_str(cx + 4, row, "\u{25CF}", (200, 150, 40), panel_bg);
-    buf.write_str(cx + 6, row, "\u{25CF}", (255, 80, 30), panel_bg);
-    buf.write_str(cx + 10, row, "Fruit (green=unripe, red=ripe)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{25CF}", (60, 120, 20), row_bg(row));
+    buf.write_str(cx + 4, row, "\u{25CF}", (140, 100, 20), row_bg(row));
+    buf.write_str(cx + 6, row, "\u{25CF}", (180, 50, 20), row_bg(row));
+    buf.write_str(cx + 10, row, "Fruit (green=unripe, red=ripe)", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  \u{2248} ~", (60, 140, 255), panel_bg);
-    buf.write_str(cx + 10, row, "Water (animated waves)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{2248} ~", (30, 80, 160), row_bg(row));
+    buf.write_str(cx + 10, row, "Water (animated waves)", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  \u{2736} \u{2734}", (255, 230, 50), panel_bg);
-    buf.write_str(cx + 10, row, "Flying insect (animated wings)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{2736} \u{2734}", (180, 160, 30), row_bg(row));
+    buf.write_str(cx + 10, row, "Flying insect (animated wings)", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  \u{25C6}", (255, 200, 80), panel_bg);
-    buf.write_str(cx + 10, row, "Landed insect (resting/feeding)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{25C6}", (180, 140, 40), row_bg(row));
+    buf.write_str(cx + 10, row, "Landed insect (resting/feeding)", text_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  \u{2593} \u{2588}", (140, 110, 60), panel_bg);
-    buf.write_str(cx + 10, row, "Terrain (top face / side face)", text_fg, panel_bg);
+    buf.write_str(cx, row, "  \u{2593} \u{2588}", (100, 70, 40), row_bg(row));
+    buf.write_str(cx + 10, row, "Terrain (top face / side face)", text_fg, row_bg(row));
     row += 2;
 
     // ── Color Guide ──
-    buf.write_str(cx, row, "\u{2500}\u{2500} COLORS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, panel_bg);
+    buf.write_str(cx, row, "\u{2500}\u{2500} COLORS \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", heading_fg, row_bg(row));
     row += 1;
     // Soil gradient
-    buf.write_str(cx, row, "  Soil: ", sym_fg, panel_bg);
+    buf.write_str(cx, row, "  Soil: ", sym_fg, row_bg(row));
     // Draw 5-step gradient from dry to wet
     for i in 0..5 {
         let t = i as f32 / 4.0;
         let c = soil_color(t, t * 0.5);
-        buf.set(cx + 8 + i * 3, row, '\u{2588}', c, panel_bg);
-        buf.set(cx + 9 + i * 3, row, '\u{2588}', c, panel_bg);
+        buf.set(cx + 8 + i * 3, row, '\u{2588}', c, row_bg(row));
+        buf.set(cx + 9 + i * 3, row, '\u{2588}', c, row_bg(row));
     }
-    buf.write_str(cx + 24, row, "dry sand", (180, 140, 80), panel_bg);
-    buf.write_str(cx + 33, row, "\u{2192}", dim_fg, panel_bg);
-    buf.write_str(cx + 35, row, "wet earth", (80, 60, 30), panel_bg);
+    buf.write_str(cx + 24, row, "dry sand", (60, 50, 30), row_bg(row));
+    buf.write_str(cx + 33, row, "\u{2192}", dim_fg, row_bg(row));
+    buf.write_str(cx + 35, row, "wet earth", (40, 30, 20), row_bg(row));
     row += 1;
 
     // Plant gradient
-    buf.write_str(cx, row, "  Plant:", sym_fg, panel_bg);
+    buf.write_str(cx, row, "  Plant:", sym_fg, row_bg(row));
     let plant_steps = [(0.1, 1.0), (0.5, 0.8), (1.0, 1.0), (0.8, 0.3)];
     for (i, &(can, vit)) in plant_steps.iter().enumerate() {
         let c = plant_color(can, vit);
-        buf.set(cx + 8 + i * 3, row, '\u{2663}', c, panel_bg);
-        buf.set(cx + 9 + i * 3, row, '\u{2663}', c, panel_bg);
+        buf.set(cx + 8 + i * 3, row, '\u{2663}', c, row_bg(row));
+        buf.set(cx + 9 + i * 3, row, '\u{2663}', c, row_bg(row));
     }
-    buf.write_str(cx + 22, row, "sparse", (100, 160, 60), panel_bg);
-    buf.write_str(cx + 29, row, "\u{2192}", dim_fg, panel_bg);
-    buf.write_str(cx + 31, row, "dense", (30, 120, 30), panel_bg);
-    buf.write_str(cx + 37, row, "\u{2192}", dim_fg, panel_bg);
-    buf.write_str(cx + 39, row, "stressed", (160, 150, 50), panel_bg);
+    buf.write_str(cx + 22, row, "sparse", (30, 80, 20), row_bg(row));
+    buf.write_str(cx + 29, row, "\u{2192}", dim_fg, row_bg(row));
+    buf.write_str(cx + 31, row, "dense", (20, 60, 20), row_bg(row));
+    buf.write_str(cx + 37, row, "\u{2192}", dim_fg, row_bg(row));
+    buf.write_str(cx + 39, row, "stressed", (100, 90, 30), row_bg(row));
     row += 1;
 
     // Height
-    buf.write_str(cx, row, "  Height = soil moisture (wetter = taller)", dim_fg, panel_bg);
+    buf.write_str(cx, row, "  Height = soil moisture (wetter = taller)", dim_fg, row_bg(row));
     row += 1;
-    buf.write_str(cx, row, "  Top face = bright highlight, sides = darker", dim_fg, panel_bg);
+    buf.write_str(cx, row, "  Top face = bright highlight, sides = darker", dim_fg, row_bg(row));
     row += 2;
 
     // Footer
-    buf.write_str(cx, row, "    Press H to close   |   Tab to change view", dim_fg, panel_bg);
+    buf.write_str(cx, row, "    Press H to close   |   Tab to change view", dim_fg, row_bg(row));
 }
 
 // ---------------------------------------------------------------------------
@@ -502,12 +504,13 @@ fn draw_help_overlay(buf: &mut ScreenBuffer) {
 fn draw_legend_bar(buf: &mut ScreenBuffer, vs: &ViewState) {
     let bar_h = 4;  // 4 rows of legend
     let y = buf.height.saturating_sub(bar_h);
-    let bar_bg = (18, 22, 38);
-    let sep_fg = (50, 55, 80);
-    let lbl_fg = (170, 180, 210);
-    let dim_fg = (110, 115, 140);
-    let key_fg = (80, 200, 140);
-    let mode_fg = (0, 220, 255);
+    // Light pastel teal-green for legend bar (easy on eyes)
+    let bar_bg = (180, 230, 210);  // Light mint/pastel teal
+    let sep_fg = (60, 120, 100);   // Muted green separator
+    let lbl_fg = (0, 0, 0);        // Pure black text for maximum readability
+    let dim_fg = (50, 90, 75);     // Darker green for dim text
+    let key_fg = (40, 80, 65);     // Dark green for key labels
+    let mode_fg = (60, 100, 85);   // Dark teal for mode
 
     // Fill rows with background
     for row in y..buf.height {
@@ -526,28 +529,28 @@ fn draw_legend_bar(buf: &mut ScreenBuffer, vs: &ViewState) {
     // ── Row 2: Symbols ──
     let r2 = y + 1;
     let mut x = 1;
-    buf.set(x, r2, '\u{2663}', (40, 200, 40), bar_bg); x += 1;
+    buf.set(x, r2, '\u{2663}', (20, 100, 20), bar_bg); x += 1;
     buf.write_str(x, r2, "=Plant(green=healthy) ", lbl_fg, bar_bg); x += 22;
 
-    buf.set(x, r2, '\u{25CF}', (100, 200, 50), bar_bg); x += 1;
-    buf.write_str(x, r2, "grn", (100, 200, 50), bar_bg); x += 3;
+    buf.set(x, r2, '\u{25CF}', (60, 120, 20), bar_bg); x += 1;
+    buf.write_str(x, r2, "grn", (50, 100, 20), bar_bg); x += 3;
     buf.set(x, r2, '\u{2192}', dim_fg, bar_bg); x += 1;
-    buf.set(x, r2, '\u{25CF}', (255, 80, 30), bar_bg); x += 1;
+    buf.set(x, r2, '\u{25CF}', (160, 50, 20), bar_bg); x += 1;
     buf.write_str(x, r2, "red=Fruit(ripeness) ", lbl_fg, bar_bg); x += 20;
 
-    buf.set(x, r2, '\u{2248}', (60, 140, 255), bar_bg); x += 1;
+    buf.set(x, r2, '\u{2248}', (30, 70, 140), bar_bg); x += 1;
     buf.write_str(x, r2, "=Water ", lbl_fg, bar_bg); x += 7;
 
-    buf.set(x, r2, '\u{2736}', (255, 230, 50), bar_bg); x += 1;
+    buf.set(x, r2, '\u{2736}', (160, 140, 30), bar_bg); x += 1;
     buf.write_str(x, r2, "=Fly(air) ", lbl_fg, bar_bg); x += 10;
 
-    buf.set(x, r2, '\u{25C6}', (255, 200, 80), bar_bg); x += 1;
+    buf.set(x, r2, '\u{25C6}', (160, 120, 40), bar_bg); x += 1;
     buf.write_str(x, r2, "=Fly(landed) ", lbl_fg, bar_bg); x += 13;
 
-    buf.set(x, r2, '\u{2593}', (160, 130, 70), bar_bg); x += 1;
+    buf.set(x, r2, '\u{2593}', (100, 80, 50), bar_bg); x += 1;
     buf.write_str(x, r2, "=Terrain top ", lbl_fg, bar_bg); x += 13;
 
-    buf.set(x, r2, '\u{2588}', (100, 80, 40), bar_bg); x += 1;
+    buf.set(x, r2, '\u{2588}', (70, 50, 30), bar_bg); x += 1;
     buf.write_str(x, r2, "=Side", lbl_fg, bar_bg);
 
     // ── Row 3: Color gradients ──
@@ -560,19 +563,19 @@ fn draw_legend_bar(buf: &mut ScreenBuffer, vs: &ViewState) {
         buf.set(x + i, r3, '\u{2588}', c, bar_bg);
     }
     x += 10;
-    buf.write_str(x, r3, "(sandy dry", (180, 140, 80), bar_bg); x += 10;
+    buf.write_str(x, r3, "(sandy dry", (60, 50, 30), bar_bg); x += 10;
     buf.set(x, r3, '\u{2192}', dim_fg, bar_bg); x += 1;
-    buf.write_str(x, r3, "dark wet) ", (80, 60, 30), bar_bg); x += 10;
+    buf.write_str(x, r3, "dark wet) ", (40, 30, 20), bar_bg); x += 10;
 
     buf.write_str(x, r3, "Plants: ", dim_fg, bar_bg); x += 8;
     let pc_healthy = plant_color(1.0, 1.0);
     let pc_stressed = plant_color(0.8, 0.2);
     buf.set(x, r3, '\u{2588}', pc_healthy, bar_bg); x += 1;
     buf.set(x, r3, '\u{2588}', pc_healthy, bar_bg); x += 1;
-    buf.write_str(x, r3, "healthy ", (30, 120, 30), bar_bg); x += 8;
+    buf.write_str(x, r3, "healthy ", (20, 80, 20), bar_bg); x += 8;
     buf.set(x, r3, '\u{2588}', pc_stressed, bar_bg); x += 1;
     buf.set(x, r3, '\u{2588}', pc_stressed, bar_bg); x += 1;
-    buf.write_str(x, r3, "stressed ", (160, 150, 50), bar_bg); x += 9;
+    buf.write_str(x, r3, "stressed ", (100, 90, 30), bar_bg); x += 9;
 
     buf.write_str(x, r3, "Height=moisture(wet=tall)", dim_fg, bar_bg);
 

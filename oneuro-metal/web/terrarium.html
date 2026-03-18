@@ -688,6 +688,212 @@
     border-radius: 4px;
     margin-top: 6px;
   }
+
+  /* Ecosystem tab */
+  .eco-scenario-section {
+    margin-bottom: 14px;
+  }
+  .eco-scenario-section h3 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text2);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .eco-scenario-cards {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .eco-scenario-card {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .eco-scenario-card:hover {
+    border-color: var(--accent);
+  }
+  .eco-scenario-card.selected {
+    border-color: var(--accent);
+    background: rgba(78,205,196,0.08);
+  }
+  .eco-scenario-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .eco-scenario-desc {
+    font-size: 9px;
+    color: var(--text2);
+    line-height: 1.4;
+  }
+  .eco-config-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eco-config-row label {
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .eco-config-row input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .eco-config-row button {
+    background: var(--green);
+    color: var(--bg);
+    border: 1px solid var(--green);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 5px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: auto;
+    transition: all 0.15s;
+  }
+  .eco-config-row button:hover { filter: brightness(1.1); }
+
+  .eco-status-section {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 14px;
+  }
+  .eco-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .eco-time {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .eco-active-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: rgba(136,144,160,0.2);
+    color: var(--text2);
+    text-transform: uppercase;
+  }
+  .eco-active-badge.active {
+    background: rgba(107,201,80,0.2);
+    color: var(--green);
+  }
+  .eco-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .eco-controls button {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .eco-controls button:hover { background: #252a36; }
+  .eco-controls input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    width: 60px;
+  }
+
+  .eco-modules-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .eco-module-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    min-width: 0;
+  }
+  .eco-module-name {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text2);
+    margin-bottom: 3px;
+  }
+  .eco-module-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .eco-module-spark {
+    width: 100%;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--bg2);
+  }
+
+  .eco-charts-section {
+    margin-bottom: 14px;
+  }
+  .eco-chart-wrap {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+  }
+  .eco-chart-wrap h4 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+  .eco-chart-wrap canvas {
+    width: 100%;
+    border-radius: 4px;
+    background: #080a0e;
+  }
+
+  .eco-summary-section {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+  }
+  .eco-summary-section pre {
+    font-size: 10px;
+    color: var(--text2);
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+  }
 </style>
 </head>
 <body>
@@ -746,6 +952,7 @@
   <div class="panel">
     <div class="tabs">
       <button class="active" data-tab="stats">Stats</button>
+      <button data-tab="ecosystem">Ecosystem</button>
       <button data-tab="evolution">Evolution</button>
       <button data-tab="tournament">Tournament</button>
       <button data-tab="learn">Learn</button>
@@ -771,6 +978,125 @@
         <h3>Simulation</h3>
       </div>
       <div id="stressSection"></div>
+    </div>
+
+    <div class="tab-content" id="tabEcosystem">
+      <!-- Section 1: Scenario Selection -->
+      <div class="eco-scenario-section">
+        <h3>Scenario</h3>
+        <div class="eco-scenario-cards">
+          <div class="eco-scenario-card selected" data-scenario="climate">
+            <div class="eco-scenario-title">Climate Impact</div>
+            <div class="eco-scenario-desc">Rising CO2, temperature stress, altered precipitation</div>
+          </div>
+          <div class="eco-scenario-card" data-scenario="amr">
+            <div class="eco-scenario-title">AMR Emergence</div>
+            <div class="eco-scenario-desc">Antibiotic resistance evolution, HGT, biofilm formation</div>
+          </div>
+          <div class="eco-scenario-card" data-scenario="soil">
+            <div class="eco-scenario-title">Soil Health</div>
+            <div class="eco-scenario-desc">Nutrient cycling, microbial diversity, organic matter</div>
+          </div>
+        </div>
+        <div class="eco-config-row">
+          <label>Seed</label>
+          <input type="number" id="ecoSeed" value="42" style="width:80px">
+          <button id="ecoStartBtn">Start</button>
+        </div>
+      </div>
+
+      <!-- Section 2: Real-time Status -->
+      <div class="eco-status-section">
+        <div class="eco-status-header">
+          <span class="eco-time" id="ecoTime">Day 0</span>
+          <span class="eco-active-badge" id="ecoActiveBadge">Inactive</span>
+        </div>
+        <div class="eco-controls">
+          <button id="ecoStepBtn">Step</button>
+          <button id="ecoRunBtn">Run Days</button>
+          <input type="number" id="ecoDaysInput" value="30" style="width:60px">
+        </div>
+      </div>
+
+      <!-- Section 3: Module Status Grid (11 modules) -->
+      <div class="eco-modules-grid" id="ecoModulesGrid">
+        <div class="eco-module-card" data-module="climate">
+          <div class="eco-module-name">Climate</div>
+          <div class="eco-module-value" id="ecoModClimate">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkClimate" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="nutrients">
+          <div class="eco-module-name">Nutrients</div>
+          <div class="eco-module-value" id="ecoModNutrients">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkNutrients" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="microbiome">
+          <div class="eco-module-name">Microbiome</div>
+          <div class="eco-module-value" id="ecoModMicrobiome">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkMicrobiome" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="resistance">
+          <div class="eco-module-name">Resistance</div>
+          <div class="eco-module-value" id="ecoModResistance">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkResistance" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="hgt">
+          <div class="eco-module-name">HGT</div>
+          <div class="eco-module-value" id="ecoModHgt">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkHgt" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="biofilm">
+          <div class="eco-module-name">Biofilm</div>
+          <div class="eco-module-value" id="ecoModBiofilm">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkBiofilm" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="ecoevo">
+          <div class="eco-module-name">Eco-evo</div>
+          <div class="eco-module-value" id="ecoModEcoevo">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkEcoevo" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="popgen">
+          <div class="eco-module-name">Pop-gen</div>
+          <div class="eco-module-value" id="ecoModPopgen">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkPopgen" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="phylo">
+          <div class="eco-module-name">Phylo</div>
+          <div class="eco-module-value" id="ecoModPhylo">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkPhylo" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="fba">
+          <div class="eco-module-name">FBA</div>
+          <div class="eco-module-value" id="ecoModFba">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkFba" width="50" height="16"></canvas>
+        </div>
+        <div class="eco-module-card" data-module="guild">
+          <div class="eco-module-name">Guild-lat</div>
+          <div class="eco-module-value" id="ecoModGuild">--</div>
+          <canvas class="eco-module-spark" id="ecoSparkGuild" width="50" height="16"></canvas>
+        </div>
+      </div>
+
+      <!-- Section 4: Time Series Charts (3 charts) -->
+      <div class="eco-charts-section">
+        <div class="eco-chart-wrap">
+          <h4>Climate</h4>
+          <canvas id="ecoClimateChart" width="300" height="100"></canvas>
+        </div>
+        <div class="eco-chart-wrap">
+          <h4>Microbiome</h4>
+          <canvas id="ecoMicrobeChart" width="300" height="100"></canvas>
+        </div>
+        <div class="eco-chart-wrap">
+          <h4>Evolution</h4>
+          <canvas id="ecoEvolutionChart" width="300" height="100"></canvas>
+        </div>
+      </div>
+
+      <!-- Section 5: Summary Statistics -->
+      <div class="eco-summary-section">
+        <pre id="ecoSummary">No ecosystem active</pre>
+      </div>
     </div>
 
     <div class="tab-content" id="tabEvolution">
@@ -925,6 +1251,12 @@ let stressMetrics = null;
 
 // Ecology event indicators
 let ecologyEvents = [];
+
+// Ecosystem tab state
+let ecosystemActive = false;
+let ecosystemSnapshot = null;
+let ecosystemHistory = []; // Rolling 100-snapshot buffer
+let selectedEcoScenario = 'climate';
 
 // Camera / pan-zoom
 let camX = 0, camY = 0, camZoom = 1;
@@ -2220,6 +2552,256 @@ function drawLearnCurve(cardId) {
   lctx.fillText(yMax.toFixed(2), pad, pad + 8);
 }
 
+// --- Ecosystem Tab ---
+function updateEcosystemUI() {
+  updateEcosystemStatus();
+  updateEcosystemModules();
+  updateEcosystemCharts();
+  updateEcosystemSummary();
+}
+
+function updateEcosystemStatus() {
+  const timeEl = $('#ecoTime');
+  const badgeEl = $('#ecoActiveBadge');
+
+  if (ecosystemActive && ecosystemSnapshot) {
+    if (timeEl) timeEl.textContent = 'Day ' + (ecosystemSnapshot.time_days || 0).toFixed(1);
+    if (badgeEl) {
+      badgeEl.textContent = 'Active';
+      badgeEl.classList.add('active');
+    }
+  } else if (ecosystemActive) {
+    if (timeEl) timeEl.textContent = 'Starting...';
+    if (badgeEl) {
+      badgeEl.textContent = 'Active';
+      badgeEl.classList.add('active');
+    }
+  } else {
+    if (timeEl) timeEl.textContent = 'Day 0';
+    if (badgeEl) {
+      badgeEl.textContent = 'Inactive';
+      badgeEl.classList.remove('active');
+    }
+  }
+}
+
+function updateEcosystemModules() {
+  if (!ecosystemSnapshot) return;
+  const s = ecosystemSnapshot;
+
+  // Update each module card value
+  const modules = {
+    climate: { el: 'ecoModClimate', val: s.temperature_c != null ? s.temperature_c.toFixed(1) + '°C' : '--' },
+    nutrients: { el: 'ecoModNutrients', val: 'C:' + (s.soil_organic_c_g || 0).toFixed(1) + 'g' },
+    microbiome: { el: 'ecoModMicrobiome', val: (s.microbial_richness || 0) + ' spp' },
+    resistance: { el: 'ecoModResistance', val: (s.resistance_events || 0) + ' evts' },
+    hgt: { el: 'ecoModHgt', val: 'freq:' + ((s.hgt_resistance_freq || 0)).toFixed(2) },
+    biofilm: { el: 'ecoModBiofilm', val: (s.biofilm_cell_count || 0) + ' cells' },
+    ecoevo: { el: 'ecoModEcoevo', val: 'f=' + ((s.mean_fitness || 0)).toFixed(2) },
+    popgen: { el: 'ecoModPopgen', val: 'a=' + ((s.allele_freq || 0)).toFixed(2) },
+    phylo: { el: 'ecoModPhylo', val: (s.phylo_tree_size || 0) + ' nodes' },
+    fba: { el: 'ecoModFba', val: 'μ=' + ((s.fba_growth_rate || 0)).toFixed(2) + '/h' },
+    guild: { el: 'ecoModGuild', val: 'latent' }
+  };
+
+  for (const [key, mod] of Object.entries(modules)) {
+    const el = $(`#${mod.el}`);
+    if (el) el.textContent = mod.val;
+  }
+
+  // Draw mini sparklines
+  const sparkKeys = {
+    climate: s.temperature_c,
+    nutrients: s.soil_organic_c_g,
+    microbiome: s.microbial_richness,
+    resistance: s.resistance_events,
+    hgt: s.hgt_resistance_freq,
+    biofilm: s.biofilm_cell_count,
+    ecoevo: s.mean_fitness,
+    popgen: s.allele_freq,
+    phylo: s.phylo_tree_size,
+    fba: s.fba_growth_rate,
+    guild: null
+  };
+
+  for (const [key, _] of Object.entries(sparkKeys)) {
+    drawEcoSparkline(key);
+  }
+}
+
+function drawEcoSparkline(moduleKey) {
+  const canvasId = 'ecoSpark' + moduleKey.charAt(0).toUpperCase() + moduleKey.slice(1);
+  const canvas = $(`#${canvasId}`);
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const w = 50, h = 16;
+  canvas.width = w;
+  canvas.height = h;
+
+  ctx.fillStyle = '#0d0f12';
+  ctx.fillRect(0, 0, w, h);
+
+  // Get history values for this module
+  const valueKey = {
+    climate: 'temperature_c',
+    nutrients: 'soil_organic_c_g',
+    microbiome: 'microbial_richness',
+    resistance: 'resistance_events',
+    hgt: 'hgt_resistance_freq',
+    biofilm: 'biofilm_cell_count',
+    ecoevo: 'mean_fitness',
+    popgen: 'allele_freq',
+    phylo: 'phylo_tree_size',
+    fba: 'fba_growth_rate',
+    guild: null
+  }[moduleKey];
+
+  if (!valueKey) return;
+
+  const values = ecosystemHistory.slice(-50).map(s => s[valueKey] || 0).filter(v => v != null);
+  if (values.length < 2) return;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  // Draw sparkline
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * (w - 4) + 2;
+    const y = h - 2 - ((v - min) / range) * (h - 4);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#4ecdc4';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function updateEcosystemCharts() {
+  drawEcoTimeSeriesChart('ecoClimateChart', [
+    { key: 'temperature_c', label: 'Temp', color: '#e74c3c' },
+    { key: 'co2_ppm', label: 'CO2', color: '#5b9bd5' },
+    { key: 'precipitation_mm', label: 'Precip', color: '#4ecdc4' }
+  ]);
+
+  drawEcoTimeSeriesChart('ecoMicrobeChart', [
+    { key: 'microbial_richness', label: 'Richness', color: '#6bc950' },
+    { key: 'microbial_shannon', label: 'Shannon', color: '#d46cb0' },
+    { key: 'total_microbial_biomass', label: 'Biomass', color: '#e8a040' }
+  ]);
+
+  drawEcoTimeSeriesChart('ecoEvolutionChart', [
+    { key: 'mean_fitness', label: 'Fitness', color: '#4ecdc4' },
+    { key: 'genetic_variance_sum', label: 'Variance', color: '#e8a040' },
+    { key: 'phylo_diversity', label: 'Phylo', color: '#d46cb0' }
+  ]);
+}
+
+function drawEcoTimeSeriesChart(canvasId, series) {
+  const canvas = $(`#${canvasId}`);
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const w = 300, h = 100, pad = 28;
+  canvas.width = w;
+  canvas.height = h;
+
+  ctx.fillStyle = '#0d0f12';
+  ctx.fillRect(0, 0, w, h);
+
+  if (ecosystemHistory.length < 2) {
+    ctx.fillStyle = '#556';
+    ctx.font = '11px monospace';
+    ctx.fillText('No data yet', 120, 55);
+    return;
+  }
+
+  // Find global min/max across all series
+  let globalMin = Infinity, globalMax = -Infinity;
+  series.forEach(s => {
+    ecosystemHistory.forEach(d => {
+      const v = d[s.key];
+      if (v != null) {
+        if (v < globalMin) globalMin = v;
+        if (v > globalMax) globalMax = v;
+      }
+    });
+  });
+  if (globalMin === Infinity) globalMin = 0;
+  if (globalMax === -Infinity) globalMax = 1;
+  if (globalMax === globalMin) globalMax = globalMin + 1;
+
+  const xScale = (w - pad * 2) / (ecosystemHistory.length - 1);
+  const yScale = (h - pad * 2) / (globalMax - globalMin);
+  const mapX = i => pad + i * xScale;
+  const mapY = v => h - pad - (v - globalMin) * yScale;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 5; i++) {
+    const y = pad + i * (h - pad * 2) / 4;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+  }
+
+  // Draw each series
+  series.forEach(s => {
+    ctx.beginPath();
+    let started = false;
+    ecosystemHistory.forEach((d, i) => {
+      const v = d[s.key];
+      if (v != null) {
+        const x = mapX(i);
+        const y = mapY(v);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+    });
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // Labels
+  ctx.fillStyle = '#556';
+  ctx.font = '9px monospace';
+  ctx.fillText(globalMax.toFixed(1), 2, pad + 4);
+  ctx.fillText(globalMin.toFixed(1), 2, h - pad + 4);
+}
+
+function updateEcosystemSummary() {
+  const el = $('#ecoSummary');
+  if (!el) return;
+
+  if (!ecosystemSnapshot) {
+    el.textContent = 'No ecosystem active';
+    return;
+  }
+
+  const s = ecosystemSnapshot;
+  const lines = [
+    `Time: Day ${(s.time_days || 0).toFixed(2)}`,
+    `Climate: ${s.temperature_c?.toFixed(1) || '--'}°C, ${s.co2_ppm?.toFixed(0) || '--'} ppm CO2`,
+    `Precipitation: ${s.precipitation_mm?.toFixed(1) || '--'} mm`,
+    `Soil: C=${s.soil_organic_c_g?.toFixed(2) || '--'}g, N=${s.soil_mineral_n_g?.toFixed(3) || '--'}g, P=${s.soil_mineral_p_g?.toFixed(3) || '--'}g`,
+    `N mineralization: ${s.n_mineralization_rate?.toFixed(4) || '--'}/d, CO2 flux: ${s.co2_flux?.toFixed(4) || '--'}`,
+    `Microbiome: ${s.microbial_richness || 0} spp, H'=${s.microbial_shannon?.toFixed(2) || '--'}, biomass=${s.total_microbial_biomass?.toFixed(1) || '--'}`,
+    `Resistance: ${s.resistance_events || 0} events, ${s.mdr_strain_count || 0} MDR strains, MIC=${(s.mean_mic_fold || 1).toFixed(1)}x`,
+    `HGT: freq=${(s.hgt_resistance_freq || 0).toFixed(3)}, fitness=${(s.hgt_mean_fitness || 0).toFixed(3)}`,
+    `Biofilm: ${s.biofilm_cell_count || 0} cells, ${s.biofilm_biomass?.toFixed(1) || '--'} biomass, EPS=${((s.eps_coverage || 0) * 100).toFixed(1)}%, quorum=${s.quorum_activated ? 'YES' : 'no'}`,
+    `Eco-evo: fitness=${(s.mean_fitness || 0).toFixed(3)}, variance=${(s.genetic_variance_sum || 0).toFixed(4)}, births=${s.eco_evo_births || 0}, deaths=${s.eco_evo_deaths || 0}`,
+    `Pop-gen: allele_freq=${(s.allele_freq || 0).toFixed(3)}`,
+    `Phylo: ${s.phylo_tree_size || 0} nodes, diversity=${(s.phylo_diversity || 0).toFixed(3)}, speciation=${s.speciation_events || 0}`,
+    `FBA: growth=${(s.fba_growth_rate || 0).toFixed(3)}/h, status=${s.fba_status || 'unknown'}`
+  ];
+  el.textContent = lines.join('\n');
+}
+
 // --- Download helper ---
 function downloadJson(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2334,6 +2916,32 @@ function connect() {
           tournamentData = msg.data.entries || msg.data.leaderboard || [];
         }
         renderTournamentTable();
+        break;
+
+      case 'EcosystemSnapshot':
+        ecosystemSnapshot = msg.data;
+        ecosystemActive = true;
+        ecosystemHistory.push(msg.data);
+        if (ecosystemHistory.length > 100) ecosystemHistory.shift();
+        updateEcosystemUI();
+        break;
+
+      case 'EcosystemTimeSeries':
+        if (msg.data && Array.isArray(msg.data.snapshots)) {
+          ecosystemHistory = msg.data.snapshots.slice(-100);
+          if (ecosystemHistory.length > 0) {
+            ecosystemSnapshot = ecosystemHistory[ecosystemHistory.length - 1];
+            ecosystemActive = true;
+          }
+          updateEcosystemUI();
+        }
+        break;
+
+      case 'EcosystemStarted':
+        ecosystemActive = true;
+        ecosystemHistory = [];
+        ecosystemSnapshot = null;
+        updateEcosystemStatus();
         break;
 
       case 'error':
@@ -2689,6 +3297,50 @@ function setupUI() {
       downloadCsv(csv, `leaderboard_${Date.now()}.csv`);
     }
   });
+
+  // Ecosystem tab handlers
+  // Scenario card selection
+  $$('.eco-scenario-card').forEach(card => {
+    card.addEventListener('click', () => {
+      $$('.eco-scenario-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedEcoScenario = card.dataset.scenario;
+    });
+  });
+
+  // Start ecosystem
+  $('#ecoStartBtn').addEventListener('click', async () => {
+    const scenario = selectedEcoScenario || 'climate';
+    const seed = parseInt($('#ecoSeed').value) || 42;
+    try {
+      await authFetch(`/api/ecosystem/start?scenario=${scenario}&seed=${seed}`, { method: 'POST' });
+      ecosystemActive = true;
+      ecosystemHistory = [];
+      ecosystemSnapshot = null;
+      updateEcosystemStatus();
+    } catch (e) {
+      console.error('Failed to start ecosystem:', e);
+    }
+  });
+
+  // Step ecosystem
+  $('#ecoStepBtn').addEventListener('click', async () => {
+    try {
+      await authFetch('/api/ecosystem/step', { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to step ecosystem:', e);
+    }
+  });
+
+  // Run ecosystem for N days
+  $('#ecoRunBtn').addEventListener('click', async () => {
+    const days = parseFloat($('#ecoDaysInput').value) || 30;
+    try {
+      await authFetch(`/api/ecosystem/run?days=${days}`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to run ecosystem:', e);
+    }
+  });
 }
 
 // --- Init ---
@@ -2698,6 +3350,7 @@ function setupUI() {
   connect();
   renderEvoChart();
   renderParetoChart();
+  updateEcosystemStatus();
   requestAnimationFrame(render);
 })();
 </script>
