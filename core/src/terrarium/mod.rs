@@ -46,7 +46,20 @@ pub use substrate::{BatchedAtomTerrarium, TerrariumSpecies, TERRARIUM_SPECIES_CO
 pub use genotype::{SecondaryGenotypeRecord, SecondaryGenotypeCatalogRecord, INTERNAL_SECONDARY_GENOTYPE_AXES, trait_match, packet_surface_factor};
 pub use packet::{GenotypePacket, GenotypePacketPopulation, GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS};
 pub use calibrator::SubstrateKinetics;
-pub use evolve::{WorldGenome, EvolutionConfig, FitnessObjective, FitnessConfig, GenomeConstraints, SearchStrategy, GenerationTelemetry, evolve};
+
+pub use evolve::{
+    WorldGenome, EvolutionConfig, FitnessObjective, FitnessConfig, GenomeConstraints, SearchStrategy, GenerationTelemetry, evolve,
+    telemetry_from_result, telemetry_from_pareto_result, telemetry_to_csv, telemetry_to_prometheus,
+    evaluate_stress_metrics_for_best, EnvironmentalSchedule, CoevolutionMode,
+    evolve_stress_test, evolve_with_environment, evolve_coevolution, evolve_pareto, evolve_pareto_stressed,
+    scan_fitness_landscape, LandscapeAxis, GENOME_PARAM_NAMES, run_and_export, sparkline, ecosystem_dashboard,
+    DrugProtocol, DrugProtocolResult, PersisterCellSimulator,
+    ecoli_validation_data, optimize_drug_protocol, validate_against_ecoli,
+    GeneCircuitSpec, GeneCircuitParams, GeneCircuitResult, optimize_gene_circuit,
+    evaluate_fitness
+};
+
+pub use crate::plant_cellular::PlantTissue;
 
 pub mod biomechanics;
 pub mod calibrator;
@@ -62,6 +75,12 @@ pub mod soil;
 pub mod tests;
 
 pub use field::{TerrariumSensoryField, FlySensorySample};
+
+// ===== Ecosystem Organism Integration =====
+// Re-export organism catalog for ecosystem-wide organism data access.
+pub use crate::organism_catalog::{
+    OrganismCatalog, OrganismType, OrganismCategory, GenomeStats, NeuralStats, BodyAnatomy,
+};
 
 // ===== Rendering Constants & Utilities =====
 
@@ -90,6 +109,14 @@ pub const TERRARIUM_RENDER_ID_WATER: u64 = 1;
 
 pub fn add3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+pub fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 pub fn mesh_append(dest: &mut crate::terrarium_render::TerrariumTriangleMeshRender, src: &crate::terrarium_render::TerrariumTriangleMeshRender) {
