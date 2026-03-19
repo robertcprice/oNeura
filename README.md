@@ -1,5 +1,3 @@
-# oNeura
-
 <div align="center">
 
 ![oNeura Logo](docs/assets/logo.png)
