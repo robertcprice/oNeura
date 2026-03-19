@@ -1,6 +1,6 @@
 <div align="center">
 
-![oNeura Logo](docs/assets/logo.png)
+![oNeura Logo](docs/assets/logo-readme-20260319.png)
 
 **Build digital organisms with biophysically faithful brains — from molecules to behavior.**
 
