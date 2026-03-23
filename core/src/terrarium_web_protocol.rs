@@ -315,7 +315,48 @@ pub enum ServerMsg {
     StressComplete(StressCompleteData),
     EcosystemSnapshot(crate::ecosystem_integration::EcosystemSnapshot),
     EcosystemTimeSeries(crate::ecosystem_integration::EcosystemTimeSeries),
+    // Pharma lab
+    PharmaLabState(crate::pharma_lab::PharmaLabSnapshot),
+    PharmaLabFrame(crate::pharma_lab::PharmaLabFrame),
+    PharmaDockingResult(PharmaDockingResultData),
+    PharmaAdmetResult(PharmaAdmetResultData),
+    PharmaReactionEvent(crate::pharma_lab::ReactionEvent),
+    PharmaLibrary(PharmaLibraryData),
+    PharmaError { message: String },
     Error { message: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PharmaDockingResultData {
+    pub ligand_name: String,
+    pub target_name: String,
+    pub binding_energy_kcal: f64,
+    pub contacts: u32,
+    pub pharmacophore_match: f64,
+    pub ligand_efficiency: f64,
+    pub vdw_energy: f64,
+    pub electrostatic_energy: f64,
+    pub desolvation_penalty: f64,
+    pub entropy_penalty: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PharmaAdmetResultData {
+    pub molecule_name: String,
+    pub absorption: f64,
+    pub distribution_vd: f64,
+    pub metabolic_stability: f64,
+    pub herg_risk: f64,
+    pub drug_likeness: f64,
+    pub lipinski_violations: u32,
+    pub bbb_permeability: f64,
+    pub hepatotoxicity_risk: f64,
+    pub plasma_protein_binding: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PharmaLibraryData {
+    pub molecules: Vec<crate::pharma_lab::library::LibraryEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]
