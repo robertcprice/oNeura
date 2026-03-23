@@ -16,6 +16,11 @@
 <script src="js/ssao_effect.js" onerror="console.error('Failed to load SSAO effect')"></script>
 <script src="js/cutaway_controller.js" onerror="console.error('Failed to load cutaway controller')"></script>
 <script src="js/density_volume.js" onerror="console.error('Failed to load density volume')"></script>
+<script src="js/periodic_table.js" onerror="console.error('Failed to load periodic table')"></script>
+<script src="js/molecule_builder.js" onerror="console.error('Failed to load molecule builder')"></script>
+<script src="js/pharma_lab.js" onerror="console.error('Failed to load pharma lab')"></script>
+<script src="js/reaction_animator.js" onerror="console.error('Failed to load reaction animator')"></script>
+<script src="js/admet_dashboard.js" onerror="console.error('Failed to load ADMET dashboard')"></script>
 <style>
   :root {
     --bg: #0d1008;
@@ -3889,6 +3894,15 @@ const SURFACE_MODE_CONFIG = Object.freeze({
     view: 'terrain',
     tool: 'select',
   },
+  pharma: {
+    label: 'Pharma Lab',
+    description: 'Interactive molecular builder with drug discovery, reaction simulation, and ADMET analysis.',
+    mainTab: 'stats',
+    statsMode: 'overview',
+    view: 'terrain',
+    tool: 'select',
+    pharmaMode: true,
+  },
 });
 
 // Ecosystem tab state
@@ -6414,8 +6428,8 @@ class ThreeRenderer {
     this.container = document.getElementById(containerId);
     this.pixelScale = 2;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x57583d);
-    this.scene.fog = new THREE.FogExp2(0x57583d, 0.018);
+    this.scene.background = new THREE.Color(0x6a7050);
+    this.scene.fog = new THREE.FogExp2(0x6a7050, 0.012);
 
     this.camera = new THREE.PerspectiveCamera(40, this.container.clientWidth / this.container.clientHeight, 0.1, 1000);
     this.camera.position.set(5.0, 6.0, 7.0);
@@ -6461,13 +6475,13 @@ class ThreeRenderer {
       : null;
 
     // Lights
-    this.ambientLight = new THREE.AmbientLight(0x837f65, 0.34);
+    this.ambientLight = new THREE.AmbientLight(0x9a9580, 0.42);
     this.scene.add(this.ambientLight);
 
-    this.skyLight = new THREE.HemisphereLight(0xa6b086, 0x574028, 0.56);
+    this.skyLight = new THREE.HemisphereLight(0xb8c8a0, 0x5a4030, 0.65);
     this.scene.add(this.skyLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffefc4, 0.98);
+    this.sunLight = new THREE.DirectionalLight(0xfff0c8, 1.15);
     this.sunLight.position.set(24, 34, 16);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.width = 1536;
@@ -6481,7 +6495,7 @@ class ThreeRenderer {
     this.sunLight.shadow.radius = 1.5;
     this.scene.add(this.sunLight);
 
-    this.fillLight = new THREE.DirectionalLight(0x758a6b, 0.10);
+    this.fillLight = new THREE.DirectionalLight(0x88a080, 0.22);
     this.fillLight.position.set(-14, 12, -10);
     this.scene.add(this.fillLight);
 
@@ -6520,8 +6534,8 @@ class ThreeRenderer {
     this.terrainCellDummy = new THREE.Object3D();
     this.terrainVoxelDummy = new THREE.Object3D();
     this.terrainColor = new THREE.Color();
-    this.terrainLightScale = 0.80;
-    this.terrainShellColorScale = 0.92;
+    this.terrainLightScale = 0.88;
+    this.terrainShellColorScale = 1.0;
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.selectedInspectRef = null;
@@ -6581,9 +6595,8 @@ class ThreeRenderer {
     // Keep it opt-in until morphology can be projected without browser-side authority drift.
     this.enableMergedWaterSurface = queryParams().get('experimental_merged_water') === '1';
 
-    // The shader plant path is still too willing to invent canopy volume locally.
-    // Keep it disabled until morphology can be served explicitly from core state.
-    const enableExperimentalPlantRenderer = false;
+    // Enable the shader plant renderer — spline trunks + displaced canopy + GPU wind
+    const enableExperimentalPlantRenderer = true;
     this.plantRenderer = (enableExperimentalPlantRenderer && typeof PlantRenderer !== 'undefined')
       ? new PlantRenderer(this.scene)
       : null;
