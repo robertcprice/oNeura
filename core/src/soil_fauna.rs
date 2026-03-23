@@ -501,7 +501,7 @@ impl NematodeBody {
 ///
 /// Biomass is stored as g C per cell, population density as individuals/m^2.
 /// Bioturbation rate is the effective diffusive mixing coefficient.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EarthwormPopulation {
     /// Biomass per 2D grid cell (g C / cell).
     pub biomass_per_voxel: Vec<f32>,
@@ -551,7 +551,7 @@ impl EarthwormPopulation {
 // ── Nematode guilds ─────────────────────────────────────────────────────
 
 /// Nematode functional guild.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NematodeKind {
     /// Bacterial feeders: graze on heterotrophic and nitrifying bacteria.
     BacterialFeeder,
@@ -562,6 +562,28 @@ pub enum NematodeKind {
 }
 
 impl NematodeKind {
+    /// Representative body plan for this guild.
+    ///
+    /// This keeps anatomical ownership with the soil-fauna model instead of
+    /// repeating body templates in rendering code.
+    pub fn body(self) -> NematodeBody {
+        match self {
+            Self::BacterialFeeder => NematodeBody::bacterial_feeder(),
+            Self::FungalFeeder => NematodeBody::fungal_feeder(),
+            Self::Omnivore => {
+                let bacterial = NematodeBody::bacterial_feeder();
+                let fungal = NematodeBody::fungal_feeder();
+                NematodeBody {
+                    length_mm: (bacterial.length_mm + fungal.length_mm) * 0.5,
+                    diameter_um: (bacterial.diameter_um + fungal.diameter_um) * 0.5,
+                    has_stylet: fungal.has_stylet,
+                    stylet_length_um: fungal.stylet_length_um * 0.5,
+                    cuticle_layers: bacterial.cuticle_layers.max(fungal.cuticle_layers),
+                }
+            }
+        }
+    }
+
     /// Feeding rate multiplier relative to the base rate.
     ///
     /// Bacterial feeders are the most active grazers; fungal feeders
@@ -594,7 +616,7 @@ impl NematodeKind {
 }
 
 /// A single nematode guild living on the same 2D grid.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NematodeGuild {
     pub kind: NematodeKind,
     /// Biomass per cell (ug C / cell).
@@ -734,7 +756,9 @@ pub fn step_soil_fauna(
 
         // Update population density from biomass.
         let new_ew_density = if EARTHWORM_INDIVIDUAL_MASS_G_C > 0.0 {
-            (ew_density + ew_growth).max(0.0).min(EARTHWORM_CARRYING_CAPACITY * 1.2)
+            (ew_density + ew_growth)
+                .max(0.0)
+                .min(EARTHWORM_CARRYING_CAPACITY * 1.2)
         } else {
             0.0
         };
@@ -832,8 +856,9 @@ pub fn step_soil_fauna(
                 * nem_env
                 * prey_scale
                 * dt_days;
-            let new_density =
-                (nem_density + d_density).max(0.0).min(NEMATODE_CARRYING_CAPACITY * 1.2);
+            let new_density = (nem_density + d_density)
+                .max(0.0)
+                .min(NEMATODE_CARRYING_CAPACITY * 1.2);
 
             // N mineralization: excrete excess N from consumed microbial biomass.
             let n_excreted = consumption_g * NEMATODE_N_EXCRETION_PER_C;
@@ -867,8 +892,8 @@ pub fn step_soil_fauna(
             if total_nh4 > 0.0 {
                 let nh4_base = TerrariumSpecies::Ammonium as usize * total_voxels;
                 if nh4_base + voxel_idx < substrate.current.len() {
-                    substrate.current[nh4_base + voxel_idx] +=
-                        total_nh4 * depth_weight * 0.001; // scale to substrate concentration units
+                    substrate.current[nh4_base + voxel_idx] += total_nh4 * depth_weight * 0.001;
+                    // scale to substrate concentration units
                 }
             }
 
@@ -876,8 +901,7 @@ pub fn step_soil_fauna(
             if ew_p_release > 0.0 {
                 let p_base = TerrariumSpecies::Phosphorus as usize * total_voxels;
                 if p_base + voxel_idx < substrate.current.len() {
-                    substrate.current[p_base + voxel_idx] +=
-                        ew_p_release * depth_weight * 0.001;
+                    substrate.current[p_base + voxel_idx] += ew_p_release * depth_weight * 0.001;
                 }
             }
         }
@@ -965,12 +989,12 @@ mod tests {
     fn setup() -> (
         EarthwormPopulation,
         Vec<NematodeGuild>,
-        Vec<f32>,       // microbial_biomass
-        Vec<f32>,       // nitrifier_biomass
-        Vec<f32>,       // organic_matter
+        Vec<f32>, // microbial_biomass
+        Vec<f32>, // nitrifier_biomass
+        Vec<f32>, // organic_matter
         BatchedAtomTerrarium,
-        Vec<f32>,       // hydration (3D)
-        Vec<f32>,       // temperature (3D)
+        Vec<f32>, // hydration (3D)
+        Vec<f32>, // temperature (3D)
     ) {
         let substrate = BatchedAtomTerrarium::new(W, H, D, 0.5, false);
         let total_3d = W * H * D;
@@ -1009,8 +1033,16 @@ mod tests {
         // Run 100 steps of 1 hour each (~4 days).
         for _ in 0..100 {
             step_soil_fauna(
-                &mut ew, &mut nem, &mut micro, &mut nitri, &mut om, &mut sub,
-                &hyd, &temp, 1.0, (W, H, D),
+                &mut ew,
+                &mut nem,
+                &mut micro,
+                &mut nitri,
+                &mut om,
+                &mut sub,
+                &hyd,
+                &temp,
+                1.0,
+                (W, H, D),
             );
         }
 
@@ -1045,8 +1077,16 @@ mod tests {
         // Run several steps.
         for _ in 0..50 {
             step_soil_fauna(
-                &mut ew, &mut nem, &mut micro, &mut nitri, &mut om, &mut sub,
-                &hyd, &temp, 1.0, (W, H, D),
+                &mut ew,
+                &mut nem,
+                &mut micro,
+                &mut nitri,
+                &mut om,
+                &mut sub,
+                &hyd,
+                &temp,
+                1.0,
+                (W, H, D),
             );
         }
 
@@ -1085,8 +1125,16 @@ mod tests {
         // Run 200 steps (several days).
         for _ in 0..200 {
             step_soil_fauna(
-                &mut ew, &mut nem, &mut micro, &mut nitri, &mut om, &mut sub,
-                &hyd, &temp, 1.0, (W, H, D),
+                &mut ew,
+                &mut nem,
+                &mut micro,
+                &mut nitri,
+                &mut om,
+                &mut sub,
+                &hyd,
+                &temp,
+                1.0,
+                (W, H, D),
             );
         }
 
@@ -1099,9 +1147,7 @@ mod tests {
 
     /// Compute variance of a single column (x=0, y=0) across depth.
     fn column_variance(data: &[f32], base: usize, plane: usize, depth: usize, col: usize) -> f32 {
-        let values: Vec<f32> = (0..depth)
-            .map(|z| data[base + z * plane + col])
-            .collect();
+        let values: Vec<f32> = (0..depth).map(|z| data[base + z * plane + col]).collect();
         let mean = values.iter().sum::<f32>() / values.len() as f32;
         values.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / values.len() as f32
     }
@@ -1131,18 +1177,32 @@ mod tests {
         }
 
         let initial_ew_biomass: f32 = ew.biomass_per_voxel.iter().sum();
-        let initial_nem_biomass: f32 = nem.iter().map(|g| g.biomass_per_voxel.iter().sum::<f32>()).sum();
+        let initial_nem_biomass: f32 = nem
+            .iter()
+            .map(|g| g.biomass_per_voxel.iter().sum::<f32>())
+            .sum();
 
         // Run for many steps in waterlogged conditions.
         for _ in 0..200 {
             step_soil_fauna(
-                &mut ew, &mut nem, &mut micro, &mut nitri, &mut om, &mut sub,
-                &hyd_saturated, &temp, 1.0, (W, H, D),
+                &mut ew,
+                &mut nem,
+                &mut micro,
+                &mut nitri,
+                &mut om,
+                &mut sub,
+                &hyd_saturated,
+                &temp,
+                1.0,
+                (W, H, D),
             );
         }
 
         let final_ew_biomass: f32 = ew.biomass_per_voxel.iter().sum();
-        let final_nem_biomass: f32 = nem.iter().map(|g| g.biomass_per_voxel.iter().sum::<f32>()).sum();
+        let final_nem_biomass: f32 = nem
+            .iter()
+            .map(|g| g.biomass_per_voxel.iter().sum::<f32>())
+            .sum();
 
         assert!(
             final_ew_biomass < initial_ew_biomass,
@@ -1183,22 +1243,26 @@ mod tests {
         // Record initial NH4+ in substrate.
         let total_voxels = sub.total_voxels();
         let nh4_base = TerrariumSpecies::Ammonium as usize * total_voxels;
-        let initial_nh4: f32 = sub.current[nh4_base..nh4_base + total_voxels]
-            .iter()
-            .sum();
+        let initial_nh4: f32 = sub.current[nh4_base..nh4_base + total_voxels].iter().sum();
 
         let mut total_released = 0.0f32;
         for _ in 0..50 {
             let res = step_soil_fauna(
-                &mut ew, &mut nem, &mut micro, &mut nitri, &mut om, &mut sub,
-                &hyd, &temp, 1.0, (W, H, D),
+                &mut ew,
+                &mut nem,
+                &mut micro,
+                &mut nitri,
+                &mut om,
+                &mut sub,
+                &hyd,
+                &temp,
+                1.0,
+                (W, H, D),
             );
             total_released += res.total_nh4_released;
         }
 
-        let final_nh4: f32 = sub.current[nh4_base..nh4_base + total_voxels]
-            .iter()
-            .sum();
+        let final_nh4: f32 = sub.current[nh4_base..nh4_base + total_voxels].iter().sum();
 
         assert!(
             total_released > 0.0,
@@ -1233,7 +1297,12 @@ mod tests {
     fn hydration_response_function() {
         // Below minimum: zero.
         assert_eq!(
-            hydration_response(0.05, EARTHWORM_HYDRATION_MIN, EARTHWORM_HYDRATION_OPT, EARTHWORM_HYDRATION_MAX),
+            hydration_response(
+                0.05,
+                EARTHWORM_HYDRATION_MIN,
+                EARTHWORM_HYDRATION_OPT,
+                EARTHWORM_HYDRATION_MAX
+            ),
             0.0
         );
         // At optimum: 1.0.
@@ -1246,7 +1315,12 @@ mod tests {
         assert!((at_opt - 1.0).abs() < 1e-6);
         // Above maximum: zero.
         assert_eq!(
-            hydration_response(0.95, EARTHWORM_HYDRATION_MIN, EARTHWORM_HYDRATION_OPT, EARTHWORM_HYDRATION_MAX),
+            hydration_response(
+                0.95,
+                EARTHWORM_HYDRATION_MIN,
+                EARTHWORM_HYDRATION_OPT,
+                EARTHWORM_HYDRATION_MAX
+            ),
             0.0
         );
     }
@@ -1264,8 +1338,16 @@ mod tests {
 
         // Should not panic or produce NaN.
         let res = step_soil_fauna(
-            &mut ew, &mut nem, &mut micro, &mut nitri, &mut om, &mut sub,
-            &hyd, &temp, 1.0, (W, H, D),
+            &mut ew,
+            &mut nem,
+            &mut micro,
+            &mut nitri,
+            &mut om,
+            &mut sub,
+            &hyd,
+            &temp,
+            1.0,
+            (W, H, D),
         );
 
         assert!(res.total_nh4_released >= 0.0);
@@ -1361,7 +1443,10 @@ mod tests {
 
         let pp = super::NematodeBody::plant_parasite();
         assert!(pp.has_stylet, "Plant parasites have stylet");
-        assert!(pp.stylet_length_um > ff.stylet_length_um, "Plant parasites have longer stylet");
+        assert!(
+            pp.stylet_length_um > ff.stylet_length_um,
+            "Plant parasites have longer stylet"
+        );
     }
 
     #[test]

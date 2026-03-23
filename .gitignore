@@ -51,3 +51,23 @@ _vizdoom.ini
 target/
 oneuro-metal/target/
 oneuro-3d/target/
+core/target/
+
+# Rust build artifacts
+*.rlib
+libstochastic_expression.rlib
+
+# Node
+node_modules/
+dist/
+package-lock.json
+
+# Logs
+*.log
+app.log
+terrarium.log
+
+# Terrarium vtk experiment
+terrarium-vtk/node_modules/
+terrarium-vtk/dist/
+terrarium-vtk/tests/screenshot.png

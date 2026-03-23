@@ -1,0 +1,22 @@
+[package]
+name = "oneura-desktop"
+version = "0.1.0"
+edition = "2021"
+autobins = false
+
+[[bin]]
+name = "terrarium_3d"
+path = "src/bin/terrarium_3d.rs"
+
+[dependencies]
+bevy = "0.15"
+rand = "0.8"
+oneura-core = { path = "../../core", default-features = false, features = ["web"] }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync"] }
+tower-http = { version = "0.6", features = ["cors"] }
+webbrowser = "1.0"
+
+[[bin]]
+name = "ps2_demo"
+path = "src/bin/ps2_demo.rs"

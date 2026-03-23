@@ -69,9 +69,10 @@ impl OrganismType {
     /// Get the organism category.
     pub fn category(&self) -> OrganismCategory {
         match self {
-            Self::Celegans | Self::NematodeBacterial | Self::NematodeFungal | Self::NematodePlant => {
-                OrganismCategory::Nematode
-            }
+            Self::Celegans
+            | Self::NematodeBacterial
+            | Self::NematodeFungal
+            | Self::NematodePlant => OrganismCategory::Nematode,
             Self::Drosophila => OrganismCategory::Insect,
             Self::AntWorker | Self::AntQueen => OrganismCategory::Insect,
             Self::Earthworm => OrganismCategory::Annelid,
@@ -199,11 +200,7 @@ impl NeuralStats {
         Self {
             neuron_count: 302,
             muscle_count: Some(95),
-            brain_regions: vec![
-                ("sensory", 0.20),
-                ("interneurons", 0.50),
-                ("motor", 0.30),
-            ],
+            brain_regions: vec![("sensory", 0.20), ("interneurons", 0.50), ("motor", 0.30)],
             neurotransmitters: vec!["ACh", "GABA", "Glutamate", "Serotonin", "Dopamine"],
         }
     }
@@ -214,14 +211,21 @@ impl NeuralStats {
             neuron_count: 139_000,
             muscle_count: None,
             brain_regions: vec![
-                ("AL", 0.05),        // Antennal Lobe
-                ("MB_KC", 0.10),     // Mushroom Body Kenyon Cells
-                ("CX", 0.06),        // Central Complex
-                ("OL", 0.33),        // Optic Lobes
-                ("VNC", 0.15),       // Ventral Nerve Cord
+                ("AL", 0.05),    // Antennal Lobe
+                ("MB_KC", 0.10), // Mushroom Body Kenyon Cells
+                ("CX", 0.06),    // Central Complex
+                ("OL", 0.33),    // Optic Lobes
+                ("VNC", 0.15),   // Ventral Nerve Cord
                 ("other", 0.31),
             ],
-            neurotransmitters: vec!["ACh", "GABA", "Glutamate", "Dopamine", "Serotonin", "Octopamine"],
+            neurotransmitters: vec![
+                "ACh",
+                "GABA",
+                "Glutamate",
+                "Dopamine",
+                "Serotonin",
+                "Octopamine",
+            ],
         }
     }
 
@@ -274,8 +278,11 @@ pub struct BodyAnatomy {
 }
 
 /// Locomotion mechanism.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum LocomotionType {
+    /// No active locomotion.
+    #[default]
+    None,
     /// Peristaltic crawling (earthworm, nematode).
     Peristaltic,
     /// Walking on legs.
@@ -422,23 +429,45 @@ impl OrganismCatalog {
         };
 
         // C. elegans
-        catalog.genomes.insert(OrganismType::Celegans, GenomeStats::celegans());
-        catalog.neural.insert(OrganismType::Celegans, NeuralStats::celegans());
-        catalog.anatomy.insert(OrganismType::Celegans, BodyAnatomy::celegans());
+        catalog
+            .genomes
+            .insert(OrganismType::Celegans, GenomeStats::celegans());
+        catalog
+            .neural
+            .insert(OrganismType::Celegans, NeuralStats::celegans());
+        catalog
+            .anatomy
+            .insert(OrganismType::Celegans, BodyAnatomy::celegans());
 
         // Drosophila
-        catalog.genomes.insert(OrganismType::Drosophila, GenomeStats::drosophila());
-        catalog.neural.insert(OrganismType::Drosophila, NeuralStats::drosophila());
-        catalog.anatomy.insert(OrganismType::Drosophila, BodyAnatomy::drosophila());
+        catalog
+            .genomes
+            .insert(OrganismType::Drosophila, GenomeStats::drosophila());
+        catalog
+            .neural
+            .insert(OrganismType::Drosophila, NeuralStats::drosophila());
+        catalog
+            .anatomy
+            .insert(OrganismType::Drosophila, BodyAnatomy::drosophila());
 
         // Ant
-        catalog.genomes.insert(OrganismType::AntWorker, GenomeStats::ant());
-        catalog.genomes.insert(OrganismType::AntQueen, GenomeStats::ant());
-        catalog.neural.insert(OrganismType::AntWorker, NeuralStats::ant_worker());
+        catalog
+            .genomes
+            .insert(OrganismType::AntWorker, GenomeStats::ant());
+        catalog
+            .genomes
+            .insert(OrganismType::AntQueen, GenomeStats::ant());
+        catalog
+            .neural
+            .insert(OrganismType::AntWorker, NeuralStats::ant_worker());
 
         // Earthworm
-        catalog.genomes.insert(OrganismType::Earthworm, GenomeStats::earthworm());
-        catalog.anatomy.insert(OrganismType::Earthworm, BodyAnatomy::earthworm());
+        catalog
+            .genomes
+            .insert(OrganismType::Earthworm, GenomeStats::earthworm());
+        catalog
+            .anatomy
+            .insert(OrganismType::Earthworm, BodyAnatomy::earthworm());
 
         // Soil nematodes (use C. elegans reference)
         for nt in [
@@ -479,18 +508,18 @@ impl OrganismCatalog {
             format!("Category: {:?}", org.category()),
         ];
 
-        if let Some(g) = self.genome(&org) {
+        if let Some(g) = self.genome(org) {
             lines.push(format!(
                 "Genome: {:.0} Mb, {} genes, {} chromosomes",
                 g.genome_mb, g.protein_genes, g.chromosome_count
             ));
         }
 
-        if let Some(n) = self.neural(&org) {
+        if let Some(n) = self.neural(org) {
             lines.push(format!("Neurons: {}", n.neuron_count));
         }
 
-        if let Some(a) = self.anatomy(&org) {
+        if let Some(a) = self.anatomy(org) {
             lines.push(format!(
                 "Body: {:.1} mm, {:?} locomotion",
                 a.length_mm, a.locomotion
@@ -513,10 +542,22 @@ impl OrganismCatalog {
         ];
 
         for (org, name) in organisms {
-            let genome = self.genome(org).map(|g| format!("{:.0}", g.genome_mb)).unwrap_or("-".into());
-            let genes = self.genome(org).map(|g| format!("{}", g.protein_genes)).unwrap_or("-".into());
-            let neurons = self.neural(org).map(|n| format!("{}", n.neuron_count)).unwrap_or("-".into());
-            rows.push(format!("| {} | {} | {} | {} |", name, genome, genes, neurons));
+            let genome = self
+                .genome(org)
+                .map(|g| format!("{:.0}", g.genome_mb))
+                .unwrap_or("-".into());
+            let genes = self
+                .genome(org)
+                .map(|g| format!("{}", g.protein_genes))
+                .unwrap_or("-".into());
+            let neurons = self
+                .neural(org)
+                .map(|n| format!("{}", n.neuron_count))
+                .unwrap_or("-".into());
+            rows.push(format!(
+                "| {} | {} | {} | {} |",
+                name, genome, genes, neurons
+            ));
         }
 
         rows.join("\n")
@@ -534,7 +575,10 @@ mod tests {
     #[test]
     fn test_catalog_creation() {
         let catalog = OrganismCatalog::new();
-        assert!(catalog.genomes.len() >= 5, "At least 5 organisms with genomes");
+        assert!(
+            catalog.genomes.len() >= 5,
+            "At least 5 organisms with genomes"
+        );
     }
 
     #[test]
@@ -563,9 +607,18 @@ mod tests {
 
     #[test]
     fn test_organism_categories() {
-        assert_eq!(OrganismType::Celegans.category(), OrganismCategory::Nematode);
-        assert_eq!(OrganismType::Drosophila.category(), OrganismCategory::Insect);
-        assert_eq!(OrganismType::Earthworm.category(), OrganismCategory::Annelid);
+        assert_eq!(
+            OrganismType::Celegans.category(),
+            OrganismCategory::Nematode
+        );
+        assert_eq!(
+            OrganismType::Drosophila.category(),
+            OrganismCategory::Insect
+        );
+        assert_eq!(
+            OrganismType::Earthworm.category(),
+            OrganismCategory::Annelid
+        );
     }
 
     #[test]
@@ -608,6 +661,9 @@ mod tests {
         // Earthworm has the largest genome
         let ew = GenomeStats::earthworm();
         let ce = GenomeStats::celegans();
-        assert!(ew.genome_mb > ce.genome_mb * 5, "Earthworm genome >5x C. elegans");
+        assert!(
+            ew.genome_mb > ce.genome_mb * 5.0,
+            "Earthworm genome >5x C. elegans"
+        );
     }
 }

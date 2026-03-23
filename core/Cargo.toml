@@ -1,0 +1,54 @@
+[package]
+name = "oneura-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bobby Price"]
+description = "GPU-accelerated molecular brain simulator — the world's first Metal-powered biophysical neural engine"
+license = "MIT"
+repository = "https://github.com/bobbyprice/oNeura"
+keywords = ["neuroscience", "gpu", "metal", "hodgkin-huxley", "brain-simulation"]
+categories = ["science", "simulation"]
+
+[lib]
+name = "oneura_core"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["python"]
+python = ["pyo3/extension-module"]
+cuda = ["cudarc"]
+nuclear_physics = []
+satellite_tests = []
+terrarium_advanced = []
+terrarium_render = []
+web = ["dep:tokio", "dep:axum", "dep:tower-http", "dep:futures-util", "dep:flate2"]
+
+[dependencies]
+pyo3 = { version = "0.28", optional = true, features = ["extension-module"] }
+cudarc = { version = "0.12", optional = true, features = ["std", "nvrtc"] }
+ndarray = "0.16"
+rayon = "1.10"
+rand = { version = "0.8", features = ["serde1"] }
+rand_chacha = { version = "0.3", features = ["serde1"] }
+rand_distr = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+openentropy-core = "0.12.3"
+axum = { version = "0.8", features = ["ws"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"], optional = true }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "set-header"], optional = true }
+futures-util = { version = "0.3", optional = true }
+flate2 = { version = "1", optional = true }
+minifb = "0.27"
+font8x8 = "0.3"
+image = "0.25"
+gif = "0.13"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+foreign-types-shared = "0.3"
+metal = "0.29"
+objc = "0.2"
+
+[build-dependencies]
+pyo3-build-config = "0.28"

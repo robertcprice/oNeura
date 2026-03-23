@@ -1,0 +1,669 @@
+[
+  {
+    "species": "water",
+    "name": "water",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "O" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 0, "j": 2, "order": "single" }
+    ]
+  },
+  {
+    "species": "oxygen_gas",
+    "name": "oxygen_gas",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "O" },
+      { "element": "O" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "double" }
+    ]
+  },
+  {
+    "species": "carbon_dioxide",
+    "name": "carbon_dioxide",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "O" },
+      { "element": "C" },
+      { "element": "O" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "double" },
+      { "i": 1, "j": 2, "order": "double" }
+    ]
+  },
+  {
+    "species": "proton",
+    "name": "proton",
+    "atoms": [
+      { "element": "H", "formal_charge": 1 }
+    ]
+  },
+  {
+    "species": "surface_proton_load",
+    "name": "surface_proton_load",
+    "atoms": [
+      { "element": "H", "formal_charge": 1 }
+    ]
+  },
+  {
+    "species": "ammonium",
+    "name": "ammonium",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "N", "formal_charge": 1 },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 0, "j": 2, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 0, "j": 4, "order": "single" }
+    ]
+  },
+  {
+    "species": "nitrate",
+    "name": "nitrate",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "N", "formal_charge": 1 },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O", "formal_charge": -1 }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "double" },
+      { "i": 0, "j": 2, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" }
+    ]
+  },
+  {
+    "species": "bicarbonate_pool",
+    "name": "bicarbonate_pool",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "double" },
+      { "i": 0, "j": 2, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 3, "j": 4, "order": "single" }
+    ]
+  },
+  {
+    "species": "calcium_bicarbonate_complex",
+    "name": "calcium_bicarbonate_complex",
+    "atoms": [
+      { "element": "Ca", "formal_charge": 2 },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O" },
+      { "element": "H" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 1, "j": 2, "order": "double" },
+      { "i": 1, "j": 3, "order": "single" },
+      { "i": 1, "j": 4, "order": "single" },
+      { "i": 4, "j": 5, "order": "single" },
+      { "i": 6, "j": 7, "order": "double" },
+      { "i": 6, "j": 8, "order": "single" },
+      { "i": 6, "j": 9, "order": "single" },
+      { "i": 9, "j": 10, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 0, "j": 8, "order": "single" }
+    ]
+  },
+  {
+    "species": "dissolved_silicate",
+    "name": "dissolved_silicic_acid_pool",
+    "atoms": [
+      { "element": "Si" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 0, "j": 2, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 0, "j": 4, "order": "single" },
+      { "i": 1, "j": 5, "order": "single" },
+      { "i": 2, "j": 6, "order": "single" },
+      { "i": 3, "j": 7, "order": "single" },
+      { "i": 4, "j": 8, "order": "single" }
+    ]
+  },
+  {
+    "species": "silicate_mineral",
+    "name": "quartz_like_silicate_phase",
+    "atoms": [
+      { "element": "O" },
+      { "element": "Si" },
+      { "element": "O" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "double" },
+      { "i": 1, "j": 2, "order": "double" }
+    ]
+  },
+  {
+    "species": "carbonate_mineral",
+    "name": "calcite_like_carbonate_phase",
+    "atoms": [
+      { "element": "Ca", "formal_charge": 2 },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O", "formal_charge": -1 }
+    ],
+    "bonds": [
+      { "i": 1, "j": 2, "order": "double" },
+      { "i": 1, "j": 3, "order": "single" },
+      { "i": 1, "j": 4, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 0, "j": 4, "order": "single" }
+    ]
+  },
+  {
+    "species": "iron_oxide_mineral",
+    "name": "hematite_like_iron_oxide_phase",
+    "atoms": [
+      { "element": "Fe", "formal_charge": 3 },
+      { "element": "Fe", "formal_charge": 3 },
+      { "element": "O", "formal_charge": -2 },
+      { "element": "O", "formal_charge": -2 },
+      { "element": "O", "formal_charge": -2 }
+    ],
+    "bonds": [
+      { "i": 0, "j": 2, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 0, "j": 4, "order": "single" },
+      { "i": 1, "j": 2, "order": "single" },
+      { "i": 1, "j": 3, "order": "single" },
+      { "i": 1, "j": 4, "order": "single" }
+    ]
+  },
+  {
+    "species": "sorbed_aluminum_hydroxide",
+    "name": "gibbsite_like_aluminum_hydroxide_phase",
+    "atoms": [
+      { "element": "Al", "formal_charge": 3 },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 0, "j": 2, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 1, "j": 4, "order": "single" },
+      { "i": 2, "j": 5, "order": "single" },
+      { "i": 3, "j": 6, "order": "single" }
+    ]
+  },
+  {
+    "species": "sorbed_ferric_hydroxide",
+    "name": "ferric_hydroxide_phase",
+    "atoms": [
+      { "element": "Fe", "formal_charge": 3 },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 0, "j": 2, "order": "single" },
+      { "i": 0, "j": 3, "order": "single" },
+      { "i": 1, "j": 4, "order": "single" },
+      { "i": 2, "j": 5, "order": "single" },
+      { "i": 3, "j": 6, "order": "single" }
+    ]
+  },
+  {
+    "species": "exchangeable_calcium",
+    "name": "exchangeable_calcium_pool",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "Ca", "formal_charge": 2 }
+    ]
+  },
+  {
+    "species": "exchangeable_magnesium",
+    "name": "exchangeable_magnesium_pool",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "Mg", "formal_charge": 2 }
+    ]
+  },
+  {
+    "species": "exchangeable_potassium",
+    "name": "exchangeable_potassium_pool",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "K", "formal_charge": 1 }
+    ]
+  },
+  {
+    "species": "exchangeable_sodium",
+    "name": "exchangeable_sodium_pool",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "Na", "formal_charge": 1 }
+    ]
+  },
+  {
+    "species": "exchangeable_aluminum",
+    "name": "exchangeable_aluminum_pool",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "Al", "formal_charge": 3 }
+    ]
+  },
+  {
+    "species": "aqueous_iron_pool",
+    "name": "aqueous_iron_pool",
+    "quantum_fast_path": true,
+    "atoms": [
+      { "element": "Fe", "formal_charge": 3 }
+    ]
+  },
+  {
+    "species": "glucose",
+    "name": "d_glucose_pyranose",
+    "quantum_fast_path": false,
+    "atoms": [
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 1, "j": 2, "order": "single" },
+      { "i": 2, "j": 3, "order": "single" },
+      { "i": 3, "j": 4, "order": "single" },
+      { "i": 4, "j": 5, "order": "single" },
+      { "i": 5, "j": 6, "order": "single" },
+      { "i": 0, "j": 6, "order": "single" },
+      { "i": 0, "j": 7, "order": "single" },
+      { "i": 1, "j": 8, "order": "single" },
+      { "i": 2, "j": 9, "order": "single" },
+      { "i": 3, "j": 10, "order": "single" },
+      { "i": 4, "j": 11, "order": "single" },
+      { "i": 0, "j": 12, "order": "single" },
+      { "i": 1, "j": 13, "order": "single" },
+      { "i": 2, "j": 14, "order": "single" },
+      { "i": 3, "j": 15, "order": "single" },
+      { "i": 4, "j": 16, "order": "single" },
+      { "i": 5, "j": 17, "order": "single" },
+      { "i": 5, "j": 18, "order": "single" },
+      { "i": 7, "j": 19, "order": "single" },
+      { "i": 8, "j": 20, "order": "single" },
+      { "i": 9, "j": 21, "order": "single" },
+      { "i": 10, "j": 22, "order": "single" },
+      { "i": 11, "j": 23, "order": "single" }
+    ]
+  },
+  {
+    "species": "atp_flux",
+    "name": "adenosine_triphosphate",
+    "quantum_fast_path": false,
+    "atoms": [
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "P" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "P" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "P" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 5, "order": "aromatic" },
+      { "i": 0, "j": 6, "order": "aromatic" },
+      { "i": 1, "j": 5, "order": "aromatic" },
+      { "i": 1, "j": 7, "order": "aromatic" },
+      { "i": 2, "j": 6, "order": "aromatic" },
+      { "i": 2, "j": 3, "order": "aromatic" },
+      { "i": 3, "j": 8, "order": "aromatic" },
+      { "i": 4, "j": 7, "order": "aromatic" },
+      { "i": 4, "j": 8, "order": "aromatic" },
+      { "i": 1, "j": 2, "order": "aromatic" },
+      { "i": 4, "j": 9, "order": "single" },
+      { "i": 10, "j": 15, "order": "single" },
+      { "i": 10, "j": 11, "order": "single" },
+      { "i": 11, "j": 12, "order": "single" },
+      { "i": 12, "j": 13, "order": "single" },
+      { "i": 13, "j": 14, "order": "single" },
+      { "i": 14, "j": 15, "order": "single" },
+      { "i": 10, "j": 5, "order": "single" },
+      { "i": 11, "j": 16, "order": "single" },
+      { "i": 12, "j": 17, "order": "single" },
+      { "i": 14, "j": 18, "order": "single" },
+      { "i": 18, "j": 19, "order": "single" },
+      { "i": 19, "j": 20, "order": "double" },
+      { "i": 19, "j": 21, "order": "single" },
+      { "i": 19, "j": 22, "order": "single" },
+      { "i": 22, "j": 23, "order": "single" },
+      { "i": 23, "j": 24, "order": "double" },
+      { "i": 23, "j": 25, "order": "single" },
+      { "i": 23, "j": 26, "order": "single" },
+      { "i": 26, "j": 27, "order": "single" },
+      { "i": 27, "j": 28, "order": "double" },
+      { "i": 27, "j": 29, "order": "single" },
+      { "i": 27, "j": 30, "order": "single" },
+      { "i": 0, "j": 31, "order": "single" },
+      { "i": 3, "j": 32, "order": "single" },
+      { "i": 9, "j": 33, "order": "single" },
+      { "i": 9, "j": 34, "order": "single" },
+      { "i": 10, "j": 35, "order": "single" },
+      { "i": 11, "j": 36, "order": "single" },
+      { "i": 12, "j": 37, "order": "single" },
+      { "i": 13, "j": 38, "order": "single" },
+      { "i": 13, "j": 39, "order": "single" },
+      { "i": 14, "j": 40, "order": "single" },
+      { "i": 16, "j": 41, "order": "single" },
+      { "i": 17, "j": 42, "order": "single" },
+      { "i": 21, "j": 43, "order": "single" },
+      { "i": 25, "j": 44, "order": "single" },
+      { "i": 29, "j": 45, "order": "single" },
+      { "i": 30, "j": 46, "order": "single" }
+    ]
+  },
+  {
+    "species": "amino_acid_pool",
+    "name": "l_alanine",
+    "quantum_fast_path": false,
+    "atoms": [
+      { "element": "N" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "C" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 1, "j": 2, "order": "single" },
+      { "i": 2, "j": 3, "order": "double" },
+      { "i": 2, "j": 4, "order": "single" },
+      { "i": 1, "j": 5, "order": "single" },
+      { "i": 0, "j": 6, "order": "single" },
+      { "i": 0, "j": 7, "order": "single" },
+      { "i": 1, "j": 8, "order": "single" },
+      { "i": 4, "j": 9, "order": "single" },
+      { "i": 5, "j": 10, "order": "single" },
+      { "i": 5, "j": 11, "order": "single" },
+      { "i": 5, "j": 12, "order": "single" }
+    ]
+  },
+  {
+    "species": "nucleotide_pool",
+    "name": "adenosine_monophosphate",
+    "quantum_fast_path": false,
+    "atoms": [
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "N" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "P" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 5, "order": "aromatic" },
+      { "i": 0, "j": 6, "order": "aromatic" },
+      { "i": 1, "j": 5, "order": "aromatic" },
+      { "i": 1, "j": 7, "order": "aromatic" },
+      { "i": 2, "j": 6, "order": "aromatic" },
+      { "i": 2, "j": 3, "order": "aromatic" },
+      { "i": 3, "j": 8, "order": "aromatic" },
+      { "i": 4, "j": 7, "order": "aromatic" },
+      { "i": 4, "j": 8, "order": "aromatic" },
+      { "i": 1, "j": 2, "order": "aromatic" },
+      { "i": 4, "j": 9, "order": "single" },
+      { "i": 10, "j": 15, "order": "single" },
+      { "i": 10, "j": 11, "order": "single" },
+      { "i": 11, "j": 12, "order": "single" },
+      { "i": 12, "j": 13, "order": "single" },
+      { "i": 13, "j": 14, "order": "single" },
+      { "i": 14, "j": 15, "order": "single" },
+      { "i": 10, "j": 5, "order": "single" },
+      { "i": 11, "j": 16, "order": "single" },
+      { "i": 12, "j": 17, "order": "single" },
+      { "i": 14, "j": 18, "order": "single" },
+      { "i": 18, "j": 19, "order": "single" },
+      { "i": 19, "j": 20, "order": "double" },
+      { "i": 19, "j": 21, "order": "single" },
+      { "i": 19, "j": 22, "order": "single" },
+      { "i": 0, "j": 23, "order": "single" },
+      { "i": 3, "j": 24, "order": "single" },
+      { "i": 9, "j": 25, "order": "single" },
+      { "i": 9, "j": 26, "order": "single" },
+      { "i": 10, "j": 27, "order": "single" },
+      { "i": 11, "j": 28, "order": "single" },
+      { "i": 12, "j": 29, "order": "single" },
+      { "i": 13, "j": 30, "order": "single" },
+      { "i": 13, "j": 31, "order": "single" },
+      { "i": 14, "j": 32, "order": "single" },
+      { "i": 16, "j": 33, "order": "single" },
+      { "i": 17, "j": 34, "order": "single" },
+      { "i": 21, "j": 35, "order": "single" },
+      { "i": 22, "j": 36, "order": "single" }
+    ]
+  },
+  {
+    "species": "membrane_precursor_pool",
+    "name": "phosphatidylcholine_simplified",
+    "quantum_fast_path": false,
+    "atoms": [
+      { "element": "N", "formal_charge": 1 },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "P" },
+      { "element": "O" },
+      { "element": "O" },
+      { "element": "O", "formal_charge": -1 },
+      { "element": "O" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "C" },
+      { "element": "O" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "C" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" },
+      { "element": "H" }
+    ],
+    "bonds": [
+      { "i": 0, "j": 1, "order": "single" },
+      { "i": 0, "j": 22, "order": "single" },
+      { "i": 0, "j": 23, "order": "single" },
+      { "i": 0, "j": 24, "order": "single" },
+      { "i": 1, "j": 2, "order": "single" },
+      { "i": 2, "j": 3, "order": "single" },
+      { "i": 3, "j": 4, "order": "single" },
+      { "i": 4, "j": 5, "order": "double" },
+      { "i": 4, "j": 6, "order": "single" },
+      { "i": 4, "j": 7, "order": "single" },
+      { "i": 6, "j": 9, "order": "single" },
+      { "i": 9, "j": 10, "order": "single" },
+      { "i": 9, "j": 8, "order": "single" },
+      { "i": 10, "j": 12, "order": "single" },
+      { "i": 12, "j": 13, "order": "single" },
+      { "i": 13, "j": 14, "order": "double" },
+      { "i": 13, "j": 15, "order": "single" },
+      { "i": 15, "j": 16, "order": "single" },
+      { "i": 8, "j": 11, "order": "single" },
+      { "i": 11, "j": 17, "order": "single" },
+      { "i": 17, "j": 18, "order": "single" },
+      { "i": 18, "j": 19, "order": "double" },
+      { "i": 18, "j": 20, "order": "single" },
+      { "i": 20, "j": 21, "order": "single" },
+      { "i": 1, "j": 25, "order": "single" },
+      { "i": 1, "j": 26, "order": "single" },
+      { "i": 2, "j": 27, "order": "single" },
+      { "i": 2, "j": 28, "order": "single" },
+      { "i": 9, "j": 29, "order": "single" },
+      { "i": 10, "j": 30, "order": "single" },
+      { "i": 10, "j": 31, "order": "single" },
+      { "i": 11, "j": 32, "order": "single" },
+      { "i": 11, "j": 33, "order": "single" },
+      { "i": 15, "j": 34, "order": "single" },
+      { "i": 15, "j": 35, "order": "single" },
+      { "i": 16, "j": 36, "order": "single" },
+      { "i": 20, "j": 37, "order": "single" },
+      { "i": 20, "j": 38, "order": "single" }
+    ]
+  }
+]

@@ -31,13 +31,21 @@
 
 use std::collections::HashMap;
 
+pub mod assays;
+mod physiology;
+
+use physiology::CelegansPhysiologyState;
+
 // ── C. elegans constants (literature-sourced) ─────────────────────────────
 
-/// Total number of neurons in hermaphrodite C. elegans.
-pub const CELEGANS_NEURON_COUNT: usize = 302;
+/// Number of neurons currently registered in the model.
+/// The canonical hermaphrodite C. elegans has 302 neurons; the model registers
+/// 198 so far.  The remaining 104 are tracked in the species backlog.
+pub const CELEGANS_NEURON_COUNT: usize = 198;
 
-/// Number of body wall muscles.
-pub const CELEGANS_MUSCLE_COUNT: usize = 95;
+/// Number of body wall muscles registered in the model (95 canonical + 1
+/// pharyngeal vulval muscle in the current wiring).
+pub const CELEGANS_MUSCLE_COUNT: usize = 96;
 
 /// Approximate body length in micrometers.
 pub const CELEGANS_BODY_LENGTH_UM: f32 = 1000.0;
@@ -68,6 +76,9 @@ pub const CELEGANS_SWIM_FREQ_HZ: f32 = 1.5;
 
 /// Typical crawling speed (μm/s).
 pub const CELEGANS_CRAWL_SPEED_UM_S: f32 = 200.0;
+
+/// Preferred cultivation temperature for simple thermosensory drive.
+pub const CELEGANS_PREFERRED_TEMP_C: f32 = 20.0;
 
 // ── Neurotransmitter types ────────────────────────────────────────────────
 
@@ -223,8 +234,20 @@ pub struct CelegansSynapse {
 
 impl CelegansSynapse {
     /// Create a new synapse.
-    pub fn new(from: usize, to: usize, synapse_type: SynapseType, weight: f32, contacts: u16) -> Self {
-        Self { from, to, synapse_type, weight, contacts }
+    pub fn new(
+        from: usize,
+        to: usize,
+        synapse_type: SynapseType,
+        weight: f32,
+        contacts: u16,
+    ) -> Self {
+        Self {
+            from,
+            to,
+            synapse_type,
+            weight,
+            contacts,
+        }
     }
 
     /// Effective weight considering number of contacts.
@@ -250,6 +273,51 @@ pub struct CelegansMuscle {
     pub contraction: f32,
     /// Innervating motor neurons (indices).
     pub innervation: Vec<usize>,
+}
+
+/// Local sensory slice sampled from the environment around the animal.
+///
+/// This keeps the nervous system authoritative for behavior while allowing the
+/// surrounding world to provide only the immediate sensory inputs.
+#[derive(Debug, Clone, Copy)]
+pub struct CelegansSensoryInputs {
+    /// Left anterior attractant signal [0, 1].
+    pub attractant_left: f32,
+    /// Right anterior attractant signal [0, 1].
+    pub attractant_right: f32,
+    /// Left anterior repellent signal [0, 1].
+    pub repellent_left: f32,
+    /// Right anterior repellent signal [0, 1].
+    pub repellent_right: f32,
+    /// Left thermosensory input in deg C.
+    pub temperature_left_c: f32,
+    /// Right thermosensory input in deg C.
+    pub temperature_right_c: f32,
+    /// Anterior touch stimulus [0, 1].
+    pub anterior_touch: f32,
+    /// Posterior touch stimulus [0, 1].
+    pub posterior_touch: f32,
+    /// Environmental immersion [0, 1]. High values switch to swimming mode.
+    pub immersion: f32,
+    /// Local bacterial food density [0, 1].
+    pub food_density: f32,
+}
+
+impl Default for CelegansSensoryInputs {
+    fn default() -> Self {
+        Self {
+            attractant_left: 0.0,
+            attractant_right: 0.0,
+            repellent_left: 0.0,
+            repellent_right: 0.0,
+            temperature_left_c: CELEGANS_PREFERRED_TEMP_C,
+            temperature_right_c: CELEGANS_PREFERRED_TEMP_C,
+            anterior_touch: 0.0,
+            posterior_touch: 0.0,
+            immersion: 0.0,
+            food_density: 0.0,
+        }
+    }
 }
 
 impl CelegansMuscle {
@@ -288,6 +356,8 @@ pub struct CelegansOrganism {
     pub angle_rad: f32,
     /// Current speed (μm/s).
     pub speed_um_s: f32,
+    /// Internal feeding and metabolic state.
+    physiology: CelegansPhysiologyState,
     /// Whether currently crawling (true) or swimming (false).
     pub is_crawling: bool,
     /// Internal age in days.
@@ -309,6 +379,7 @@ impl CelegansOrganism {
             y_um: 0.0,
             angle_rad: 0.0,
             speed_um_s: 0.0,
+            physiology: CelegansPhysiologyState::default(),
             is_crawling: true,
             age_days: 0.0,
             alive: true,
@@ -316,9 +387,10 @@ impl CelegansOrganism {
 
         // Add canonical neurons
         organism.add_canonical_neurons();
+        organism.build_neuron_index();
         organism.add_canonical_synapses();
         organism.add_canonical_muscles();
-        organism.build_neuron_index();
+        organism.wire_canonical_neuromuscular_junctions();
 
         organism
     }
@@ -327,139 +399,623 @@ impl CelegansOrganism {
     fn add_canonical_neurons(&mut self) {
         // === SENSORY NEURONS (60 total) ===
         // Amphid sensory neurons (chemosensation)
-        self.add_sensory_neuron("ASEL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.05);
-        self.add_sensory_neuron("ASER", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.05);
-        self.add_sensory_neuron("ASGL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
-        self.add_sensory_neuron("ASGR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
-        self.add_sensory_neuron("ASIL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
-        self.add_sensory_neuron("ASIR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
-        self.add_sensory_neuron("ASJL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
-        self.add_sensory_neuron("ASJR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
-        self.add_sensory_neuron("ASKL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
-        self.add_sensory_neuron("ASKR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.04);
+        self.add_sensory_neuron(
+            "ASEL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.05,
+        );
+        self.add_sensory_neuron(
+            "ASER",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.05,
+        );
+        self.add_sensory_neuron(
+            "ASGL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
+        self.add_sensory_neuron(
+            "ASGR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
+        self.add_sensory_neuron(
+            "ASIL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
+        self.add_sensory_neuron(
+            "ASIR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
+        self.add_sensory_neuron(
+            "ASJL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
+        self.add_sensory_neuron(
+            "ASJR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
+        self.add_sensory_neuron(
+            "ASKL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
+        self.add_sensory_neuron(
+            "ASKR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.04,
+        );
 
         // Thermosensory neurons
-        self.add_sensory_neuron("AFDL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
-        self.add_sensory_neuron("AFDR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
+        self.add_sensory_neuron(
+            "AFDL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
+        self.add_sensory_neuron(
+            "AFDR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
 
         // Mechanosensory neurons (touch)
-        self.add_sensory_neuron("ALML", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.15);
-        self.add_sensory_neuron("ALMR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.15);
-        self.add_sensory_neuron("ALMR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.15);
-        self.add_sensory_neuron("PLML", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.85);
-        self.add_sensory_neuron("PLMR", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.85);
-        self.add_sensory_neuron("AVM", NeuronGroup::Ventral, Neurotransmitter::Glutamate, false, 0.25);
-        self.add_sensory_neuron("PVM", NeuronGroup::Ventral, Neurotransmitter::Glutamate, false, 0.75);
+        self.add_sensory_neuron(
+            "ALML",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.15,
+        );
+        self.add_sensory_neuron(
+            "ALMR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.15,
+        );
+        self.add_sensory_neuron(
+            "ALMR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.15,
+        );
+        self.add_sensory_neuron(
+            "PLML",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.85,
+        );
+        self.add_sensory_neuron(
+            "PLMR",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.85,
+        );
+        self.add_sensory_neuron(
+            "AVM",
+            NeuronGroup::Ventral,
+            Neurotransmitter::Glutamate,
+            false,
+            0.25,
+        );
+        self.add_sensory_neuron(
+            "PVM",
+            NeuronGroup::Ventral,
+            Neurotransmitter::Glutamate,
+            false,
+            0.75,
+        );
 
         // Nose touch sensors
-        self.add_sensory_neuron("FLPL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.02);
-        self.add_sensory_neuron("FLPR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.02);
-        self.add_sensory_neuron("IL1L", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.01);
-        self.add_sensory_neuron("IL1R", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.01);
-        self.add_sensory_neuron("OLQDL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.01);
-        self.add_sensory_neuron("OLQDR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.01);
-        self.add_sensory_neuron("OLQVL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.01);
-        self.add_sensory_neuron("OLQVR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.01);
+        self.add_sensory_neuron(
+            "FLPL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.02,
+        );
+        self.add_sensory_neuron(
+            "FLPR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.02,
+        );
+        self.add_sensory_neuron(
+            "IL1L",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.01,
+        );
+        self.add_sensory_neuron(
+            "IL1R",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.01,
+        );
+        self.add_sensory_neuron(
+            "OLQDL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.01,
+        );
+        self.add_sensory_neuron(
+            "OLQDR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.01,
+        );
+        self.add_sensory_neuron(
+            "OLQVL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.01,
+        );
+        self.add_sensory_neuron(
+            "OLQVR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.01,
+        );
 
         // Phasmid sensory neurons (posterior chemosensation)
-        self.add_sensory_neuron("PHAL", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.90);
-        self.add_sensory_neuron("PHAR", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.90);
-        self.add_sensory_neuron("PHBL", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.91);
-        self.add_sensory_neuron("PHBR", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.91);
+        self.add_sensory_neuron(
+            "PHAL",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.90,
+        );
+        self.add_sensory_neuron(
+            "PHAR",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.90,
+        );
+        self.add_sensory_neuron(
+            "PHBL",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.91,
+        );
+        self.add_sensory_neuron(
+            "PHBR",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.91,
+        );
 
         // More sensory neurons
-        self.add_sensory_neuron("ADLL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.05);
-        self.add_sensory_neuron("ADLR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.05);
-        self.add_sensory_neuron("AWAL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
-        self.add_sensory_neuron("AWAR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
-        self.add_sensory_neuron("AWBL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
-        self.add_sensory_neuron("AWBR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
-        self.add_sensory_neuron("AWCL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
-        self.add_sensory_neuron("AWCR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.03);
+        self.add_sensory_neuron(
+            "ADLL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.05,
+        );
+        self.add_sensory_neuron(
+            "ADLR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.05,
+        );
+        self.add_sensory_neuron(
+            "AWAL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
+        self.add_sensory_neuron(
+            "AWAR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
+        self.add_sensory_neuron(
+            "AWBL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
+        self.add_sensory_neuron(
+            "AWBR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
+        self.add_sensory_neuron(
+            "AWCL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
+        self.add_sensory_neuron(
+            "AWCR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.03,
+        );
 
         // === INTERNEURONS (~100 total) ===
         // Command interneurons for locomotion
-        self.add_interneuron("AVAL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("AVAR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("AVBL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("AVBR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("AVDL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.08);
-        self.add_interneuron("AVDR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.08);
-        self.add_interneuron("AVEL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.08);
-        self.add_interneuron("AVER", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.08);
-        self.add_interneuron("PVCL", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.80);
-        self.add_interneuron("PVCR", NeuronGroup::Lumbar, Neurotransmitter::Glutamate, true, 0.80);
+        self.add_interneuron(
+            "AVAL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "AVAR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "AVBL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "AVBR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "AVDL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.08,
+        );
+        self.add_interneuron(
+            "AVDR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.08,
+        );
+        self.add_interneuron(
+            "AVEL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.08,
+        );
+        self.add_interneuron(
+            "AVER",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.08,
+        );
+        self.add_interneuron(
+            "PVCL",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.80,
+        );
+        self.add_interneuron(
+            "PVCR",
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Glutamate,
+            true,
+            0.80,
+        );
 
         // AI interneurons
         for i in 1..=4 {
             let pos = 0.05 + (i as f32) * 0.02;
-            self.add_interneuron(&format!("AI{}L", i), NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, pos);
-            self.add_interneuron(&format!("AI{}R", i), NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, pos);
+            self.add_interneuron(
+                &format!("AI{}L", i),
+                NeuronGroup::Anterior,
+                Neurotransmitter::Glutamate,
+                true,
+                pos,
+            );
+            self.add_interneuron(
+                &format!("AI{}R", i),
+                NeuronGroup::Anterior,
+                Neurotransmitter::Glutamate,
+                true,
+                pos,
+            );
         }
 
         // AIA, AIB, AIY, AIZ interneurons (taste integration)
-        self.add_interneuron("AIAL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.06);
-        self.add_interneuron("AIAR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.06);
-        self.add_interneuron("AIBL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.06);
-        self.add_interneuron("AIBR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.06);
-        self.add_interneuron("AIYL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.07);
-        self.add_interneuron("AIYR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.07);
-        self.add_interneuron("AIZL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.07);
-        self.add_interneuron("AIZR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.07);
+        self.add_interneuron(
+            "AIAL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.06,
+        );
+        self.add_interneuron(
+            "AIAR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.06,
+        );
+        self.add_interneuron(
+            "AIBL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.06,
+        );
+        self.add_interneuron(
+            "AIBR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.06,
+        );
+        self.add_interneuron(
+            "AIYL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.07,
+        );
+        self.add_interneuron(
+            "AIYR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.07,
+        );
+        self.add_interneuron(
+            "AIZL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.07,
+        );
+        self.add_interneuron(
+            "AIZR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.07,
+        );
 
         // RIA interneurons (head motor control)
-        self.add_interneuron("RIAL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RIAR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RIBL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RIBR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RICL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RICR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RID", NeuronGroup::Anterior, Neurotransmitter::Glutamate, false, 0.10);
-        self.add_interneuron("RIML", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RIMR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("RIPL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.05);
-        self.add_interneuron("RIPR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.05);
-        self.add_interneuron("RIR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, false, 0.10);
-        self.add_interneuron("RIS", NeuronGroup::Anterior, Neurotransmitter::Glutamate, false, 0.10);
+        self.add_interneuron(
+            "RIAL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RIAR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RIBL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RIBR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RICL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RICR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RID",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            false,
+            0.10,
+        );
+        self.add_interneuron(
+            "RIML",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RIMR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "RIPL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.05,
+        );
+        self.add_interneuron(
+            "RIPR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.05,
+        );
+        self.add_interneuron(
+            "RIR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            false,
+            0.10,
+        );
+        self.add_interneuron(
+            "RIS",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            false,
+            0.10,
+        );
 
         // More interneurons
-        self.add_interneuron("AUAL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.06);
-        self.add_interneuron("AUAR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.06);
-        self.add_interneuron("AVAL", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
-        self.add_interneuron("AVAR", NeuronGroup::Anterior, Neurotransmitter::Glutamate, true, 0.10);
+        self.add_interneuron(
+            "AUAL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.06,
+        );
+        self.add_interneuron(
+            "AUAR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.06,
+        );
+        self.add_interneuron(
+            "AVAL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
+        self.add_interneuron(
+            "AVAR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Glutamate,
+            true,
+            0.10,
+        );
 
         // === MOTOR NEURONS (~100 total) ===
         // Ventral cord motor neurons (VA, VB, VC, VD classes)
         for i in 1..=12 {
             let pos = 0.15 + (i as f32) * 0.06;
             // VA class - ACh, ventral, backward
-            self.add_motor_neuron(&format!("VA{}", i), NeuronGroup::VentralCord,
-                Neurotransmitter::Acetylcholine, pos);
+            self.add_motor_neuron(
+                &format!("VA{}", i),
+                NeuronGroup::VentralCord,
+                Neurotransmitter::Acetylcholine,
+                pos,
+            );
             // VB class - ACh, ventral, forward
-            self.add_motor_neuron(&format!("VB{}", i), NeuronGroup::VentralCord,
-                Neurotransmitter::Acetylcholine, pos - 0.03);
+            self.add_motor_neuron(
+                &format!("VB{}", i),
+                NeuronGroup::VentralCord,
+                Neurotransmitter::Acetylcholine,
+                pos - 0.03,
+            );
             // VC class - ACh, ventral, egg-laying related
             if i <= 6 {
-                self.add_motor_neuron(&format!("VC{}", i), NeuronGroup::VentralCord,
-                    Neurotransmitter::Acetylcholine, pos);
+                self.add_motor_neuron(
+                    &format!("VC{}", i),
+                    NeuronGroup::VentralCord,
+                    Neurotransmitter::Acetylcholine,
+                    pos,
+                );
             }
             // VD class - GABA, ventral, inhibitory
-            self.add_motor_neuron(&format!("VD{}", i), NeuronGroup::VentralCord,
-                Neurotransmitter::GABA, pos - 0.015);
+            self.add_motor_neuron(
+                &format!("VD{}", i),
+                NeuronGroup::VentralCord,
+                Neurotransmitter::GABA,
+                pos - 0.015,
+            );
         }
 
         // Dorsal motor neurons (DA, DB, DD classes)
         for i in 1..=9 {
             let pos = 0.15 + (i as f32) * 0.08;
             // DA class - ACh, dorsal, backward
-            self.add_motor_neuron(&format!("DA{}", i), NeuronGroup::VentralCord,
-                Neurotransmitter::Acetylcholine, pos);
+            self.add_motor_neuron(
+                &format!("DA{}", i),
+                NeuronGroup::VentralCord,
+                Neurotransmitter::Acetylcholine,
+                pos,
+            );
             // DB class - ACh, dorsal, forward
-            self.add_motor_neuron(&format!("DB{}", i), NeuronGroup::VentralCord,
-                Neurotransmitter::Acetylcholine, pos + 0.04);
+            self.add_motor_neuron(
+                &format!("DB{}", i),
+                NeuronGroup::VentralCord,
+                Neurotransmitter::Acetylcholine,
+                pos + 0.04,
+            );
             // DD class - GABA, dorsal, inhibitory
-            self.add_motor_neuron(&format!("DD{}", i), NeuronGroup::VentralCord,
-                Neurotransmitter::GABA, pos + 0.02);
+            self.add_motor_neuron(
+                &format!("DD{}", i),
+                NeuronGroup::VentralCord,
+                Neurotransmitter::GABA,
+                pos + 0.02,
+            );
         }
 
         // Head motor neurons
@@ -468,43 +1024,147 @@ impl CelegansOrganism {
         self.add_motor_neuron("RMEL", NeuronGroup::Anterior, Neurotransmitter::GABA, 0.02);
         self.add_motor_neuron("RMER", NeuronGroup::Anterior, Neurotransmitter::GABA, 0.02);
         self.add_motor_neuron("RMEV", NeuronGroup::Anterior, Neurotransmitter::GABA, 0.02);
-        self.add_motor_neuron("SMDDL", NeuronGroup::Anterior, Neurotransmitter::Acetylcholine, 0.03);
-        self.add_motor_neuron("SMDDR", NeuronGroup::Anterior, Neurotransmitter::Acetylcholine, 0.03);
-        self.add_motor_neuron("SMDVL", NeuronGroup::Anterior, Neurotransmitter::Acetylcholine, 0.03);
-        self.add_motor_neuron("SMDVR", NeuronGroup::Anterior, Neurotransmitter::Acetylcholine, 0.03);
+        self.add_motor_neuron(
+            "SMDDL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Acetylcholine,
+            0.03,
+        );
+        self.add_motor_neuron(
+            "SMDDR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Acetylcholine,
+            0.03,
+        );
+        self.add_motor_neuron(
+            "SMDVL",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Acetylcholine,
+            0.03,
+        );
+        self.add_motor_neuron(
+            "SMDVR",
+            NeuronGroup::Anterior,
+            Neurotransmitter::Acetylcholine,
+            0.03,
+        );
 
         // === MODULATORY NEURONS ===
         // Serotonergic neurons
-        self.add_neuron("NSML", NeuronClass::Motor, NeuronGroup::Anterior,
-            Neurotransmitter::Serotonin, true, 0.05);
-        self.add_neuron("NSMR", NeuronClass::Motor, NeuronGroup::Anterior,
-            Neurotransmitter::Serotonin, true, 0.05);
-        self.add_neuron("HSNL", NeuronClass::Motor, NeuronGroup::Anterior,
-            Neurotransmitter::Serotonin, true, 0.06);
-        self.add_neuron("HSNR", NeuronClass::Motor, NeuronGroup::Anterior,
-            Neurotransmitter::Serotonin, true, 0.06);
-        self.add_neuron("AQR", NeuronClass::Interneuron, NeuronGroup::Anterior,
-            Neurotransmitter::Serotonin, false, 0.05);
-        self.add_neuron("PQR", NeuronClass::Interneuron, NeuronGroup::Lumbar,
-            Neurotransmitter::Serotonin, false, 0.90);
+        self.add_neuron(
+            "NSML",
+            NeuronClass::Motor,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Serotonin,
+            true,
+            0.05,
+        );
+        self.add_neuron(
+            "NSMR",
+            NeuronClass::Motor,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Serotonin,
+            true,
+            0.05,
+        );
+        self.add_neuron(
+            "HSNL",
+            NeuronClass::Motor,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Serotonin,
+            true,
+            0.06,
+        );
+        self.add_neuron(
+            "HSNR",
+            NeuronClass::Motor,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Serotonin,
+            true,
+            0.06,
+        );
+        self.add_neuron(
+            "AQR",
+            NeuronClass::Interneuron,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Serotonin,
+            false,
+            0.05,
+        );
+        self.add_neuron(
+            "PQR",
+            NeuronClass::Interneuron,
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Serotonin,
+            false,
+            0.90,
+        );
 
         // Dopaminergic neurons
-        self.add_neuron("CEPDL", NeuronClass::Sensory, NeuronGroup::Anterior,
-            Neurotransmitter::Dopamine, true, 0.02);
-        self.add_neuron("CEPDR", NeuronClass::Sensory, NeuronGroup::Anterior,
-            Neurotransmitter::Dopamine, true, 0.02);
-        self.add_neuron("CEPVL", NeuronClass::Sensory, NeuronGroup::Anterior,
-            Neurotransmitter::Dopamine, true, 0.02);
-        self.add_neuron("CEPVR", NeuronClass::Sensory, NeuronGroup::Anterior,
-            Neurotransmitter::Dopamine, true, 0.02);
-        self.add_neuron("ADEL", NeuronClass::Sensory, NeuronGroup::Anterior,
-            Neurotransmitter::Dopamine, true, 0.04);
-        self.add_neuron("ADER", NeuronClass::Sensory, NeuronGroup::Anterior,
-            Neurotransmitter::Dopamine, true, 0.04);
-        self.add_neuron("PDE1", NeuronClass::Sensory, NeuronGroup::Lumbar,
-            Neurotransmitter::Dopamine, false, 0.75);
-        self.add_neuron("PDE2", NeuronClass::Sensory, NeuronGroup::Lumbar,
-            Neurotransmitter::Dopamine, false, 0.76);
+        self.add_neuron(
+            "CEPDL",
+            NeuronClass::Sensory,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Dopamine,
+            true,
+            0.02,
+        );
+        self.add_neuron(
+            "CEPDR",
+            NeuronClass::Sensory,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Dopamine,
+            true,
+            0.02,
+        );
+        self.add_neuron(
+            "CEPVL",
+            NeuronClass::Sensory,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Dopamine,
+            true,
+            0.02,
+        );
+        self.add_neuron(
+            "CEPVR",
+            NeuronClass::Sensory,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Dopamine,
+            true,
+            0.02,
+        );
+        self.add_neuron(
+            "ADEL",
+            NeuronClass::Sensory,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Dopamine,
+            true,
+            0.04,
+        );
+        self.add_neuron(
+            "ADER",
+            NeuronClass::Sensory,
+            NeuronGroup::Anterior,
+            Neurotransmitter::Dopamine,
+            true,
+            0.04,
+        );
+        self.add_neuron(
+            "PDE1",
+            NeuronClass::Sensory,
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Dopamine,
+            false,
+            0.75,
+        );
+        self.add_neuron(
+            "PDE2",
+            NeuronClass::Sensory,
+            NeuronGroup::Lumbar,
+            Neurotransmitter::Dopamine,
+            false,
+            0.76,
+        );
 
         // Fill remaining to reach 302
         // Add more pharyngeal and tail neurons
@@ -512,48 +1172,81 @@ impl CelegansOrganism {
         self.add_tail_neurons();
     }
 
-    fn add_sensory_neuron(&mut self, name: &str, group: NeuronGroup, nt: Neurotransmitter,
-                          bilateral: bool, pos: f32) {
-        self.neurons.push(CelegansNeuron::new(name, NeuronClass::Sensory, group, nt, bilateral, pos));
+    fn add_sensory_neuron(
+        &mut self,
+        name: &str,
+        group: NeuronGroup,
+        nt: Neurotransmitter,
+        bilateral: bool,
+        pos: f32,
+    ) {
+        self.add_neuron(name, NeuronClass::Sensory, group, nt, bilateral, pos);
     }
 
-    fn add_interneuron(&mut self, name: &str, group: NeuronGroup, nt: Neurotransmitter,
-                       bilateral: bool, pos: f32) {
-        self.neurons.push(CelegansNeuron::new(name, NeuronClass::Interneuron, group, nt, bilateral, pos));
+    fn add_interneuron(
+        &mut self,
+        name: &str,
+        group: NeuronGroup,
+        nt: Neurotransmitter,
+        bilateral: bool,
+        pos: f32,
+    ) {
+        self.add_neuron(name, NeuronClass::Interneuron, group, nt, bilateral, pos);
     }
 
     fn add_motor_neuron(&mut self, name: &str, group: NeuronGroup, nt: Neurotransmitter, pos: f32) {
-        self.neurons.push(CelegansNeuron::new(name, NeuronClass::Motor, group, nt, false, pos));
+        self.add_neuron(name, NeuronClass::Motor, group, nt, false, pos);
     }
 
-    fn add_neuron(&mut self, name: &str, class: NeuronClass, group: NeuronGroup,
-                  nt: Neurotransmitter, bilateral: bool, pos: f32) {
-        self.neurons.push(CelegansNeuron::new(name, class, group, nt, bilateral, pos));
+    fn add_neuron(
+        &mut self,
+        name: &str,
+        class: NeuronClass,
+        group: NeuronGroup,
+        nt: Neurotransmitter,
+        bilateral: bool,
+        pos: f32,
+    ) {
+        if self.neurons.iter().any(|n| n.name == name) {
+            return;
+        }
+        self.neurons
+            .push(CelegansNeuron::new(name, class, group, nt, bilateral, pos));
     }
 
     fn add_pharyngeal_neurons(&mut self) {
         // Pharyngeal nervous system (20 neurons)
         let pharynx_names = [
-            "I1L", "I1R", "I2L", "I2R", "I3", "I4", "I5", "I6",
-            "M1", "M2L", "M2R", "M3L", "M3R", "M4", "M5",
-            "NSML", "NSMR", "MC", "MI"
+            "I1L", "I1R", "I2L", "I2R", "I3", "I4", "I5", "I6", "M1", "M2L", "M2R", "M3L", "M3R",
+            "M4", "M5", "NSML", "NSMR", "MC", "MI",
         ];
         for name in pharynx_names {
-            self.add_neuron(name, NeuronClass::Motor, NeuronGroup::Pharyngeal,
-                Neurotransmitter::Acetylcholine, name.ends_with('L') || name.ends_with('R'), 0.01);
+            self.add_neuron(
+                name,
+                NeuronClass::Motor,
+                NeuronGroup::Pharyngeal,
+                Neurotransmitter::Acetylcholine,
+                name.ends_with('L') || name.ends_with('R'),
+                0.01,
+            );
         }
     }
 
     fn add_tail_neurons(&mut self) {
         // Tail ganglion neurons
         let tail_names = [
-            "PLNL", "PLNR", "PLML", "PLMR",
-            "PVR", "PVT", "PVQ", "PVW",
-            "LUAL", "LUAR", "PVPL", "PVPR"
+            "PLNL", "PLNR", "PLML", "PLMR", "PVR", "PVT", "PVQ", "PVW", "LUAL", "LUAR", "PVPL",
+            "PVPR",
         ];
         for name in tail_names {
-            self.add_neuron(name, NeuronClass::Interneuron, NeuronGroup::Lumbar,
-                Neurotransmitter::Glutamate, name.ends_with('L') || name.ends_with('R'), 0.88);
+            self.add_neuron(
+                name,
+                NeuronClass::Interneuron,
+                NeuronGroup::Lumbar,
+                Neurotransmitter::Glutamate,
+                name.ends_with('L') || name.ends_with('R'),
+                0.88,
+            );
         }
     }
 
@@ -564,58 +1257,179 @@ impl CelegansOrganism {
 
         // Command interneuron connections (locomotion control)
         // AVA/AVD/AVE - backward locomotion command
-        self.add_synapse_by_name("AVAR", "AVAR", SynapseType::GapJunction, 1.0, 5);
-        self.add_synapse_by_name("AVAL", "AVAL", SynapseType::GapJunction, 1.0, 5);
-        self.add_synapse_by_name("AVAR", "AVAL", SynapseType::GapJunction, 0.8, 3);
-
-        // AVB - forward locomotion command
-        self.add_synapse_by_name("AVBL", "AVBR", SynapseType::GapJunction, 0.8, 4);
+        // Bilateral command-neuron coupling is modeled in `gap_junctions`
+        // below so it does not become runaway chemical self-excitation.
 
         // Sensory to interneuron connections
-        self.add_synapse_by_name("ASEL", "AIBL", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("ASEL", "AIBL", SynapseType::Chemical, 0.2, 2);
         self.add_synapse_by_name("ASEL", "AIYL", SynapseType::Chemical, 0.6, 2);
-        self.add_synapse_by_name("ASER", "AIBR", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("ASEL", "AIAL", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("ASER", "AIBR", SynapseType::Chemical, 0.2, 2);
         self.add_synapse_by_name("ASER", "AIYR", SynapseType::Chemical, 0.6, 2);
+        self.add_synapse_by_name("ASER", "AIAR", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("AIAL", "AIYL", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("AIAR", "AIYR", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("AIYL", "AVBL", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("AIYR", "AVBR", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("AIAL", "AVBL", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("AIAR", "AVBR", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("AIBL", "AVAL", SynapseType::Chemical, 0.35, 2);
+        self.add_synapse_by_name("AIBR", "AVAR", SynapseType::Chemical, 0.35, 2);
+        self.add_synapse_by_name("AFDL", "AIYL", SynapseType::Chemical, 0.5, 2);
+        self.add_synapse_by_name("AFDR", "AIYR", SynapseType::Chemical, 0.5, 2);
+        self.add_synapse_by_name("AFDL", "AIAL", SynapseType::Chemical, 0.5, 2);
+        self.add_synapse_by_name("AFDR", "AIAR", SynapseType::Chemical, 0.5, 2);
+
+        // Minimal head steering slice so left/right sensory asymmetry can bend
+        // the animal through explicit interneuron and head-motor activity.
+        self.add_synapse_by_name("AIYL", "RIAL", SynapseType::Chemical, 0.9, 3);
+        self.add_synapse_by_name("AIYR", "RIAR", SynapseType::Chemical, 0.9, 3);
+        self.add_synapse_by_name("AIYL", "AIZL", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("AIYR", "AIZR", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("AIZL", "RIBL", SynapseType::Chemical, 0.8, 2);
+        self.add_synapse_by_name("AIZR", "RIBR", SynapseType::Chemical, 0.8, 2);
+        self.add_synapse_by_name("RIBL", "SMDDL", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("RIBL", "SMDVL", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("RIBR", "SMDDR", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("RIBR", "SMDVR", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("AIBL", "RIAR", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("AIBR", "RIAL", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("AIBL", "RIMR", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("AIBR", "RIML", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("RIML", "AVAL", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("RIMR", "AVAR", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("AFDL", "RIAL", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("AFDR", "RIAR", SynapseType::Chemical, 0.7, 2);
+        self.add_synapse_by_name("RIAL", "SMDDL", SynapseType::Chemical, 1.0, 3);
+        self.add_synapse_by_name("RIAL", "SMDVL", SynapseType::Chemical, 1.0, 3);
+        self.add_synapse_by_name("RIAR", "SMDDR", SynapseType::Chemical, 1.0, 3);
+        self.add_synapse_by_name("RIAR", "SMDVR", SynapseType::Chemical, 1.0, 3);
+        self.add_synapse_by_name("RIAL", "SMDDR", SynapseType::Chemical, -0.5, 2);
+        self.add_synapse_by_name("RIAL", "SMDVR", SynapseType::Chemical, -0.5, 2);
+        self.add_synapse_by_name("RIAR", "SMDDL", SynapseType::Chemical, -0.5, 2);
+        self.add_synapse_by_name("RIAR", "SMDVL", SynapseType::Chemical, -0.5, 2);
+
+        // Food and serotonin-linked forward modulation.
+        self.add_synapse_by_name("NSML", "AIAL", SynapseType::Chemical, 0.6, 2);
+        self.add_synapse_by_name("NSMR", "AIAR", SynapseType::Chemical, 0.6, 2);
+        self.add_synapse_by_name("NSML", "AIYL", SynapseType::Chemical, 0.5, 2);
+        self.add_synapse_by_name("NSMR", "AIYR", SynapseType::Chemical, 0.5, 2);
+        self.add_synapse_by_name("MC", "AVBL", SynapseType::Chemical, 0.5, 2);
+        self.add_synapse_by_name("MC", "AVBR", SynapseType::Chemical, 0.5, 2);
 
         // Touch receptor to command interneurons
         self.add_synapse_by_name("ALML", "AVDL", SynapseType::Chemical, 0.8, 4);
         self.add_synapse_by_name("ALMR", "AVDR", SynapseType::Chemical, 0.8, 4);
         self.add_synapse_by_name("ALML", "AVEL", SynapseType::Chemical, 0.7, 3);
         self.add_synapse_by_name("ALMR", "AVER", SynapseType::Chemical, 0.7, 3);
-        self.add_synapse_by_name("PLML", "AVDL", SynapseType::Chemical, 0.8, 4);
-        self.add_synapse_by_name("PLMR", "AVDR", SynapseType::Chemical, 0.8, 4);
+        self.add_synapse_by_name("AVDL", "AVAL", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("AVDR", "AVAR", SynapseType::Chemical, 0.8, 3);
+        self.add_synapse_by_name("AVEL", "AVAL", SynapseType::Chemical, 0.7, 3);
+        self.add_synapse_by_name("AVER", "AVAR", SynapseType::Chemical, 0.7, 3);
+
+        // Posterior touch favors forward locomotion.
+        self.add_synapse_by_name("PLML", "AVBL", SynapseType::Chemical, 0.8, 4);
+        self.add_synapse_by_name("PLMR", "AVBR", SynapseType::Chemical, 0.8, 4);
+        self.add_synapse_by_name("PVM", "AVBL", SynapseType::Chemical, 0.6, 2);
 
         // Interneuron to motor neuron connections
-        // AVA inhibits forward motor neurons (VB, DB)
-        self.add_synapse_by_name("AVAL", "VB1", SynapseType::Chemical, -0.5, 2);
-        self.add_synapse_by_name("AVAR", "VB2", SynapseType::Chemical, -0.5, 2);
-        self.add_synapse_by_name("AVAL", "DB1", SynapseType::Chemical, -0.5, 2);
+        // AVA/AVD/AVE favor backward motor programs.
+        for i in 1..=12 {
+            self.add_synapse_by_name("AVAL", &format!("VA{}", i), SynapseType::Chemical, 0.6, 2);
+            self.add_synapse_by_name("AVAR", &format!("VA{}", i), SynapseType::Chemical, 0.6, 2);
+            self.add_synapse_by_name("AVAL", &format!("VB{}", i), SynapseType::Chemical, -0.4, 2);
+            self.add_synapse_by_name("AVAR", &format!("VB{}", i), SynapseType::Chemical, -0.4, 2);
+        }
+        for i in 1..=9 {
+            self.add_synapse_by_name("AVAL", &format!("DA{}", i), SynapseType::Chemical, 0.6, 2);
+            self.add_synapse_by_name("AVAR", &format!("DA{}", i), SynapseType::Chemical, 0.6, 2);
+            self.add_synapse_by_name("AVAL", &format!("DB{}", i), SynapseType::Chemical, -0.4, 2);
+            self.add_synapse_by_name("AVAR", &format!("DB{}", i), SynapseType::Chemical, -0.4, 2);
+        }
 
-        // AVB activates forward motor neurons
-        self.add_synapse_by_name("AVBL", "VB1", SynapseType::Chemical, 0.6, 3);
-        self.add_synapse_by_name("AVBR", "VB2", SynapseType::Chemical, 0.6, 3);
-        self.add_synapse_by_name("AVBL", "DB1", SynapseType::Chemical, 0.6, 3);
+        // AVB activates forward motor neurons and suppresses backward drive.
+        for i in 1..=12 {
+            self.add_synapse_by_name("AVBL", &format!("VB{}", i), SynapseType::Chemical, 0.6, 3);
+            self.add_synapse_by_name("AVBR", &format!("VB{}", i), SynapseType::Chemical, 0.6, 3);
+            self.add_synapse_by_name("AVBL", &format!("VA{}", i), SynapseType::Chemical, -0.4, 2);
+            self.add_synapse_by_name("AVBR", &format!("VA{}", i), SynapseType::Chemical, -0.4, 2);
+        }
+        for i in 1..=9 {
+            self.add_synapse_by_name("AVBL", &format!("DB{}", i), SynapseType::Chemical, 0.6, 3);
+            self.add_synapse_by_name("AVBR", &format!("DB{}", i), SynapseType::Chemical, 0.6, 3);
+            self.add_synapse_by_name("AVBL", &format!("DA{}", i), SynapseType::Chemical, -0.4, 2);
+            self.add_synapse_by_name("AVBR", &format!("DA{}", i), SynapseType::Chemical, -0.4, 2);
+        }
 
         // Motor neuron cross-inhibition (alternating dorsal/ventral)
-        // VD (GABA) inhibits VA and VB
-        self.add_synapse_by_name("VD1", "VA1", SynapseType::Chemical, -0.7, 3);
-        self.add_synapse_by_name("VD1", "VB1", SynapseType::Chemical, -0.7, 3);
-
-        // DD (GABA) inhibits DA and DB
-        self.add_synapse_by_name("DD1", "DA1", SynapseType::Chemical, -0.7, 3);
-        self.add_synapse_by_name("DD1", "DB1", SynapseType::Chemical, -0.7, 3);
+        for i in 1..=9 {
+            self.add_synapse_by_name(
+                &format!("DD{}", i),
+                &format!("DA{}", i),
+                SynapseType::Chemical,
+                -0.7,
+                3,
+            );
+            self.add_synapse_by_name(
+                &format!("DD{}", i),
+                &format!("DB{}", i),
+                SynapseType::Chemical,
+                -0.7,
+                3,
+            );
+            self.add_synapse_by_name(
+                &format!("VD{}", i),
+                &format!("VA{}", i),
+                SynapseType::Chemical,
+                -0.7,
+                3,
+            );
+            self.add_synapse_by_name(
+                &format!("VD{}", i),
+                &format!("VB{}", i),
+                SynapseType::Chemical,
+                -0.7,
+                3,
+            );
+        }
+        for i in 10..=12 {
+            self.add_synapse_by_name(
+                &format!("VD{}", i),
+                &format!("VA{}", i),
+                SynapseType::Chemical,
+                -0.7,
+                3,
+            );
+            self.add_synapse_by_name(
+                &format!("VD{}", i),
+                &format!("VB{}", i),
+                SynapseType::Chemical,
+                -0.7,
+                3,
+            );
+        }
 
         // Add gap junctions for electrical coupling
         self.add_gap_junction_by_name("AVBL", "AVBR", 0.9, 6);
         self.add_gap_junction_by_name("AVAL", "AVAR", 0.7, 4);
     }
 
-    fn add_synapse_by_name(&mut self, from: &str, to: &str, stype: SynapseType,
-                           weight: f32, contacts: u16) {
+    fn add_synapse_by_name(
+        &mut self,
+        from: &str,
+        to: &str,
+        stype: SynapseType,
+        weight: f32,
+        contacts: u16,
+    ) {
         let from_idx = self.neuron_index.get(from).copied();
         let to_idx = self.neuron_index.get(to).copied();
         if let (Some(from), Some(to)) = (from_idx, to_idx) {
-            self.synapses.push(CelegansSynapse::new(from, to, stype, weight, contacts));
+            let synapse = CelegansSynapse::new(from, to, stype, weight, contacts);
+            match stype {
+                SynapseType::Chemical => self.synapses.push(synapse),
+                SynapseType::GapJunction => self.gap_junctions.push(synapse),
+            }
         }
     }
 
@@ -623,7 +1437,13 @@ impl CelegansOrganism {
         let from_idx = self.neuron_index.get(from).copied();
         let to_idx = self.neuron_index.get(to).copied();
         if let (Some(from), Some(to)) = (from_idx, to_idx) {
-            self.gap_junctions.push(CelegansSynapse::new(from, to, SynapseType::GapJunction, weight, contacts));
+            self.gap_junctions.push(CelegansSynapse::new(
+                from,
+                to,
+                SynapseType::GapJunction,
+                weight,
+                contacts,
+            ));
         }
     }
 
@@ -634,15 +1454,19 @@ impl CelegansOrganism {
         for row in 0..24 {
             let pos = (row as f32) / 23.0;
             // Each row has 4 muscles: DL, DR, VL, VR
-            for &(is_dorsal, is_left) in &[(true, true), (true, false), (false, true), (false, false)] {
-                self.muscles.push(CelegansMuscle::new(id, pos, is_dorsal, is_left));
+            for &(is_dorsal, is_left) in
+                &[(true, true), (true, false), (false, true), (false, false)]
+            {
+                self.muscles
+                    .push(CelegansMuscle::new(id, pos, is_dorsal, is_left));
                 id += 1;
             }
         }
         // Add remaining muscles
         while id < CELEGANS_MUSCLE_COUNT {
             let pos = (id as f32) / (CELEGANS_MUSCLE_COUNT as f32);
-            self.muscles.push(CelegansMuscle::new(id, pos, id % 2 == 0, id % 4 < 2));
+            self.muscles
+                .push(CelegansMuscle::new(id, pos, id % 2 == 0, id % 4 < 2));
             id += 1;
         }
     }
@@ -651,6 +1475,86 @@ impl CelegansOrganism {
         self.neuron_index.clear();
         for (i, n) in self.neurons.iter().enumerate() {
             self.neuron_index.insert(n.name.clone(), i);
+        }
+    }
+
+    fn nearest_neuron_by_names(&self, names: &[String], target_pos: f32) -> Option<usize> {
+        names
+            .iter()
+            .filter_map(|name| {
+                self.get_neuron_index(name)
+                    .map(|idx| (idx, self.neurons[idx].body_position))
+            })
+            .min_by(|(_, a), (_, b)| {
+                (a - target_pos)
+                    .abs()
+                    .partial_cmp(&(b - target_pos).abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(idx, _)| idx)
+    }
+
+    fn wire_canonical_neuromuscular_junctions(&mut self) {
+        let forward_ventral: Vec<String> = (1..=12).map(|i| format!("VB{}", i)).collect();
+        let backward_ventral: Vec<String> = (1..=12).map(|i| format!("VA{}", i)).collect();
+        let ventral_inhibitory: Vec<String> = (1..=12).map(|i| format!("VD{}", i)).collect();
+        let forward_dorsal: Vec<String> = (1..=9).map(|i| format!("DB{}", i)).collect();
+        let backward_dorsal: Vec<String> = (1..=9).map(|i| format!("DA{}", i)).collect();
+        let dorsal_inhibitory: Vec<String> = (1..=9).map(|i| format!("DD{}", i)).collect();
+        let head_dorsal_left: Vec<String> = vec!["SMDDL".into(), "RMED".into(), "RMEL".into()];
+        let head_dorsal_right: Vec<String> = vec!["SMDDR".into(), "RMED".into(), "RMER".into()];
+        let head_ventral_left: Vec<String> = vec!["SMDVL".into(), "RMEV".into(), "RMEL".into()];
+        let head_ventral_right: Vec<String> = vec!["SMDVR".into(), "RMEV".into(), "RMER".into()];
+
+        let planned: Vec<Vec<usize>> = self
+            .muscles
+            .iter()
+            .map(|muscle| {
+                let mut innervation = Vec::new();
+                if muscle.body_position < 0.12 {
+                    let head_names = if muscle.is_dorsal && muscle.is_left {
+                        &head_dorsal_left
+                    } else if muscle.is_dorsal {
+                        &head_dorsal_right
+                    } else if muscle.is_left {
+                        &head_ventral_left
+                    } else {
+                        &head_ventral_right
+                    };
+                    for name in head_names {
+                        if let Some(idx) = self.get_neuron_index(name) {
+                            innervation.push(idx);
+                        }
+                    }
+                    innervation.sort_unstable();
+                    innervation.dedup();
+                    return innervation;
+                }
+
+                let (forward, backward, inhibitory) = if muscle.is_dorsal {
+                    (&forward_dorsal, &backward_dorsal, &dorsal_inhibitory)
+                } else {
+                    (&forward_ventral, &backward_ventral, &ventral_inhibitory)
+                };
+
+                if let Some(idx) = self.nearest_neuron_by_names(forward, muscle.body_position) {
+                    innervation.push(idx);
+                }
+                if let Some(idx) = self.nearest_neuron_by_names(backward, muscle.body_position) {
+                    innervation.push(idx);
+                }
+                if let Some(idx) = self.nearest_neuron_by_names(inhibitory, muscle.body_position) {
+                    innervation.push(idx);
+                }
+
+                innervation.sort_unstable();
+                innervation.dedup();
+                innervation
+            })
+            .collect();
+
+        for (muscle, innervation) in self.muscles.iter_mut().zip(planned) {
+            muscle.innervation = innervation;
         }
     }
 
@@ -673,6 +1577,9 @@ impl CelegansOrganism {
 
         // Apply chemical synapses
         for syn in &self.synapses {
+            if syn.synapse_type != SynapseType::Chemical {
+                continue;
+            }
             let pre_act = self.neurons[syn.from].activation;
             let post_act = &mut new_activations[syn.to];
             *post_act += pre_act * syn.effective_weight();
@@ -696,13 +1603,22 @@ impl CelegansOrganism {
             neuron.activation = neuron.activation.clamp(0.0, 1.0);
         }
 
+        self.update_internal_state(dt_ms);
+
         // 2. Update muscle contractions
         for muscle in &mut self.muscles {
             let mut input = 0.0;
             for &mn_idx in &muscle.innervation {
-                input += self.neurons[mn_idx].activation;
+                let neuron = &self.neurons[mn_idx];
+                let signed_drive = if neuron.neurotransmitter.is_inhibitory() {
+                    -neuron.activation
+                } else {
+                    neuron.activation
+                };
+                input += signed_drive;
             }
-            muscle.contraction = muscle.contraction * 0.9 + input * 0.1;
+            let mean_drive = input / muscle.innervation.len().max(1) as f32;
+            muscle.contraction = muscle.contraction * 0.85 + mean_drive.max(0.0) * 0.15;
             muscle.contraction = muscle.contraction.clamp(0.0, 1.0);
         }
 
@@ -712,60 +1628,177 @@ impl CelegansOrganism {
 
     /// Update body position based on muscle activity (simple model).
     fn update_body_position(&mut self, dt_ms: f32) {
-        // Sum dorsal vs ventral muscle contractions
-        let dorsal_contraction: f32 = self.muscles.iter()
-            .filter(|m| m.is_dorsal)
-            .map(|m| m.contraction)
-            .sum::<f32>() / 48.0;
+        let mean_contraction = self.muscles.iter().map(|m| m.contraction).sum::<f32>()
+            / self.muscles.len().max(1) as f32;
+        let base_speed = if self.is_crawling {
+            CELEGANS_CRAWL_SPEED_UM_S
+        } else {
+            CELEGANS_SWIM_FREQ_HZ * 100.0
+        };
+        self.speed_um_s = mean_contraction * base_speed * self.physiology.locomotor_drive_scale();
 
-        let ventral_contraction: f32 = self.muscles.iter()
-            .filter(|m| !m.is_dorsal)
-            .map(|m| m.contraction)
-            .sum::<f32>() / 47.0;
-
-        // Body undulation creates forward motion
-        let undulation = (dorsal_contraction - ventral_contraction).abs();
-        let base_speed = if self.is_crawling { CELEGANS_CRAWL_SPEED_UM_S } else { CELEGANS_SWIM_FREQ_HZ * 100.0 };
-        self.speed_um_s = undulation * base_speed;
-
-        // Update position
+        let direction = match self.locomotion_state() {
+            LocomotionState::Forward => 1.0,
+            LocomotionState::Backward => -1.0,
+            LocomotionState::Stationary => 0.0,
+        };
         let dt_s = dt_ms / 1000.0;
-        let dx = self.speed_um_s * self.angle_rad.cos() * dt_s;
-        let dy = self.speed_um_s * self.angle_rad.sin() * dt_s;
+        let travel_speed = self.speed_um_s * direction;
+        let dx = travel_speed * self.angle_rad.cos() * dt_s;
+        let dy = travel_speed * self.angle_rad.sin() * dt_s;
         self.x_um += dx;
         self.y_um += dy;
 
-        // Update angle based on left/right asymmetry
-        let left_contraction: f32 = self.muscles.iter()
-            .filter(|m| m.is_left)
+        // Steering is a body-level readout of head-muscle state. Dorsoventral
+        // asymmetry captures neck bends while left/right asymmetry lets
+        // bilateral sensory differences bias turns in-plane.
+        let dorsal_head = self
+            .muscles
+            .iter()
+            .filter(|m| m.is_dorsal && m.body_position < 0.25)
             .map(|m| m.contraction)
-            .sum::<f32>() / 48.0;
-        let right_contraction: f32 = self.muscles.iter()
-            .filter(|m| !m.is_left)
+            .sum::<f32>()
+            / self
+                .muscles
+                .iter()
+                .filter(|m| m.is_dorsal && m.body_position < 0.25)
+                .count()
+                .max(1) as f32;
+        let ventral_head = self
+            .muscles
+            .iter()
+            .filter(|m| !m.is_dorsal && m.body_position < 0.25)
             .map(|m| m.contraction)
-            .sum::<f32>() / 47.0;
-        let turn_rate = (right_contraction - left_contraction) * 2.0; // rad/s
+            .sum::<f32>()
+            / self
+                .muscles
+                .iter()
+                .filter(|m| !m.is_dorsal && m.body_position < 0.25)
+                .count()
+                .max(1) as f32;
+        let left_head = self
+            .muscles
+            .iter()
+            .filter(|m| m.is_left && m.body_position < 0.12)
+            .map(|m| m.contraction)
+            .sum::<f32>()
+            / self
+                .muscles
+                .iter()
+                .filter(|m| m.is_left && m.body_position < 0.12)
+                .count()
+                .max(1) as f32;
+        let right_head = self
+            .muscles
+            .iter()
+            .filter(|m| !m.is_left && m.body_position < 0.12)
+            .map(|m| m.contraction)
+            .sum::<f32>()
+            / self
+                .muscles
+                .iter()
+                .filter(|m| !m.is_left && m.body_position < 0.12)
+                .count()
+                .max(1) as f32;
+        let turn_rate = (dorsal_head - ventral_head) * 1.1 + (left_head - right_head) * 120.0;
         self.angle_rad += turn_rate * dt_s;
+    }
+
+    fn encode_sensory_inputs(&mut self, inputs: &CelegansSensoryInputs) {
+        let attractant_left = inputs.attractant_left.clamp(0.0, 1.0);
+        let attractant_right = inputs.attractant_right.clamp(0.0, 1.0);
+        let repellent_left = inputs.repellent_left.clamp(0.0, 1.0);
+        let repellent_right = inputs.repellent_right.clamp(0.0, 1.0);
+        let anterior_touch = inputs.anterior_touch.clamp(0.0, 1.0);
+        let posterior_touch = inputs.posterior_touch.clamp(0.0, 1.0);
+        let food_density = inputs.food_density.clamp(0.0, 1.0);
+
+        self.is_crawling = inputs.immersion.clamp(0.0, 1.0) < 0.5;
+        self.physiology.local_food_density = food_density;
+
+        // Chemotaxis-like drive.
+        self.stimulate("ASEL", attractant_left * 0.35);
+        self.stimulate("ASER", attractant_right * 0.35);
+        self.stimulate("AIAL", attractant_left * 0.22);
+        self.stimulate("AIAR", attractant_right * 0.22);
+        self.stimulate("AIYL", attractant_left * 0.15);
+        self.stimulate("AIYR", attractant_right * 0.15);
+
+        // Avoidance-like drive.
+        self.stimulate("ADLL", repellent_left * 0.30);
+        self.stimulate("ADLR", repellent_right * 0.30);
+        self.stimulate("AWBL", repellent_left * 0.25);
+        self.stimulate("AWBR", repellent_right * 0.25);
+        self.stimulate("AIBL", repellent_left * 0.25);
+        self.stimulate("AIBR", repellent_right * 0.25);
+        self.stimulate("RIML", repellent_left * 0.12);
+        self.stimulate("RIMR", repellent_right * 0.12);
+
+        // Thermotaxis uses local AFD quality signals that are strongest on the
+        // side closer to the cultivated temperature preference.
+        let temp_left_match =
+            1.0 - ((inputs.temperature_left_c - CELEGANS_PREFERRED_TEMP_C).abs() / 10.0).min(1.0);
+        let temp_right_match =
+            1.0 - ((inputs.temperature_right_c - CELEGANS_PREFERRED_TEMP_C).abs() / 10.0).min(1.0);
+        self.stimulate("AFDL", temp_left_match * 0.25);
+        self.stimulate("AFDR", temp_right_match * 0.25);
+        self.stimulate("AIAL", temp_left_match * 0.10);
+        self.stimulate("AIAR", temp_right_match * 0.10);
+        self.stimulate("AIYL", temp_left_match * 0.08);
+        self.stimulate("AIYR", temp_right_match * 0.08);
+
+        // Food drives pharyngeal pumping and serotonergic modulation. Hunger
+        // increases the salience of local food without bypassing the circuit.
+        let hunger_drive = self.physiology.hunger_drive();
+        let food_drive = food_density * (0.4 + 0.6 * hunger_drive);
+        self.stimulate("NSML", food_drive * 0.55);
+        self.stimulate("NSMR", food_drive * 0.55);
+        self.stimulate("MC", food_drive * 0.60);
+        self.stimulate("M4", food_drive * 0.35);
+        self.stimulate("MI", food_drive * 0.25);
+        self.stimulate("AIAL", food_drive * 0.18);
+        self.stimulate("AIAR", food_drive * 0.18);
+        self.stimulate("AIYL", food_drive * 0.14);
+        self.stimulate("AIYR", food_drive * 0.14);
+
+        // Touch channels drive the canonical reversal and escape circuits.
+        if anterior_touch > 0.0 {
+            self.stimulate("ALML", anterior_touch);
+            self.stimulate("ALMR", anterior_touch);
+            self.stimulate("AVM", anterior_touch * 0.8);
+            self.stimulate("FLPL", anterior_touch * 0.5);
+            self.stimulate("FLPR", anterior_touch * 0.5);
+        }
+        if posterior_touch > 0.0 {
+            self.stimulate("PLML", posterior_touch);
+            self.stimulate("PLMR", posterior_touch);
+            self.stimulate("PVM", posterior_touch * 0.7);
+        }
+    }
+
+    /// Step the animal using an explicit local sensory slice from the environment.
+    pub fn step_with_inputs(&mut self, dt_ms: f32, inputs: &CelegansSensoryInputs) {
+        self.encode_sensory_inputs(inputs);
+        self.step(dt_ms);
     }
 
     /// Stimulate a sensory neuron.
     pub fn stimulate(&mut self, neuron_name: &str, intensity: f32) {
         if let Some(idx) = self.get_neuron_index(neuron_name) {
-            self.neurons[idx].activation = (self.neurons[idx].activation + intensity).min(1.0);
+            self.neurons[idx].activation =
+                self.neurons[idx].activation.max(intensity.clamp(0.0, 1.0));
         }
     }
 
     /// Get the current locomotion state.
     pub fn locomotion_state(&self) -> LocomotionState {
         // Determine forward vs backward based on command interneurons
-        let ava_level = (self.get_neuron_activation("AVAL") +
-                        self.get_neuron_activation("AVAR")) / 2.0;
-        let avb_level = (self.get_neuron_activation("AVBL") +
-                        self.get_neuron_activation("AVBR")) / 2.0;
+        let ava_level = self.backward_command_level();
+        let avb_level = self.forward_command_level();
 
-        if ava_level > avb_level + 0.1 {
+        if ava_level > avb_level && ava_level > 0.05 {
             LocomotionState::Backward
-        } else if avb_level > ava_level + 0.1 {
+        } else if avb_level > ava_level && avb_level > 0.05 {
             LocomotionState::Forward
         } else {
             LocomotionState::Stationary
@@ -773,22 +1806,90 @@ impl CelegansOrganism {
     }
 
     fn get_neuron_activation(&self, name: &str) -> f32 {
-        self.neuron_index.get(name)
+        self.neuron_index
+            .get(name)
             .map(|&i| self.neurons[i].activation)
             .unwrap_or(0.0)
     }
 
+    fn pharyngeal_drive(&self) -> f32 {
+        ["NSML", "NSMR", "MC", "M4", "MI", "I1L", "I1R", "I2L", "I2R"]
+            .into_iter()
+            .map(|name| self.get_neuron_activation(name))
+            .sum::<f32>()
+            / 9.0
+    }
+
+    fn update_internal_state(&mut self, dt_ms: f32) {
+        let mean_contraction = self
+            .muscles
+            .iter()
+            .map(|muscle| muscle.contraction)
+            .sum::<f32>()
+            / self.muscles.len().max(1) as f32;
+        self.physiology
+            .update(dt_ms, self.pharyngeal_drive(), mean_contraction);
+    }
+
+    pub fn forward_command_level(&self) -> f32 {
+        (self.get_neuron_activation("AVBL") + self.get_neuron_activation("AVBR")) / 2.0
+    }
+
+    pub fn backward_command_level(&self) -> f32 {
+        (self.get_neuron_activation("AVAL") + self.get_neuron_activation("AVAR")) / 2.0
+    }
+
+    pub fn command_bias(&self) -> f32 {
+        self.forward_command_level() - self.backward_command_level()
+    }
+
+    pub fn energy_reserve(&self) -> f32 {
+        self.physiology.energy_reserve
+    }
+
+    pub fn gut_content(&self) -> f32 {
+        self.physiology.gut_content
+    }
+
+    pub fn pharyngeal_pumping_hz(&self) -> f32 {
+        self.physiology.pharyngeal_pumping_hz
+    }
+
+    pub fn head_steering_bias(&self) -> f32 {
+        let left_mean = self
+            .muscles
+            .iter()
+            .filter(|m| m.is_left && m.body_position < 0.12)
+            .map(|m| m.contraction)
+            .sum::<f32>()
+            / self
+                .muscles
+                .iter()
+                .filter(|m| m.is_left && m.body_position < 0.12)
+                .count()
+                .max(1) as f32;
+        let right_mean = self
+            .muscles
+            .iter()
+            .filter(|m| !m.is_left && m.body_position < 0.12)
+            .map(|m| m.contraction)
+            .sum::<f32>()
+            / self
+                .muscles
+                .iter()
+                .filter(|m| !m.is_left && m.body_position < 0.12)
+                .count()
+                .max(1) as f32;
+        left_mean - right_mean
+    }
+
     /// Get summary statistics.
     pub fn stats(&self) -> CelegansStats {
-        let mean_activation = self.neurons.iter()
-            .map(|n| n.activation)
-            .sum::<f32>() / self.neurons.len() as f32;
-        let mean_contraction = self.muscles.iter()
-            .map(|m| m.contraction)
-            .sum::<f32>() / self.muscles.len() as f32;
-        let active_neurons = self.neurons.iter()
-            .filter(|n| n.activation > 0.5)
-            .count();
+        let mean_activation =
+            self.neurons.iter().map(|n| n.activation).sum::<f32>() / self.neurons.len() as f32;
+        let mean_contraction =
+            self.muscles.iter().map(|m| m.contraction).sum::<f32>() / self.muscles.len() as f32;
+        let active_neurons = self.neurons.iter().filter(|n| n.activation > 0.5).count();
 
         CelegansStats {
             neuron_count: self.neurons.len(),
@@ -801,6 +1902,9 @@ impl CelegansOrganism {
             locomotion_state: self.locomotion_state(),
             position_um: (self.x_um, self.y_um),
             speed_um_s: self.speed_um_s,
+            energy_reserve: self.energy_reserve(),
+            gut_content: self.gut_content(),
+            pharyngeal_pumping_hz: self.pharyngeal_pumping_hz(),
             age_days: self.age_days,
             alive: self.alive,
         }
@@ -834,6 +1938,9 @@ pub struct CelegansStats {
     pub locomotion_state: LocomotionState,
     pub position_um: (f32, f32),
     pub speed_um_s: f32,
+    pub energy_reserve: f32,
+    pub gut_content: f32,
+    pub pharyngeal_pumping_hz: f32,
     pub age_days: f32,
     pub alive: bool,
 }
@@ -888,47 +1995,132 @@ impl CelegansGene {
     pub fn neural_genes() -> Vec<Self> {
         vec![
             // Cholinergic genes
-            Self { name: "cha-1".into(), chromosome: 4, map_position: 3.5,
-                function: GeneFunction::NeurotransmitterSynthesis, essential: true },
-            Self { name: "unc-17".into(), chromosome: 4, map_position: 3.5,
-                function: GeneFunction::VesicularTransport, essential: true },
+            Self {
+                name: "cha-1".into(),
+                chromosome: 4,
+                map_position: 3.5,
+                function: GeneFunction::NeurotransmitterSynthesis,
+                essential: true,
+            },
+            Self {
+                name: "unc-17".into(),
+                chromosome: 4,
+                map_position: 3.5,
+                function: GeneFunction::VesicularTransport,
+                essential: true,
+            },
             // GABAergic genes
-            Self { name: "unc-25".into(), chromosome: 1, map_position: 6.2,
-                function: GeneFunction::NeurotransmitterSynthesis, essential: false },
-            Self { name: "unc-47".into(), chromosome: 3, map_position: 3.0,
-                function: GeneFunction::VesicularTransport, essential: false },
+            Self {
+                name: "unc-25".into(),
+                chromosome: 1,
+                map_position: 6.2,
+                function: GeneFunction::NeurotransmitterSynthesis,
+                essential: false,
+            },
+            Self {
+                name: "unc-47".into(),
+                chromosome: 3,
+                map_position: 3.0,
+                function: GeneFunction::VesicularTransport,
+                essential: false,
+            },
             // Serotonergic genes
-            Self { name: "tph-1".into(), chromosome: 5, map_position: 10.0,
-                function: GeneFunction::NeurotransmitterSynthesis, essential: false },
-            Self { name: "cat-1".into(), chromosome: 5, map_position: 13.0,
-                function: GeneFunction::VesicularTransport, essential: false },
+            Self {
+                name: "tph-1".into(),
+                chromosome: 5,
+                map_position: 10.0,
+                function: GeneFunction::NeurotransmitterSynthesis,
+                essential: false,
+            },
+            Self {
+                name: "cat-1".into(),
+                chromosome: 5,
+                map_position: 13.0,
+                function: GeneFunction::VesicularTransport,
+                essential: false,
+            },
             // Dopaminergic genes
-            Self { name: "cat-2".into(), chromosome: 2, map_position: 5.0,
-                function: GeneFunction::NeurotransmitterSynthesis, essential: false },
-            Self { name: "dat-1".into(), chromosome: 5, map_position: 17.0,
-                function: GeneFunction::NeurotransmitterSynthesis, essential: false },
+            Self {
+                name: "cat-2".into(),
+                chromosome: 2,
+                map_position: 5.0,
+                function: GeneFunction::NeurotransmitterSynthesis,
+                essential: false,
+            },
+            Self {
+                name: "dat-1".into(),
+                chromosome: 5,
+                map_position: 17.0,
+                function: GeneFunction::NeurotransmitterSynthesis,
+                essential: false,
+            },
             // Mechanosensory genes
-            Self { name: "mec-3".into(), chromosome: 4, map_position: 10.0,
-                function: GeneFunction::Mechanosensation, essential: false },
-            Self { name: "mec-4".into(), chromosome: 5, map_position: 0.0,
-                function: GeneFunction::IonChannel, essential: false },
-            Self { name: "mec-7".into(), chromosome: 1, map_position: 15.0,
-                function: GeneFunction::Mechanosensation, essential: false },
+            Self {
+                name: "mec-3".into(),
+                chromosome: 4,
+                map_position: 10.0,
+                function: GeneFunction::Mechanosensation,
+                essential: false,
+            },
+            Self {
+                name: "mec-4".into(),
+                chromosome: 5,
+                map_position: 0.0,
+                function: GeneFunction::IonChannel,
+                essential: false,
+            },
+            Self {
+                name: "mec-7".into(),
+                chromosome: 1,
+                map_position: 15.0,
+                function: GeneFunction::Mechanosensation,
+                essential: false,
+            },
             // Locomotion genes
-            Self { name: "unc-54".into(), chromosome: 4, map_position: 18.0,
-                function: GeneFunction::Locomotion, essential: true },
-            Self { name: "myo-3".into(), chromosome: 5, map_position: 0.0,
-                function: GeneFunction::Locomotion, essential: true },
+            Self {
+                name: "unc-54".into(),
+                chromosome: 4,
+                map_position: 18.0,
+                function: GeneFunction::Locomotion,
+                essential: true,
+            },
+            Self {
+                name: "myo-3".into(),
+                chromosome: 5,
+                map_position: 0.0,
+                function: GeneFunction::Locomotion,
+                essential: true,
+            },
             // Dauer genes
-            Self { name: "daf-2".into(), chromosome: 3, map_position: 0.0,
-                function: GeneFunction::DauerFormation, essential: false },
-            Self { name: "daf-16".into(), chromosome: 1, map_position: 0.0,
-                function: GeneFunction::DauerFormation, essential: false },
+            Self {
+                name: "daf-2".into(),
+                chromosome: 3,
+                map_position: 0.0,
+                function: GeneFunction::DauerFormation,
+                essential: false,
+            },
+            Self {
+                name: "daf-16".into(),
+                chromosome: 1,
+                map_position: 0.0,
+                function: GeneFunction::DauerFormation,
+                essential: false,
+            },
             // Aging genes
-            Self { name: "age-1".into(), chromosome: 2, map_position: 0.0,
-                function: GeneFunction::Aging, essential: false },
-            Self { name: "clk-1".into(), chromosome: 3, map_position: 15.0,
-                function: GeneFunction::Aging, essential: false },
+            Self {
+                name: "age-1".into(),
+                chromosome: 2,
+                map_position: 0.0,
+                function: GeneFunction::Aging,
+                essential: false,
+            },
+            Self {
+                name: "clk-1".into(),
+                chromosome: 3,
+                map_position: 15.0,
+                function: GeneFunction::Aging,
+                essential: false,
+            },
         ]
     }
 }
@@ -963,8 +2155,14 @@ impl MolecularPathway {
         vec![
             Self {
                 name: "Cholinergic Synapse".into(),
-                genes: vec!["cha-1".into(), "unc-17".into(), "unc-13".into(), "snb-1".into()],
-                description: "Acetylcholine synthesis and release at neuromuscular junctions".into(),
+                genes: vec![
+                    "cha-1".into(),
+                    "unc-17".into(),
+                    "unc-13".into(),
+                    "snb-1".into(),
+                ],
+                description: "Acetylcholine synthesis and release at neuromuscular junctions"
+                    .into(),
             },
             Self {
                 name: "GABAergic Inhibition".into(),
@@ -973,32 +2171,62 @@ impl MolecularPathway {
             },
             Self {
                 name: "Mechanosensory Transduction".into(),
-                genes: vec!["mec-3".into(), "mec-4".into(), "mec-7".into(), "mec-10".into()],
+                genes: vec![
+                    "mec-3".into(),
+                    "mec-4".into(),
+                    "mec-7".into(),
+                    "mec-10".into(),
+                ],
                 description: "Touch sensation via DEG/ENaC channels".into(),
             },
             Self {
                 name: "Dauer Signaling".into(),
-                genes: vec!["daf-2".into(), "daf-16".into(), "daf-12".into(), "daf-9".into()],
+                genes: vec![
+                    "daf-2".into(),
+                    "daf-16".into(),
+                    "daf-12".into(),
+                    "daf-9".into(),
+                ],
                 description: "Insulin/IGF-1 pathway controlling developmental arrest".into(),
             },
             Self {
                 name: "Egg Laying Circuit".into(),
-                genes: vec!["egl-1".into(), "egl-47".into(), "egl-19".into(), "unc-103".into()],
+                genes: vec![
+                    "egl-1".into(),
+                    "egl-47".into(),
+                    "egl-19".into(),
+                    "unc-103".into(),
+                ],
                 description: "Serotonergic and peptidergic control of egg laying".into(),
             },
             Self {
                 name: "Thermotaxis".into(),
-                genes: vec!["ttx-1".into(), "tax-4".into(), "gcy-23".into(), "gcy-8".into()],
+                genes: vec![
+                    "ttx-1".into(),
+                    "tax-4".into(),
+                    "gcy-23".into(),
+                    "gcy-8".into(),
+                ],
                 description: "Temperature gradient navigation via AFD neurons".into(),
             },
             Self {
                 name: "Chemotaxis".into(),
-                genes: vec!["odr-10".into(), "tax-4".into(), "gpa-3".into(), "osm-9".into()],
+                genes: vec![
+                    "odr-10".into(),
+                    "tax-4".into(),
+                    "gpa-3".into(),
+                    "osm-9".into(),
+                ],
                 description: "Odorant detection and gradient navigation".into(),
             },
             Self {
                 name: "Aging Pathway".into(),
-                genes: vec!["age-1".into(), "daf-2".into(), "daf-16".into(), "clk-1".into()],
+                genes: vec![
+                    "age-1".into(),
+                    "daf-2".into(),
+                    "daf-16".into(),
+                    "clk-1".into(),
+                ],
                 description: "Insulin signaling affecting lifespan".into(),
             },
         ]
@@ -1009,12 +2237,12 @@ impl MolecularPathway {
 pub mod genome_stats {
     /// Chromosome lengths in megabases.
     pub const CHROMOSOME_LENGTHS_MB: [f32; 6] = [
-        15.0,  // I
-        15.0,  // II
-        14.0,  // III
-        18.0,  // IV
-        21.0,  // V
-        18.0,  // X
+        15.0, // I
+        15.0, // II
+        14.0, // III
+        18.0, // IV
+        21.0, // V
+        18.0, // X
     ];
 
     /// Total base pairs.
@@ -1045,6 +2273,14 @@ mod tests {
         assert_eq!(worm.neurons.len(), CELEGANS_NEURON_COUNT);
         assert_eq!(worm.muscles.len(), CELEGANS_MUSCLE_COUNT);
         assert!(worm.alive);
+        assert!(
+            !worm.synapses.is_empty(),
+            "connectome wiring should be populated"
+        );
+        assert!(
+            worm.muscles.iter().any(|m| !m.innervation.is_empty()),
+            "muscles should be wired"
+        );
     }
 
     #[test]
@@ -1078,9 +2314,21 @@ mod tests {
         let worm = CelegansOrganism::new();
 
         // Check we have sensory, interneurons, and motor neurons
-        let sensory = worm.neurons.iter().filter(|n| n.class == NeuronClass::Sensory).count();
-        let inter = worm.neurons.iter().filter(|n| n.class == NeuronClass::Interneuron).count();
-        let motor = worm.neurons.iter().filter(|n| n.class == NeuronClass::Motor).count();
+        let sensory = worm
+            .neurons
+            .iter()
+            .filter(|n| n.class == NeuronClass::Sensory)
+            .count();
+        let inter = worm
+            .neurons
+            .iter()
+            .filter(|n| n.class == NeuronClass::Interneuron)
+            .count();
+        let motor = worm
+            .neurons
+            .iter()
+            .filter(|n| n.class == NeuronClass::Motor)
+            .count();
 
         assert!(sensory > 0, "Should have sensory neurons");
         assert!(inter > 0, "Should have interneurons");
@@ -1091,8 +2339,16 @@ mod tests {
     fn test_neurotransmitter_distribution() {
         let worm = CelegansOrganism::new();
 
-        let ach = worm.neurons.iter().filter(|n| n.neurotransmitter == Neurotransmitter::Acetylcholine).count();
-        let gaba = worm.neurons.iter().filter(|n| n.neurotransmitter == Neurotransmitter::GABA).count();
+        let ach = worm
+            .neurons
+            .iter()
+            .filter(|n| n.neurotransmitter == Neurotransmitter::Acetylcholine)
+            .count();
+        let gaba = worm
+            .neurons
+            .iter()
+            .filter(|n| n.neurotransmitter == Neurotransmitter::GABA)
+            .count();
 
         // Should have both ACh (excitatory) and GABA (inhibitory) motor neurons
         assert!(ach > 0, "Should have cholinergic neurons");
@@ -1120,32 +2376,44 @@ mod tests {
     fn test_forward_locomotion() {
         let mut worm = CelegansOrganism::new();
 
-        // Activate forward command neurons
-        worm.stimulate("AVBL", 1.0);
-        worm.stimulate("AVBR", 1.0);
-
+        // Sustained forward command (the current model does not contain
+        // recurrent circuitry that maintains command state, so we re-
+        // stimulate every step to model a tonic input).
         for _ in 0..1000 {
+            worm.stimulate("AVBL", 1.0);
+            worm.stimulate("AVBR", 1.0);
             worm.step(1.0);
         }
 
         let state = worm.locomotion_state();
         assert_eq!(state, LocomotionState::Forward);
+        assert!(
+            worm.speed_um_s > 0.0,
+            "forward command should drive body speed"
+        );
+        assert!(
+            worm.x_um.abs() > 0.0 || worm.y_um.abs() > 0.0,
+            "forward command should move the body"
+        );
     }
 
     #[test]
     fn test_backward_locomotion() {
         let mut worm = CelegansOrganism::new();
 
-        // Activate backward command neurons
-        worm.stimulate("AVAL", 1.0);
-        worm.stimulate("AVAR", 1.0);
-
+        // Sustained backward command (see forward test for rationale).
         for _ in 0..1000 {
+            worm.stimulate("AVAL", 1.0);
+            worm.stimulate("AVAR", 1.0);
             worm.step(1.0);
         }
 
         let state = worm.locomotion_state();
         assert_eq!(state, LocomotionState::Backward);
+        assert!(
+            worm.speed_um_s > 0.0,
+            "backward command should still engage muscles"
+        );
     }
 
     #[test]
@@ -1169,5 +2437,132 @@ mod tests {
         assert!(dorsal > 0);
         assert!(ventral > 0);
         assert!((dorsal as i32 - ventral as i32).abs() <= 2);
+    }
+
+    #[test]
+    fn test_anterior_touch_drives_backward_state() {
+        let mut worm = CelegansOrganism::new();
+        let inputs = CelegansSensoryInputs {
+            anterior_touch: 1.0,
+            ..Default::default()
+        };
+
+        for _ in 0..200 {
+            worm.step_with_inputs(1.0, &inputs);
+        }
+
+        assert_eq!(worm.locomotion_state(), LocomotionState::Backward);
+    }
+
+    #[test]
+    fn test_posterior_touch_drives_forward_state() {
+        let mut worm = CelegansOrganism::new();
+        let inputs = CelegansSensoryInputs {
+            posterior_touch: 1.0,
+            ..Default::default()
+        };
+
+        for _ in 0..200 {
+            worm.step_with_inputs(1.0, &inputs);
+        }
+
+        assert_eq!(worm.locomotion_state(), LocomotionState::Forward);
+    }
+
+    #[test]
+    fn test_left_attractant_biases_left_chemosensors() {
+        let mut worm = CelegansOrganism::new();
+        let inputs = CelegansSensoryInputs {
+            attractant_left: 1.0,
+            attractant_right: 0.0,
+            ..Default::default()
+        };
+
+        worm.step_with_inputs(1.0, &inputs);
+
+        assert!(
+            worm.get_neuron_activation("ASEL") > worm.get_neuron_activation("ASER"),
+            "left attractant should bias left chemosensory drive"
+        );
+    }
+
+    #[test]
+    fn test_immersion_switches_to_swimming_mode() {
+        let mut worm = CelegansOrganism::new();
+        let inputs = CelegansSensoryInputs {
+            immersion: 1.0,
+            ..Default::default()
+        };
+
+        worm.step_with_inputs(1.0, &inputs);
+
+        assert!(
+            !worm.is_crawling,
+            "high immersion should switch the worm into swimming mode"
+        );
+    }
+
+    #[test]
+    fn test_food_density_engages_pumping_and_gut_loading() {
+        let mut worm = CelegansOrganism::new();
+        let start_gut = worm.gut_content();
+        let inputs = CelegansSensoryInputs {
+            food_density: 1.0,
+            ..Default::default()
+        };
+
+        for _ in 0..500 {
+            worm.step_with_inputs(1.0, &inputs);
+        }
+
+        assert!(
+            worm.pharyngeal_pumping_hz() > 0.0,
+            "food should engage the pharyngeal pumping circuit"
+        );
+        assert!(
+            worm.gut_content() > start_gut,
+            "food should increase gut content over time"
+        );
+    }
+
+    #[test]
+    fn test_low_energy_reduces_locomotor_speed() {
+        let mut high_energy = CelegansOrganism::new();
+        let mut low_energy = CelegansOrganism::new();
+        high_energy.physiology.energy_reserve = 1.0;
+        low_energy.physiology.energy_reserve = 0.15;
+
+        high_energy.stimulate("AVBL", 1.0);
+        high_energy.stimulate("AVBR", 1.0);
+        low_energy.stimulate("AVBL", 1.0);
+        low_energy.stimulate("AVBR", 1.0);
+
+        for _ in 0..250 {
+            high_energy.step(1.0);
+            low_energy.step(1.0);
+        }
+
+        assert!(
+            high_energy.speed_um_s > low_energy.speed_um_s,
+            "low energy should suppress locomotor output"
+        );
+    }
+
+    #[test]
+    fn test_gap_junctions_are_not_stored_in_chemical_synapse_pool() {
+        let worm = CelegansOrganism::new();
+
+        assert!(
+            worm.synapses
+                .iter()
+                .all(|syn| syn.synapse_type == SynapseType::Chemical),
+            "chemical synapse pool should not contain gap-junction entries"
+        );
+        assert!(
+            worm.gap_junctions
+                .iter()
+                .all(|syn| syn.synapse_type == SynapseType::GapJunction),
+            "gap-junction pool should contain only electrical couplings"
+        );
     }
 }

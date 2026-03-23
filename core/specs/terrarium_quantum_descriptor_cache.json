@@ -1,0 +1,146 @@
+[
+  {
+    "species": "water",
+    "descriptor": {
+      "ground_state_energy_ev": 124.51677,
+      "ground_state_energy_per_atom_ev": 41.50559,
+      "dipole_magnitude_e_angstrom": 0.10109496,
+      "mean_abs_effective_charge": 0.16977338,
+      "charge_span": 0.38199016,
+      "mean_lda_exchange_potential_ev": 14.305305,
+      "frontier_occupancy_fraction": 0.29335773
+    }
+  },
+  {
+    "species": "oxygen_gas",
+    "descriptor": {
+      "ground_state_energy_ev": 533.8803,
+      "ground_state_energy_per_atom_ev": 266.94016,
+      "dipole_magnitude_e_angstrom": 0.7601053,
+      "mean_abs_effective_charge": 0.646372,
+      "charge_span": 1.292744,
+      "mean_lda_exchange_potential_ev": 20.111353,
+      "frontier_occupancy_fraction": 0.0032405064
+    }
+  },
+  {
+    "species": "carbon_dioxide",
+    "descriptor": {
+      "ground_state_energy_ev": 1322.8861,
+      "ground_state_energy_per_atom_ev": 440.96204,
+      "dipole_magnitude_e_angstrom": 2.6082225,
+      "mean_abs_effective_charge": 1.7782784,
+      "charge_span": 4.801912,
+      "mean_lda_exchange_potential_ev": 19.257637,
+      "frontier_occupancy_fraction": 0.0019608426
+    }
+  },
+  {
+    "species": "ammonium",
+    "descriptor": {
+      "ground_state_energy_ev": 322.38165,
+      "ground_state_energy_per_atom_ev": 64.47633,
+      "dipole_magnitude_e_angstrom": 0.7997857,
+      "mean_abs_effective_charge": 1.0010302,
+      "charge_span": 3.9325938,
+      "mean_lda_exchange_potential_ev": 12.8563595,
+      "frontier_occupancy_fraction": 0.48463118
+    }
+  },
+  {
+    "species": "nitrate",
+    "descriptor": {
+      "ground_state_energy_ev": 3065.2144,
+      "ground_state_energy_per_atom_ev": 766.3036,
+      "dipole_magnitude_e_angstrom": 1.4302202,
+      "mean_abs_effective_charge": 0.3772627,
+      "charge_span": 1.122447,
+      "mean_lda_exchange_potential_ev": 20.115883,
+      "frontier_occupancy_fraction": 0.01300286
+    }
+  },
+  {
+    "species": "bicarbonate_pool",
+    "descriptor": {
+      "ground_state_energy_ev": 2898.8545,
+      "ground_state_energy_per_atom_ev": 579.7709,
+      "dipole_magnitude_e_angstrom": 1.2909236,
+      "mean_abs_effective_charge": 1.2451208,
+      "charge_span": 4.662244,
+      "mean_lda_exchange_potential_ev": 18.383152,
+      "frontier_occupancy_fraction": 0.0017088623
+    }
+  },
+  {
+    "species": "exchangeable_calcium",
+    "descriptor": {
+      "ground_state_energy_ev": -444.36224,
+      "ground_state_energy_per_atom_ev": -444.36224,
+      "dipole_magnitude_e_angstrom": 0.0,
+      "mean_abs_effective_charge": 2.0,
+      "charge_span": 0.0,
+      "mean_lda_exchange_potential_ev": 22.164112,
+      "frontier_occupancy_fraction": 1.0
+    }
+  },
+  {
+    "species": "exchangeable_magnesium",
+    "descriptor": {
+      "ground_state_energy_ev": -689.06744,
+      "ground_state_energy_per_atom_ev": -689.06744,
+      "dipole_magnitude_e_angstrom": 0.0,
+      "mean_abs_effective_charge": 2.0,
+      "charge_span": 0.0,
+      "mean_lda_exchange_potential_ev": 22.164112,
+      "frontier_occupancy_fraction": 1.0
+    }
+  },
+  {
+    "species": "exchangeable_potassium",
+    "descriptor": {
+      "ground_state_energy_ev": -313.7713,
+      "ground_state_energy_per_atom_ev": -313.7713,
+      "dipole_magnitude_e_angstrom": 0.0,
+      "mean_abs_effective_charge": 1.0,
+      "charge_span": 0.0,
+      "mean_lda_exchange_potential_ev": 22.164112,
+      "frontier_occupancy_fraction": 1.0
+    }
+  },
+  {
+    "species": "exchangeable_sodium",
+    "descriptor": {
+      "ground_state_energy_ev": -453.43127,
+      "ground_state_energy_per_atom_ev": -453.43127,
+      "dipole_magnitude_e_angstrom": 0.0,
+      "mean_abs_effective_charge": 1.0,
+      "charge_span": 0.0,
+      "mean_lda_exchange_potential_ev": 22.164112,
+      "frontier_occupancy_fraction": 1.0
+    }
+  },
+  {
+    "species": "exchangeable_aluminum",
+    "descriptor": {
+      "ground_state_energy_ev": -967.87354,
+      "ground_state_energy_per_atom_ev": -967.87354,
+      "dipole_magnitude_e_angstrom": 0.0,
+      "mean_abs_effective_charge": 3.0,
+      "charge_span": 0.0,
+      "mean_lda_exchange_potential_ev": 22.164112,
+      "frontier_occupancy_fraction": 1.0
+    }
+  },
+  {
+    "species": "aqueous_iron_pool",
+    "descriptor": {
+      "ground_state_energy_ev": -183.90125,
+      "ground_state_energy_per_atom_ev": -183.90125,
+      "dipole_magnitude_e_angstrom": 0.0,
+      "mean_abs_effective_charge": 3.0,
+      "charge_span": 0.0,
+      "mean_lda_exchange_potential_ev": 18.950048,
+      "frontier_occupancy_fraction": 0.0
+    }
+  }
+]

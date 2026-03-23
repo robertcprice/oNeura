@@ -1,0 +1,11 @@
+{
+  "name": "oneura-terrarium-web-smoke",
+  "private": true,
+  "description": "Browser smoke tests for the oNeura terrarium demo shell",
+  "scripts": {
+    "smoke:demo": "playwright test --project=webkit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0"
+  }
+}

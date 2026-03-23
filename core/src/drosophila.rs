@@ -1,9 +1,11 @@
 //! DrosophilaSim -- GPU-resident Drosophila brain simulator with 6 experiment runners.
 //!
-//! Wraps [`MolecularBrain`] with the 15-region Drosophila connectome architecture
-//! from the FlyWire dataset (Dorkenwald et al. 2024, Nature 634:124-138).
-//! The ENTIRE simulation loop (sensory encoding -> brain step -> motor decode)
-//! runs on Metal GPU via the existing `MolecularBrain::step()` pipeline.
+//! Wraps [`MolecularBrain`] with a FlyWire-informed 15-region Drosophila
+//! regional scaffold derived from published neuron counts and major pathway
+//! structure (Dorkenwald et al. 2024, Nature 634:124-138). This module does
+//! not yet import a literal neuron-by-neuron FlyWire edge list. The entire
+//! sensory encoding -> brain step -> motor decode loop runs on Metal GPU via
+//! the existing `MolecularBrain::step()` pipeline when GPU execution is active.
 //! Python is only used for setup and result collection.
 //!
 //! # Biological Fidelity
@@ -30,18 +32,21 @@
 //! | Tiny   | 1,000   | Fast unit tests (<1s)            |
 //! | Small  | 5,000   | Mac MPS (~10s)                   |
 //! | Medium | 25,000  | A100 (~60s)                      |
-//! | Large  | 139,000 | Full FlyWire connectome           |
+//! | Large  | 139,000 | Full-fly neuron-count scale       |
 
 use crate::network::MolecularBrain;
 use crate::types::*;
 use rand::prelude::*;
+use rand_chacha::ChaCha12Rng;
+
+pub mod assays;
 
 // ============================================================================
 // Scale Tiers
 // ============================================================================
 
 /// Scale tier for network construction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DrosophilaScale {
     /// 1,000 neurons -- fast unit tests.
     Tiny,
@@ -49,7 +54,7 @@ pub enum DrosophilaScale {
     Small,
     /// 25,000 neurons -- GPU benchmarks.
     Medium,
-    /// 139,000 neurons -- full FlyWire connectome scale.
+    /// 139,000 neurons -- full-fly neuron-count scale for the reduced scaffold.
     Large,
 }
 
@@ -112,8 +117,9 @@ pub mod genome_stats {
     pub const PROTEIN_GENES: usize = 13_600;
     /// Number of chromosomes (4 major: X, 2, 3, 4).
     pub const CHROMOSOME_COUNT: usize = 4;
-    /// Chromosome lengths in Mb.
-    pub const CHROMOSOME_LENGTHS_MB: [f32; 4] = [41.0, 60.0, 67.0, 4.0];
+    /// Chromosome lengths in Mb (euchromatin + pericentromeric heterochromatin).
+    /// Chromosome 4 (the dot chromosome) is kept under 5 Mb to match literature.
+    pub const CHROMOSOME_LENGTHS_MB: [f32; 4] = [44.5, 63.0, 68.0, 4.5];
     /// GC content percentage.
     pub const GC_CONTENT: f32 = 41.5;
     /// Approximate neuron count (139,000 from FlyWire).
@@ -515,6 +521,51 @@ impl RegionLayout {
         start..start + count
     }
 
+    fn split_range(
+        range: std::ops::Range<usize>,
+    ) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
+        if range.is_empty() {
+            return (range.end..range.end, range.end..range.end);
+        }
+        let half = (range.len() / 2).max(1);
+        let mid = (range.start + half).min(range.end);
+        (range.start..mid, mid..range.end)
+    }
+
+    fn excitatory_range(&self, name: &str) -> std::ops::Range<usize> {
+        let (start, count) = self.get(name).unwrap_or((0, 0));
+        if count == 0 {
+            return start..start;
+        }
+        let n_inhib = (count as f32 * Self::inhib_fraction(name)).round() as usize;
+        let n_excit = count.saturating_sub(n_inhib);
+        start..start + n_excit
+    }
+
+    fn inhibitory_range(&self, name: &str) -> std::ops::Range<usize> {
+        let (start, count) = self.get(name).unwrap_or((0, 0));
+        if count == 0 {
+            return start..start;
+        }
+        let n_inhib = (count as f32 * Self::inhib_fraction(name)).round() as usize;
+        let n_excit = count.saturating_sub(n_inhib);
+        start + n_excit..start + count
+    }
+
+    fn bilateral_excitatory_ranges(
+        &self,
+        name: &str,
+    ) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
+        Self::split_range(self.excitatory_range(name))
+    }
+
+    fn bilateral_inhibitory_ranges(
+        &self,
+        name: &str,
+    ) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
+        Self::split_range(self.inhibitory_range(name))
+    }
+
     /// Get the inhibitory fraction for a region by name.
     fn inhib_fraction(name: &str) -> f32 {
         REGION_SPECS
@@ -530,7 +581,7 @@ impl RegionLayout {
 // ============================================================================
 
 /// FEP stimulation mode for learning experiments.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FepMode {
     /// Structured pulsed stimulation (low entropy) -- applied on HIT.
     Structured,
@@ -549,7 +600,18 @@ struct FepState {
     /// Current mode.
     mode: FepMode,
     /// RNG for random mode.
-    rng: StdRng,
+    rng: ChaCha12Rng,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct FepStateCheckpoint {
+    target_indices: Vec<usize>,
+    amplitude: f32,
+    mode: FepMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rng: Option<ChaCha12Rng>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rng_resume_seed: Option<u64>,
 }
 
 impl FepState {
@@ -558,7 +620,7 @@ impl FepState {
             target_indices: indices,
             amplitude,
             mode: FepMode::Off,
-            rng: StdRng::seed_from_u64(seed),
+            rng: ChaCha12Rng::seed_from_u64(seed),
         }
     }
 
@@ -585,6 +647,27 @@ impl FepState {
             FepMode::Off => {}
         }
     }
+
+    fn checkpoint(&self) -> FepStateCheckpoint {
+        FepStateCheckpoint {
+            target_indices: self.target_indices.clone(),
+            amplitude: self.amplitude,
+            mode: self.mode,
+            rng: Some(self.rng.clone()),
+            rng_resume_seed: None,
+        }
+    }
+
+    fn from_checkpoint(checkpoint: FepStateCheckpoint) -> Self {
+        Self {
+            target_indices: checkpoint.target_indices,
+            amplitude: checkpoint.amplitude,
+            mode: checkpoint.mode,
+            rng: checkpoint.rng.unwrap_or_else(|| {
+                ChaCha12Rng::seed_from_u64(checkpoint.rng_resume_seed.unwrap_or(0))
+            }),
+        }
+    }
 }
 
 // ============================================================================
@@ -599,12 +682,13 @@ const FLY_WING_BEAT_HZ: f32 = 200.0;
 const FLY_ENERGY_MAX: f32 = 100.0;
 const FLY_ENERGY_WALK_COST: f32 = 0.01;
 const FLY_ENERGY_FLY_COST: f32 = 0.1;
-const FLY_ENERGY_FEED_GAIN: f32 = 5.0;
 const GRAVITY_MM_S2: f32 = 9810.0;
 const FLY_MAX_ALTITUDE: f32 = 50.0;
 const FLY_TAKEOFF_SPEED: f32 = 5.0;
 const FLY_CLIMB_RATE: f32 = 3.0;
 const FLY_DESCENT_RATE: f32 = 5.0;
+const TERRARIUM_NEURAL_WINDOWS: u32 = 4;
+const TERRARIUM_FOOD_BITE_MAX: f32 = 0.03;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MotorOutput {
@@ -633,8 +717,60 @@ pub struct TerrariumFlyStepReport {
     pub wing_beat_freq: f32,
 }
 
+/// Explicit local terrarium sensory slice for a single fly body step.
+///
+/// This is the authoritative integration surface for the live terrarium path:
+/// environment and food contact enter as explicit sensory channels, while any
+/// legacy coarse reward compatibility must be queued separately.
+#[derive(Clone, Copy, Debug)]
+pub struct TerrariumFlyInputs {
+    pub odorant: f32,
+    pub left_odorant: f32,
+    pub right_odorant: f32,
+    pub left_light: f32,
+    pub right_light: f32,
+    pub temperature: f32,
+    pub sugar_taste: f32,
+    pub bitter_taste: f32,
+    pub amino_taste: f32,
+    pub wind_x: f32,
+    pub wind_y: f32,
+    pub wind_z: f32,
+    pub surface_contact: f32,
+}
+
+impl Default for TerrariumFlyInputs {
+    fn default() -> Self {
+        Self {
+            odorant: 0.0,
+            left_odorant: 0.0,
+            right_odorant: 0.0,
+            left_light: 0.0,
+            right_light: 0.0,
+            temperature: 18.0,
+            sugar_taste: 0.0,
+            bitter_taste: 0.0,
+            amino_taste: 0.0,
+            wind_x: 0.0,
+            wind_y: 0.0,
+            wind_z: 0.0,
+            surface_contact: 0.0,
+        }
+    }
+}
+
+impl TerrariumFlyStepReport {
+    /// Coarse locomotor activity readout for behavior-level assays.
+    pub fn activity_score(&self) -> f32 {
+        self.speed.abs()
+            + self.turn.abs() * 0.25
+            + self.fly_signal.max(0.0) * 0.5
+            + self.climb_signal.abs() * 0.25
+    }
+}
+
 /// Minimal 2D body state for locomotion experiments.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BodyState {
     /// Position in world coordinates.
     pub x: f32,
@@ -673,6 +809,132 @@ pub struct BodyState {
     pub wing_sweep: f32,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DrosophilaMacroState {
+    pub construction_seed: u64,
+    pub scale: DrosophilaScale,
+    pub body: BodyState,
+    pub hunger: f32,
+    pub circadian_activity: f32,
+    pub neural_steps_per_body: u32,
+    pub world_width: f32,
+    pub world_height: f32,
+    pub feeding_feedback_sugar: f32,
+    pub feeding_feedback_bitter: f32,
+    pub feeding_feedback_amino: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rng: Option<ChaCha12Rng>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rng_resume_seed: Option<u64>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct DrosophilaExactState {
+    construction_seed: u64,
+    scale: DrosophilaScale,
+    brain: crate::network::MolecularBrainCheckpoint,
+    world: DrosophilaWorldCheckpoint,
+    body: BodyState,
+    homeostasis: HomeostaticState,
+    fep: Option<FepStateCheckpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rng: Option<ChaCha12Rng>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rng_resume_seed: Option<u64>,
+    neural_steps_per_body: u32,
+    world_width: f32,
+    world_height: f32,
+    feeding_feedback: PeripheralTasteState,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub enum DrosophilaCheckpointState {
+    Exact(DrosophilaExactState),
+    Macro(DrosophilaMacroState),
+}
+
+impl<'de> serde::Deserialize<'de> for DrosophilaCheckpointState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(exact) = value.get("Exact") {
+            return serde_json::from_value::<DrosophilaExactState>(exact.clone())
+                .map(DrosophilaCheckpointState::Exact)
+                .map_err(serde::de::Error::custom);
+        }
+        if let Some(macro_state) = value.get("Macro") {
+            return serde_json::from_value::<DrosophilaMacroState>(macro_state.clone())
+                .map(DrosophilaCheckpointState::Macro)
+                .map_err(serde::de::Error::custom);
+        }
+        if value.get("brain").is_some()
+            || value.get("world").is_some()
+            || value.get("homeostasis").is_some()
+            || value.get("feeding_feedback").is_some()
+        {
+            return serde_json::from_value::<DrosophilaExactState>(value)
+                .map(DrosophilaCheckpointState::Exact)
+                .map_err(serde::de::Error::custom);
+        }
+
+        serde_json::from_value::<DrosophilaMacroState>(value)
+            .map(DrosophilaCheckpointState::Macro)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+struct HomeostaticState {
+    hunger: f32,
+    circadian_activity: f32,
+}
+
+impl Default for HomeostaticState {
+    fn default() -> Self {
+        Self {
+            hunger: 0.0,
+            circadian_activity: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+struct PeripheralTasteState {
+    sugar: f32,
+    bitter: f32,
+    amino: f32,
+}
+
+impl PeripheralTasteState {
+    fn accumulate(&mut self, sugar: f32, bitter: f32, amino: f32) {
+        self.sugar = (self.sugar + sugar.max(0.0)).clamp(0.0, 1.5);
+        self.bitter = (self.bitter + bitter.max(0.0)).clamp(0.0, 1.5);
+        self.amino = (self.amino + amino.max(0.0)).clamp(0.0, 1.5);
+    }
+
+    fn decay(&mut self, retention: f32) {
+        let retention = retention.clamp(0.0, 1.0);
+        self.sugar *= retention;
+        self.bitter *= retention;
+        self.amino *= retention;
+        if self.sugar < 1.0e-3 {
+            self.sugar = 0.0;
+        }
+        if self.bitter < 1.0e-3 {
+            self.bitter = 0.0;
+        }
+        if self.amino < 1.0e-3 {
+            self.amino = 0.0;
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.sugar > 1.0e-6 || self.bitter > 1.0e-6 || self.amino > 1.0e-6
+    }
+}
+
 impl BodyState {
     fn new(x: f32, y: f32) -> Self {
         Self {
@@ -701,17 +963,17 @@ impl BodyState {
     fn calculate_wing_beat_freq(&self, air_density: f32, climb_signal: f32) -> f32 {
         // Base frequency (~200Hz for Drosophila)
         let base_hz = FLY_WING_BEAT_HZ;
-        
+
         // Energy factor: fatigued flies have lower power output
         // Below 20% energy, frequency drops linearly
         let energy_t = (self.energy / FLY_ENERGY_MAX).clamp(0.0, 1.0);
-        let energy_factor = 0.7 + 0.3 * energy_t.sqrt(); 
+        let energy_factor = 0.7 + 0.3 * energy_t.sqrt();
 
         // Temperature factor: metabolism and muscle speed are temperature dependent (Q10 ~2.0)
         // Optimal at 25C, drops off as it gets colder
         let temp_factor = (1.0 + (self.temperature - 25.0) * 0.02).clamp(0.5, 1.2);
 
-        // Air density factor: in thinner air (higher altitude or hot), 
+        // Air density factor: in thinner air (higher altitude or hot),
         // the fly must beat faster to maintain lift.
         // Standard air density is ~1.225 kg/m^3
         let density_ratio = (1.225 / air_density.max(0.1)).sqrt();
@@ -727,8 +989,8 @@ impl BodyState {
     /// Returns (o2_flux, co2_flux) in concentration units.
     pub fn calculate_respiration_flux(&self) -> (f32, f32) {
         // Base respiration rate
-        let mut rate = 0.0001; 
-        
+        let mut rate = 0.0001;
+
         // Scaling with activity: flying is highly metabolic
         if self.is_flying {
             rate *= 12.0 * (self.wing_beat_freq / FLY_WING_BEAT_HZ);
@@ -842,6 +1104,16 @@ struct World {
     food_sources: Vec<(f32, f32, f32)>,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct DrosophilaWorldCheckpoint {
+    width: usize,
+    height: usize,
+    odorant: Vec<f32>,
+    light: Vec<f32>,
+    temperature: Vec<f32>,
+    food_sources: Vec<(f32, f32, f32)>,
+}
+
 impl World {
     fn new(width: usize, height: usize) -> Self {
         Self {
@@ -851,6 +1123,28 @@ impl World {
             light: vec![0.5; width * height],
             temperature: vec![22.0; width * height],
             food_sources: Vec::new(),
+        }
+    }
+
+    fn checkpoint(&self) -> DrosophilaWorldCheckpoint {
+        DrosophilaWorldCheckpoint {
+            width: self.width,
+            height: self.height,
+            odorant: self.odorant.clone(),
+            light: self.light.clone(),
+            temperature: self.temperature.clone(),
+            food_sources: self.food_sources.clone(),
+        }
+    }
+
+    fn from_checkpoint(checkpoint: DrosophilaWorldCheckpoint) -> Self {
+        Self {
+            width: checkpoint.width,
+            height: checkpoint.height,
+            odorant: checkpoint.odorant,
+            light: checkpoint.light,
+            temperature: checkpoint.temperature,
+            food_sources: checkpoint.food_sources,
         }
     }
 
@@ -1007,20 +1301,29 @@ pub struct DrosophilaSim {
     pub layout: RegionLayout,
     /// Scale tier.
     pub scale: DrosophilaScale,
+    /// Seed used to build the current reduced fly brain layout/connectivity.
+    construction_seed: u64,
     /// 2D world for experiments.
     world: World,
     /// Body state (position, heading, speed).
     body: BodyState,
+    /// Explicit low-dimensional homeostatic inputs from external metabolism.
+    homeostasis: HomeostaticState,
     /// FEP protocol (optional, activated per-experiment).
     fep: Option<FepState>,
     /// RNG for stochastic processes (used by experiment runners).
     #[allow(dead_code)]
-    rng: StdRng,
+    rng: ChaCha12Rng,
     /// Neural steps per body step (controls speed-fidelity tradeoff).
     pub neural_steps_per_body: u32,
     /// World dimensions.
     pub world_width: f32,
     pub world_height: f32,
+    /// Short-lived peripheral taste/post-ingestive state carried into later
+    /// neural windows. This is still a reduced scaffold, but it keeps feeding
+    /// reinforcement in explicit sensory terms rather than a scalar behavior
+    /// reward channel.
+    feeding_feedback: PeripheralTasteState,
 }
 
 impl DrosophilaSim {
@@ -1042,7 +1345,7 @@ impl DrosophilaSim {
 
         // Create brain from edges (this builds CSR internally)
         let mut brain = MolecularBrain::from_edges(n, &edges);
-        brain.psc_scale = 30.0; // Critical for cascade propagation
+        brain.psc_scale = 55.0; // Stronger insect ACh cascades through DN -> VNC
 
         // Assign neuron archetypes per region
         Self::assign_archetypes(&mut brain, &layout);
@@ -1060,13 +1363,16 @@ impl DrosophilaSim {
             brain,
             layout,
             scale,
+            construction_seed: seed,
             world,
             body,
+            homeostasis: HomeostaticState::default(),
             fep: None,
-            rng,
+            rng: ChaCha12Rng::seed_from_u64(seed),
             neural_steps_per_body: 20, // 20 neural steps (0.1ms each) = 2ms per body step
             world_width,
             world_height,
+            feeding_feedback: PeripheralTasteState::default(),
         }
     }
 
@@ -1091,15 +1397,12 @@ impl DrosophilaSim {
     fn build_connectivity(layout: &RegionLayout, rng: &mut StdRng) -> Vec<(u32, u32, NTType)> {
         let mut edges: Vec<(u32, u32, NTType)> = Vec::new();
 
-        // Helper: connect src -> dst with probability prob and given NT type
-        let connect = |src_name: &str,
-                       dst_name: &str,
-                       prob: f32,
-                       nt: NTType,
-                       edges: &mut Vec<(u32, u32, NTType)>,
-                       rng: &mut StdRng| {
-            let src_range = layout.range(src_name);
-            let dst_range = layout.range(dst_name);
+        let connect_ranges = |src_range: std::ops::Range<usize>,
+                              dst_range: std::ops::Range<usize>,
+                              prob: f32,
+                              nt: NTType,
+                              edges: &mut Vec<(u32, u32, NTType)>,
+                              rng: &mut StdRng| {
             if src_range.is_empty() || dst_range.is_empty() {
                 return;
             }
@@ -1107,7 +1410,6 @@ impl DrosophilaSim {
             let n_possible = src_range.len() * dst_range.len();
 
             if n_possible > 50_000 {
-                // Sample randomly to avoid O(N^2) blowup
                 let n_expected = (n_possible as f32 * prob).round().max(1.0) as usize;
                 for _ in 0..n_expected {
                     let pre = rng.gen_range(src_range.clone()) as u32;
@@ -1126,6 +1428,121 @@ impl DrosophilaSim {
                 }
             }
         };
+
+        let connect_sparse_fanin_ranges =
+            |src_range: std::ops::Range<usize>,
+             dst_range: std::ops::Range<usize>,
+             fan_in: usize,
+             nt: NTType,
+             edges: &mut Vec<(u32, u32, NTType)>,
+             rng: &mut StdRng| {
+                if src_range.is_empty() || dst_range.is_empty() {
+                    return;
+                }
+
+                let fan = fan_in.min(src_range.len()).max(1);
+                for post in dst_range {
+                    let mut chosen = Vec::with_capacity(fan);
+                    while chosen.len() < fan {
+                        let pre = rng.gen_range(src_range.clone());
+                        if pre != post && !chosen.contains(&pre) {
+                            chosen.push(pre);
+                        }
+                        if chosen.len() >= src_range.len() {
+                            break;
+                        }
+                    }
+                    for pre in chosen {
+                        edges.push((pre as u32, post as u32, nt));
+                    }
+                }
+            };
+
+        let connect_topographic_fanin_ranges =
+            |src_range: std::ops::Range<usize>,
+             dst_range: std::ops::Range<usize>,
+             fan_in: usize,
+             nt: NTType,
+             edges: &mut Vec<(u32, u32, NTType)>| {
+                if src_range.is_empty() || dst_range.is_empty() {
+                    return;
+                }
+
+                let src_len = src_range.len();
+                let dst_len = dst_range.len().max(1);
+                let fan = fan_in.min(src_len).max(1);
+                for (post_offset, post) in dst_range.enumerate() {
+                    let anchor = (post_offset * src_len) / dst_len;
+                    for k in 0..fan {
+                        let stride = (k * src_len) / fan;
+                        let pre = src_range.start + (anchor + stride) % src_len;
+                        if pre != post {
+                            edges.push((pre as u32, post as u32, nt));
+                        }
+                    }
+                }
+            };
+
+        // Helper: connect src -> dst with probability prob and given NT type
+        let connect = |src_name: &str,
+                       dst_name: &str,
+                       prob: f32,
+                       nt: NTType,
+                       edges: &mut Vec<(u32, u32, NTType)>,
+                       rng: &mut StdRng| {
+            let src_range = layout.range(src_name);
+            let dst_range = layout.range(dst_name);
+            connect_ranges(src_range, dst_range, prob, nt, edges, rng);
+        };
+
+        let connect_bilateral_excit = |src_name: &str,
+                                       dst_name: &str,
+                                       prob: f32,
+                                       nt: NTType,
+                                       edges: &mut Vec<(u32, u32, NTType)>,
+                                       rng: &mut StdRng| {
+            let (src_left, src_right) = layout.bilateral_excitatory_ranges(src_name);
+            let (dst_left, dst_right) = layout.bilateral_excitatory_ranges(dst_name);
+            connect_ranges(src_left, dst_left, prob, nt, edges, rng);
+            connect_ranges(src_right, dst_right, prob, nt, edges, rng);
+        };
+
+        let connect_contralateral_inhib =
+            |src_name: &str,
+             dst_name: &str,
+             prob: f32,
+             edges: &mut Vec<(u32, u32, NTType)>,
+             rng: &mut StdRng| {
+                let (src_left, src_right) = layout.bilateral_inhibitory_ranges(src_name);
+                let (dst_left, dst_right) = layout.bilateral_excitatory_ranges(dst_name);
+                connect_ranges(src_left, dst_right, prob, NTType::GABA, edges, rng);
+                connect_ranges(src_right, dst_left, prob, NTType::GABA, edges, rng);
+            };
+
+        let connect_bilateral_fanin_excit =
+            |src_name: &str,
+             dst_name: &str,
+             fan_in: usize,
+             nt: NTType,
+             edges: &mut Vec<(u32, u32, NTType)>,
+             rng: &mut StdRng| {
+                let (src_left, src_right) = layout.bilateral_excitatory_ranges(src_name);
+                let (dst_left, dst_right) = layout.bilateral_excitatory_ranges(dst_name);
+                connect_sparse_fanin_ranges(src_left, dst_left, fan_in, nt, edges, rng);
+                connect_sparse_fanin_ranges(src_right, dst_right, fan_in, nt, edges, rng);
+            };
+
+        let connect_contralateral_fanin_inhib =
+            |src_name: &str,
+             dst_name: &str,
+             fan_in: usize,
+             edges: &mut Vec<(u32, u32, NTType)>,
+             rng: &mut StdRng| {
+                let (src_left, src_right) = layout.bilateral_inhibitory_ranges(src_name);
+                let (dst_left, dst_right) = layout.bilateral_excitatory_ranges(dst_name);
+                connect_sparse_fanin_ranges(src_left, dst_right, fan_in, NTType::GABA, edges, rng);
+                connect_sparse_fanin_ranges(src_right, dst_left, fan_in, NTType::GABA, edges, rng);
+            };
 
         // Helper: sparse KC-style connectivity (fixed fan-in per destination neuron)
         let connect_sparse_kc = |src_name: &str,
@@ -1165,7 +1582,10 @@ impl DrosophilaSim {
         // AL projection neurons -> MB Kenyon cells (sparse coding, ~7 PNs per KC)
         connect_sparse_kc("AL", "MB_KC", 7, NTType::Acetylcholine, &mut edges, rng);
         // AL -> LH (innate olfactory pathway)
-        connect("AL", "LH", 0.08, NTType::Acetylcholine, &mut edges, rng);
+        connect("AL", "LH", 0.10, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("AL", "LH", 0.22, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("AL", "LH", 8, NTType::Acetylcholine, &mut edges, rng);
+        connect_contralateral_inhib("AL", "LH", 0.04, &mut edges, rng);
         // AL local inhibition (within AL, GABAergic interneurons)
         connect("AL", "AL", 0.15, NTType::GABA, &mut edges, rng);
 
@@ -1234,8 +1654,32 @@ impl DrosophilaSim {
         // ============================================================
         // CX internal recurrence (ring neurons, heading integration)
         connect("CX", "CX", 0.08, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("CX", "CX", 0.12, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("CX", "CX", 6, NTType::Acetylcholine, &mut edges, rng);
         // CX -> DN (motor commands)
-        connect("CX", "DN", 0.12, NTType::Acetylcholine, &mut edges, rng);
+        connect("CX", "DN", 0.24, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("CX", "DN", 0.32, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("CX", "DN", 14, NTType::Acetylcholine, &mut edges, rng);
+        connect_contralateral_inhib("CX", "DN", 0.04, &mut edges, rng);
+        connect_contralateral_fanin_inhib("CX", "DN", 2, &mut edges, rng);
+        {
+            let (cx_left, cx_right) = layout.bilateral_excitatory_ranges("CX");
+            let (dn_left, dn_right) = layout.bilateral_excitatory_ranges("DN");
+            connect_topographic_fanin_ranges(
+                cx_left,
+                dn_left,
+                6,
+                NTType::Acetylcholine,
+                &mut edges,
+            );
+            connect_topographic_fanin_ranges(
+                cx_right,
+                dn_right,
+                6,
+                NTType::Acetylcholine,
+                &mut edges,
+            );
+        }
         // CX inhibitory interneurons
         connect("CX", "CX", 0.05, NTType::GABA, &mut edges, rng);
 
@@ -1243,7 +1687,188 @@ impl DrosophilaSim {
         // 5. MOTOR CIRCUIT
         // ============================================================
         // DN -> VNC (descending motor commands)
-        connect("DN", "VNC", 0.10, NTType::Acetylcholine, &mut edges, rng);
+        // Keep a light global DN -> VNC backbone, but let explicit same-side
+        // descending routes carry most steering authority.
+        connect("DN", "VNC", 0.04, NTType::Acetylcholine, &mut edges, rng);
+        {
+            let (dn_left, dn_right) = layout.bilateral_excitatory_ranges("DN");
+            let vnc_excit = layout.excitatory_range("VNC");
+            if !dn_left.is_empty() && !dn_right.is_empty() && vnc_excit.len() >= 4 {
+                let forward_len = (vnc_excit.len() / 2).max(2);
+                let vnc_forward =
+                    vnc_excit.start..(vnc_excit.start + forward_len).min(vnc_excit.end);
+                let (vnc_left, vnc_right) = RegionLayout::split_range(vnc_forward.clone());
+                connect_ranges(
+                    dn_left.clone(),
+                    vnc_left.clone(),
+                    0.48,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_ranges(
+                    dn_right.clone(),
+                    vnc_right.clone(),
+                    0.48,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    dn_left.clone(),
+                    vnc_left.clone(),
+                    18,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    dn_right.clone(),
+                    vnc_right.clone(),
+                    18,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_topographic_fanin_ranges(
+                    dn_left.clone(),
+                    vnc_left.clone(),
+                    8,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                );
+                connect_topographic_fanin_ranges(
+                    dn_right.clone(),
+                    vnc_right.clone(),
+                    8,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                );
+
+                let (dn_inhib_left, dn_inhib_right) = layout.bilateral_inhibitory_ranges("DN");
+                connect_sparse_fanin_ranges(
+                    layout.excitatory_range("DN"),
+                    vnc_forward.clone(),
+                    2,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    dn_inhib_left.clone(),
+                    vnc_right.clone(),
+                    4,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    dn_inhib_right.clone(),
+                    vnc_left.clone(),
+                    4,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_topographic_fanin_ranges(
+                    dn_inhib_left.clone(),
+                    vnc_right.clone(),
+                    2,
+                    NTType::GABA,
+                    &mut edges,
+                );
+                connect_topographic_fanin_ranges(
+                    dn_inhib_right.clone(),
+                    vnc_left.clone(),
+                    2,
+                    NTType::GABA,
+                    &mut edges,
+                );
+                connect_ranges(
+                    dn_inhib_left,
+                    vnc_right.clone(),
+                    0.18,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_ranges(
+                    dn_inhib_right,
+                    vnc_left.clone(),
+                    0.18,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+
+                let vnc_inhib = layout.inhibitory_range("VNC");
+                let (vnc_inhib_left, vnc_inhib_right) = RegionLayout::split_range(vnc_inhib);
+                connect_ranges(
+                    vnc_left.clone(),
+                    vnc_left.clone(),
+                    0.18,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_ranges(
+                    vnc_right.clone(),
+                    vnc_right.clone(),
+                    0.18,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    vnc_left.clone(),
+                    vnc_left.clone(),
+                    8,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    vnc_right.clone(),
+                    vnc_right.clone(),
+                    8,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_ranges(
+                    vnc_inhib_left.clone(),
+                    vnc_right.clone(),
+                    0.18,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_ranges(
+                    vnc_inhib_right.clone(),
+                    vnc_left.clone(),
+                    0.18,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    vnc_inhib_left,
+                    vnc_right,
+                    8,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    vnc_inhib_right,
+                    vnc_left,
+                    8,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+            }
+        }
         // VNC local CPG circuits
         connect("VNC", "VNC", 0.05, NTType::Acetylcholine, &mut edges, rng);
         // VNC inhibitory (reciprocal inhibition for alternating leg patterns)
@@ -1255,9 +1880,41 @@ impl DrosophilaSim {
         // 6. LATERAL HORN (innate olfactory responses)
         // ============================================================
         // LH -> CX (innate olfactory -> navigation)
-        connect("LH", "CX", 0.08, NTType::Acetylcholine, &mut edges, rng);
+        connect("LH", "CX", 0.14, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("LH", "CX", 0.34, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("LH", "CX", 14, NTType::Acetylcholine, &mut edges, rng);
+        connect_contralateral_inhib("LH", "CX", 0.10, &mut edges, rng);
+        connect_contralateral_fanin_inhib("LH", "CX", 3, &mut edges, rng);
         // LH -> DN (direct innate motor)
-        connect("LH", "DN", 0.06, NTType::Acetylcholine, &mut edges, rng);
+        connect("LH", "DN", 0.22, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("LH", "DN", 0.46, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("LH", "DN", 22, NTType::Acetylcholine, &mut edges, rng);
+        connect_contralateral_inhib("LH", "DN", 0.06, &mut edges, rng);
+        connect_contralateral_fanin_inhib("LH", "DN", 2, &mut edges, rng);
+        {
+            let (lh_left, lh_right) = layout.bilateral_excitatory_ranges("LH");
+            let (dn_left, dn_right) = layout.bilateral_excitatory_ranges("DN");
+            connect_topographic_fanin_ranges(
+                lh_left,
+                dn_left,
+                8,
+                NTType::Acetylcholine,
+                &mut edges,
+            );
+            connect_topographic_fanin_ranges(
+                lh_right,
+                dn_right,
+                8,
+                NTType::Acetylcholine,
+                &mut edges,
+            );
+        }
+
+        // DN local command integration: recurrent excitation plus sparse inhibition.
+        connect("DN", "DN", 0.08, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("DN", "DN", 0.12, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("DN", "DN", 4, NTType::Acetylcholine, &mut edges, rng);
+        connect("DN", "DN", 0.03, NTType::GABA, &mut edges, rng);
 
         // ============================================================
         // 7. HIGHER PROCESSING
@@ -1268,6 +1925,94 @@ impl DrosophilaSim {
         connect("SUP", "MBON", 0.03, NTType::Acetylcholine, &mut edges, rng);
         // SUP internal
         connect("SUP", "SUP", 0.03, NTType::Acetylcholine, &mut edges, rng);
+
+        // OTHER -> CX/DN (mechanosensory and haltere-derived state)
+        connect("OTHER", "SUP", 0.06, NTType::Acetylcholine, &mut edges, rng);
+        connect("OTHER", "CX", 0.18, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("OTHER", "CX", 0.42, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("OTHER", "CX", 18, NTType::Acetylcholine, &mut edges, rng);
+        connect_contralateral_inhib("OTHER", "CX", 0.08, &mut edges, rng);
+        connect("OTHER", "DN", 0.20, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("OTHER", "DN", 0.44, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("OTHER", "DN", 18, NTType::Acetylcholine, &mut edges, rng);
+        connect_contralateral_inhib("OTHER", "DN", 0.06, &mut edges, rng);
+        {
+            let (other_left, other_right) = layout.bilateral_excitatory_ranges("OTHER");
+            let (dn_left, dn_right) = layout.bilateral_excitatory_ranges("DN");
+            if !other_left.is_empty()
+                && !other_right.is_empty()
+                && !dn_left.is_empty()
+                && !dn_right.is_empty()
+            {
+                connect_ranges(
+                    other_left.clone(),
+                    dn_left.clone(),
+                    0.34,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_ranges(
+                    other_right.clone(),
+                    dn_right.clone(),
+                    0.34,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    other_left.clone(),
+                    dn_left.clone(),
+                    12,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    other_right.clone(),
+                    dn_right.clone(),
+                    12,
+                    NTType::Acetylcholine,
+                    &mut edges,
+                    rng,
+                );
+
+                let (other_inhib_left, other_inhib_right) =
+                    layout.bilateral_inhibitory_ranges("OTHER");
+                connect_ranges(
+                    other_inhib_left.clone(),
+                    dn_right.clone(),
+                    0.16,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_ranges(
+                    other_inhib_right.clone(),
+                    dn_left.clone(),
+                    0.16,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    other_inhib_left,
+                    dn_right,
+                    4,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+                connect_sparse_fanin_ranges(
+                    other_inhib_right,
+                    dn_left,
+                    4,
+                    NTType::GABA,
+                    &mut edges,
+                    rng,
+                );
+            }
+        }
 
         // ============================================================
         // 8. NEUROMODULATORY (global modulation)
@@ -1300,6 +2045,10 @@ impl DrosophilaSim {
         // ============================================================
         // SEZ -> MBON (gustatory input to valence system)
         connect("SEZ", "MBON", 0.06, NTType::Acetylcholine, &mut edges, rng);
+        // SEZ -> DAN (feeding-derived teaching signal into mushroom-body plasticity)
+        connect("SEZ", "DAN", 0.10, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_excit("SEZ", "DAN", 0.28, NTType::Acetylcholine, &mut edges, rng);
+        connect_bilateral_fanin_excit("SEZ", "DAN", 8, NTType::Acetylcholine, &mut edges, rng);
         // SEZ internal
         connect("SEZ", "SEZ", 0.05, NTType::Acetylcholine, &mut edges, rng);
 
@@ -1396,9 +2145,13 @@ impl DrosophilaSim {
         let odorant = self.world.sample_odorant(x, y);
         if odorant > 0.01 {
             let current = odorant * 40.0; // Scale to uA/cm^2 (subthreshold to suprathreshold)
-            let al_range = self.layout.range("AL");
-            for i in al_range {
+            let al_excit = self.layout.excitatory_range("AL");
+            for i in al_excit {
                 self.brain.stimulate(i, current);
+            }
+            let al_inhib = self.layout.inhibitory_range("AL");
+            for i in al_inhib {
+                self.brain.stimulate(i, current * 0.35);
             }
         }
 
@@ -1454,9 +2207,13 @@ impl DrosophilaSim {
         let odorant = odorant.max(0.0);
         if odorant > 0.01 {
             let current = odorant * 40.0;
-            let al_range = self.layout.range("AL");
-            for i in al_range {
+            let al_excit = self.layout.excitatory_range("AL");
+            for i in al_excit {
                 self.brain.stimulate(i, current);
+            }
+            let al_inhib = self.layout.inhibitory_range("AL");
+            for i in al_inhib {
+                self.brain.stimulate(i, current * 0.35);
             }
         }
 
@@ -1490,16 +2247,84 @@ impl DrosophilaSim {
             return;
         }
         let n_sez = sez_range.len();
-        let gust_end = sez_range.start + (n_sez * 2 / 3).max(1);
+        let gust_end = (sez_range.start + (n_sez * 2 / 3).max(1)).min(sez_range.end);
+        let gust_range = sez_range.start..gust_end;
+        if gust_range.is_empty() {
+            return;
+        }
+        let gust_split = (gust_range.start + (gust_range.len() / 2).max(1)).min(gust_range.end);
+        let appetitive_range = gust_range.start..gust_split;
+        let aversive_range = gust_split..gust_range.end;
         let sugar_current = sugar.max(0.0) * 40.0;
         let amino_current = amino.max(0.0) * 24.0;
         let bitter_current = bitter.max(0.0) * 28.0;
-        for idx in sez_range.start..gust_end.min(sez_range.end) {
-            let current = sugar_current + amino_current - bitter_current * 0.35;
-            if current > 0.0 {
-                self.brain.stimulate(idx, current);
+
+        let appetitive_current = (sugar_current + amino_current - bitter_current * 0.25).max(0.0);
+        if appetitive_current > 0.0 {
+            for idx in appetitive_range {
+                self.brain.stimulate(idx, appetitive_current);
             }
         }
+
+        if bitter_current > 0.0 {
+            for idx in aversive_range {
+                self.brain.stimulate(idx, bitter_current);
+            }
+        }
+    }
+
+    fn stimulate_manual_odor_geometry_with_bridge(
+        &mut self,
+        left_odorant: f32,
+        right_odorant: f32,
+        use_cx_bridge: bool,
+    ) {
+        let left = left_odorant.max(0.0);
+        let right = right_odorant.max(0.0);
+        let total = left + right;
+        if total <= 0.02 {
+            return;
+        }
+
+        let (al_left, al_right) = self.layout.bilateral_excitatory_ranges("AL");
+        if !al_left.is_empty() || !al_right.is_empty() {
+            for idx in al_left {
+                self.brain.stimulate(idx, left * 55.0);
+            }
+            for idx in al_right {
+                self.brain.stimulate(idx, right * 55.0);
+            }
+        }
+
+        let (lh_left, lh_right) = self.layout.bilateral_excitatory_ranges("LH");
+        if !lh_left.is_empty() || !lh_right.is_empty() {
+            for idx in lh_left {
+                self.brain.stimulate(idx, left * 96.0);
+            }
+            for idx in lh_right {
+                self.brain.stimulate(idx, right * 96.0);
+            }
+        }
+
+        let diff = (left - right).clamp(-1.0, 1.0);
+        if !use_cx_bridge || diff.abs() <= 0.01 {
+            return;
+        }
+
+        let (cx_left, cx_right) = self.layout.bilateral_excitatory_ranges("CX");
+        if diff > 0.0 {
+            for idx in cx_left {
+                self.brain.stimulate(idx, diff * 16.0);
+            }
+        } else {
+            for idx in cx_right {
+                self.brain.stimulate(idx, (-diff) * 16.0);
+            }
+        }
+    }
+
+    fn stimulate_manual_odor_geometry(&mut self, left_odorant: f32, right_odorant: f32) {
+        self.stimulate_manual_odor_geometry_with_bridge(left_odorant, right_odorant, false);
     }
 
     fn stimulate_manual_wind(&mut self, wind_x: f32, wind_y: f32, wind_z: f32) {
@@ -1507,40 +2332,104 @@ impl DrosophilaSim {
         if wind_strength <= 0.1 {
             return;
         }
-        let cx_range = self.layout.range("CX");
-        for idx in cx_range {
-            self.brain.stimulate(idx, (wind_strength * 5.0).min(20.0));
+
+        let heading = self.body.heading;
+        let lateral_component = -wind_x * heading.sin() + wind_y * heading.cos();
+        let forward_component = wind_x * heading.cos() + wind_y * heading.sin();
+
+        let (other_left, other_right) = self.layout.bilateral_excitatory_ranges("OTHER");
+        let other_inhib = self.layout.inhibitory_range("OTHER");
+        let base = (wind_strength * 22.0).min(48.0);
+        let lateral = (lateral_component / wind_strength.max(1.0e-6)).clamp(-1.0, 1.0);
+        let forward = (forward_component / wind_strength.max(1.0e-6)).clamp(-1.0, 1.0);
+        let left_gain = (1.0 + lateral.max(0.0) * 1.0 + forward.max(0.0) * 0.35).clamp(0.45, 2.4);
+        let right_gain =
+            (1.0 + (-lateral).max(0.0) * 1.0 + forward.max(0.0) * 0.35).clamp(0.45, 2.4);
+
+        for idx in other_left {
+            self.brain.stimulate(idx, base * left_gain);
+        }
+        for idx in other_right {
+            self.brain.stimulate(idx, base * right_gain);
+        }
+        for idx in other_inhib {
+            self.brain
+                .stimulate(idx, base * (0.10 + forward.abs() * 0.05));
         }
     }
 
-    pub fn apply_reward_signal(&mut self, valence: f32) {
+    fn taste_feedback_from_reward_valence(&self, valence: f32) -> PeripheralTasteState {
         if valence.abs() <= 1.0e-6 {
+            return PeripheralTasteState::default();
+        }
+
+        let energy_t = (self.body.energy / FLY_ENERGY_MAX).clamp(0.0, 1.0);
+        let hunger_t = self.homeostasis.hunger.max(1.0 - energy_t).clamp(0.0, 1.0);
+        let positive = valence.max(0.0);
+        let negative = (-valence).max(0.0);
+
+        PeripheralTasteState {
+            sugar: positive * (0.45 + 0.55 * hunger_t),
+            bitter: negative * 0.9,
+            amino: positive * (0.18 + 0.22 * hunger_t),
+        }
+    }
+
+    fn taste_feedback_from_ingestion(
+        &self,
+        consumed_food: f32,
+        hunger_signal: f32,
+    ) -> PeripheralTasteState {
+        if consumed_food <= 1.0e-6 {
+            return PeripheralTasteState::default();
+        }
+
+        let bite_t = (consumed_food / 0.03).clamp(0.0, 1.5);
+        let hunger_t = hunger_signal.clamp(0.0, 1.0);
+
+        PeripheralTasteState {
+            sugar: bite_t * (0.55 + 0.35 * hunger_t),
+            bitter: 0.0,
+            amino: bite_t * (0.12 + 0.18 * hunger_t),
+        }
+    }
+
+    fn enqueue_taste_feedback(&mut self, feedback: PeripheralTasteState) {
+        self.feeding_feedback
+            .accumulate(feedback.sugar, feedback.bitter, feedback.amino);
+    }
+
+    fn stimulate_taste_feedback_now(&mut self, feedback: PeripheralTasteState) {
+        if !feedback.is_active() {
             return;
         }
-        let dan_range = self.layout.range("DAN");
-        if dan_range.is_empty() {
+        self.stimulate_manual_taste(feedback.sugar, feedback.bitter, feedback.amino);
+    }
+
+    fn stimulate_recent_feeding_feedback(&mut self) {
+        self.stimulate_taste_feedback_now(self.feeding_feedback);
+    }
+
+    /// Compatibility API: preserve the immediate effect of a coarse reinforcer,
+    /// but translate it through explicit peripheral taste state rather than
+    /// directly injecting dopaminergic current.
+    pub fn apply_reward_signal(&mut self, valence: f32) {
+        let feedback = self.taste_feedback_from_reward_valence(valence);
+        if !feedback.is_active() {
             return;
         }
-        let half = (dan_range.len() / 2).max(1);
-        let amplitude = (valence.abs() * 45.0).clamp(0.0, 60.0);
-        let target = if valence >= 0.0 {
-            dan_range.start..(dan_range.start + half).min(dan_range.end)
-        } else {
-            (dan_range.start + half).min(dan_range.end)..dan_range.end
-        };
-        for idx in target {
-            self.brain.stimulate(idx, amplitude);
-        }
+        self.enqueue_taste_feedback(feedback);
+        self.stimulate_taste_feedback_now(feedback);
     }
 
     fn vnc_forward_range(&self) -> std::ops::Range<usize> {
-        let vnc = self.layout.range("VNC");
+        let vnc = self.layout.excitatory_range("VNC");
         let half = vnc.len() / 2;
         vnc.start..vnc.start + half
     }
 
     fn vnc_backward_range(&self) -> std::ops::Range<usize> {
-        let vnc = self.layout.range("VNC");
+        let vnc = self.layout.excitatory_range("VNC");
         let half = vnc.len() / 2;
         vnc.start + half..vnc.end
     }
@@ -1584,25 +2473,137 @@ impl DrosophilaSim {
         start.min(sez.end)..sez.end
     }
 
-    fn count_spikes_in_range(&self, range: std::ops::Range<usize>) -> u32 {
-        let mut count = 0u32;
-        for idx in range {
-            if self.brain.neurons.fired[idx] != 0 {
-                count += 1;
-            }
+    fn neuromod_arousal_range(&self) -> std::ops::Range<usize> {
+        let neuromod = self.layout.range("NEUROMOD");
+        if neuromod.is_empty() {
+            return neuromod.end..neuromod.end;
         }
-        count
+        let third = (neuromod.len() / 3).max(1);
+        let start = (neuromod.start + 2 * third).min(neuromod.end);
+        start..neuromod.end
     }
 
-    fn read_motor_output_window(&mut self, n_steps: u32) -> MotorOutput {
-        let mut fwd_acc = 0u32;
-        let mut bwd_acc = 0u32;
-        let mut left_acc = 0u32;
-        let mut right_acc = 0u32;
-        let mut flight_acc = 0u32;
-        let mut climb_acc = 0u32;
-        let mut descend_acc = 0u32;
-        let mut feed_acc = 0u32;
+    fn stimulate_internal_arousal(&mut self) {
+        let arousal_range = self.neuromod_arousal_range();
+        if arousal_range.is_empty() {
+            return;
+        }
+
+        let energy_t = (self.body.energy / FLY_ENERGY_MAX).clamp(0.0, 1.0);
+        let hunger_t = self.homeostasis.hunger.max(1.0 - energy_t);
+        let circadian_phase = (self.body.time_of_day - 6.0).rem_euclid(24.0);
+        let circadian_drive = (std::f32::consts::PI * circadian_phase / 12.0)
+            .sin()
+            .max(0.0);
+        let circadian_activity = self.homeostasis.circadian_activity.clamp(0.0, 1.5) / 1.5;
+        let flight_bias = if self.body.is_flying { 0.25 } else { 0.0 };
+        let arousal = (0.18
+            + 0.32 * energy_t.sqrt()
+            + 0.28 * hunger_t
+            + 0.14 * circadian_drive
+            + 0.08 * circadian_activity
+            + flight_bias)
+            .clamp(0.0, 1.0);
+        let amplitude = 8.0 + arousal * 16.0;
+
+        for idx in arousal_range {
+            self.brain.stimulate(idx, amplitude);
+        }
+    }
+
+    fn stimulate_homeostatic_feeding_drive(&mut self) {
+        let hunger = self.homeostasis.hunger.clamp(0.0, 1.0);
+        if hunger <= 0.02 {
+            return;
+        }
+
+        let sez_proboscis = self.sez_proboscis_range();
+        if sez_proboscis.is_empty() {
+            return;
+        }
+
+        let circadian_gate = self.homeostasis.circadian_activity.clamp(0.1, 1.5);
+        let amplitude = (4.0 + hunger * 14.0) * (0.75 + 0.25 * circadian_gate);
+        for idx in sez_proboscis {
+            self.brain.stimulate(idx, amplitude);
+        }
+    }
+
+    fn run_neural_window(&mut self, n_steps: u32) {
+        if n_steps == 0 {
+            return;
+        }
+
+        if self.fep.is_none() {
+            self.brain.run_without_sync(n_steps as u64);
+            return;
+        }
+
+        for _ in 0..n_steps {
+            let step_count = self.brain.step_count;
+            if let Some(ref mut fep) = self.fep {
+                fep.stimulate(&mut self.brain, step_count);
+            }
+            self.brain.step();
+        }
+    }
+
+    fn run_neural_window_with_drive<F>(&mut self, n_steps: u32, mut apply_drive: F)
+    where
+        F: FnMut(&mut Self),
+    {
+        if n_steps == 0 {
+            return;
+        }
+
+        for _ in 0..n_steps {
+            apply_drive(self);
+            let step_count = self.brain.step_count;
+            if let Some(ref mut fep) = self.fep {
+                fep.stimulate(&mut self.brain, step_count);
+            }
+            self.brain.step();
+        }
+    }
+
+    fn run_manual_odor_probe(&mut self, neural_steps: u32, odorant: f32, temperature: f32) -> u64 {
+        self.run_neural_window_with_drive(neural_steps.max(1), |sim| {
+            sim.encode_manual_sensory(odorant, 0.0, 0.0, temperature);
+        });
+
+        self.brain
+            .neurons
+            .spike_count
+            .iter()
+            .map(|&c| c as u64)
+            .sum()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn read_motor_output_window(
+        &mut self,
+        n_steps: u32,
+        odorant: f32,
+        left_odorant: f32,
+        right_odorant: f32,
+        left_light: f32,
+        right_light: f32,
+        temperature: f32,
+        sugar_taste: f32,
+        bitter_taste: f32,
+        amino_taste: f32,
+        wind_x: f32,
+        wind_y: f32,
+        wind_z: f32,
+    ) -> MotorOutput {
+        let mut fwd_acc = 0u64;
+        let mut bwd_acc = 0u64;
+        let mut left_acc = 0u64;
+        let mut right_acc = 0u64;
+        let mut flight_acc = 0u64;
+        let mut climb_acc = 0u64;
+        let mut descend_acc = 0u64;
+        let mut feed_acc = 0u64;
 
         let vnc_fwd = self.vnc_forward_range();
         let vnc_bwd = self.vnc_backward_range();
@@ -1613,62 +2614,77 @@ impl DrosophilaSim {
         let vnc_descend = self.vnc_descend_range();
         let sez_prob = self.sez_proboscis_range();
 
-        for step in 0..n_steps {
-            if step % 2 == 0 {
-                let dn_range = self.layout.range("DN");
-                for idx in dn_range {
-                    self.brain.stimulate(idx, 40.0);
-                }
-                for idx in vnc_fwd.clone() {
-                    self.brain.stimulate(idx, 35.0);
-                }
-                for idx in vnc_bwd.clone() {
-                    self.brain.stimulate(idx, 30.0);
-                }
-                for idx in sez_prob.clone() {
-                    self.brain.stimulate(idx, 15.0);
-                }
+        let n_windows = TERRARIUM_NEURAL_WINDOWS.min(n_steps.max(1));
+        let base_steps = n_steps / n_windows;
+        let remainder = n_steps % n_windows;
+        let mut total_steps = 0u32;
+
+        let mut fwd_prev = self.brain.spike_count_range_sum(vnc_fwd.clone());
+        let mut bwd_prev = self.brain.spike_count_range_sum(vnc_bwd.clone());
+        let mut left_prev = self.brain.spike_count_range_sum(vnc_left.clone());
+        let mut right_prev = self.brain.spike_count_range_sum(vnc_right.clone());
+        let mut flight_prev = self.brain.spike_count_range_sum(vnc_flight.clone());
+        let mut climb_prev = self.brain.spike_count_range_sum(vnc_climb.clone());
+        let mut descend_prev = self.brain.spike_count_range_sum(vnc_descend.clone());
+        let mut feed_prev = self.brain.spike_count_range_sum(sez_prob.clone());
+
+        for window_idx in 0..n_windows {
+            let steps_this = base_steps + u32::from(window_idx < remainder);
+            if steps_this == 0 {
+                continue;
             }
 
-            let step_count = self.brain.step_count;
-            if let Some(ref mut fep) = self.fep {
-                fep.stimulate(&mut self.brain, step_count);
-            }
-            self.brain.step();
+            self.run_neural_window_with_drive(steps_this, |sim| {
+                sim.encode_manual_sensory(odorant, left_light, right_light, temperature);
+                sim.stimulate_manual_odor_geometry(left_odorant, right_odorant);
+                sim.stimulate_manual_taste(sugar_taste, bitter_taste, amino_taste);
+                sim.stimulate_manual_wind(wind_x, wind_y, wind_z);
+                sim.stimulate_homeostatic_feeding_drive();
+                sim.stimulate_recent_feeding_feedback();
+                sim.stimulate_internal_arousal();
+            });
+            total_steps += steps_this;
 
-            fwd_acc += self.count_spikes_in_range(vnc_fwd.clone());
-            bwd_acc += self.count_spikes_in_range(vnc_bwd.clone());
-            left_acc += self.count_spikes_in_range(vnc_left.clone());
-            right_acc += self.count_spikes_in_range(vnc_right.clone());
-            if !vnc_flight.is_empty() {
-                flight_acc += self.count_spikes_in_range(vnc_flight.clone());
-            }
-            if !vnc_climb.is_empty() {
-                climb_acc += self.count_spikes_in_range(vnc_climb.clone());
-            }
-            if !vnc_descend.is_empty() {
-                descend_acc += self.count_spikes_in_range(vnc_descend.clone());
-            }
-            if !sez_prob.is_empty() {
-                feed_acc += self.count_spikes_in_range(sez_prob.clone());
-            }
+            let fwd_total = self.brain.spike_count_range_sum(vnc_fwd.clone());
+            let bwd_total = self.brain.spike_count_range_sum(vnc_bwd.clone());
+            let left_total = self.brain.spike_count_range_sum(vnc_left.clone());
+            let right_total = self.brain.spike_count_range_sum(vnc_right.clone());
+            let flight_total = self.brain.spike_count_range_sum(vnc_flight.clone());
+            let climb_total = self.brain.spike_count_range_sum(vnc_climb.clone());
+            let descend_total = self.brain.spike_count_range_sum(vnc_descend.clone());
+            let feed_total = self.brain.spike_count_range_sum(sez_prob.clone());
+
+            fwd_acc += fwd_total.saturating_sub(fwd_prev);
+            bwd_acc += bwd_total.saturating_sub(bwd_prev);
+            left_acc += left_total.saturating_sub(left_prev);
+            right_acc += right_total.saturating_sub(right_prev);
+            flight_acc += flight_total.saturating_sub(flight_prev);
+            climb_acc += climb_total.saturating_sub(climb_prev);
+            descend_acc += descend_total.saturating_sub(descend_prev);
+            feed_acc += feed_total.saturating_sub(feed_prev);
+
+            fwd_prev = fwd_total;
+            bwd_prev = bwd_total;
+            left_prev = left_total;
+            right_prev = right_total;
+            flight_prev = flight_total;
+            climb_prev = climb_total;
+            descend_prev = descend_total;
+            feed_prev = feed_total;
         }
 
-        self.brain.sync_shadow_from_gpu();
-
-        let n_steps_f = n_steps.max(1) as f32;
+        let n_steps_f = total_steps.max(1) as f32;
         let max_fwd = (vnc_fwd.len().max(1) as f32) * n_steps_f;
         let max_bwd = (vnc_bwd.len().max(1) as f32) * n_steps_f;
         let fwd_rate = fwd_acc as f32 / max_fwd;
         let bwd_rate = bwd_acc as f32 / max_bwd;
         let speed = ((fwd_rate - bwd_rate * 0.5) / 0.05).clamp(0.0, 1.0);
 
-        let total_lr = left_acc + right_acc;
-        let turn = if total_lr > 0 {
-            (left_acc as f32 - right_acc as f32) / total_lr as f32
-        } else {
-            0.0
-        };
+        let left_rate = left_acc as f32 / ((vnc_left.len().max(1) as f32) * n_steps_f).max(1.0);
+        let right_rate = right_acc as f32 / ((vnc_right.len().max(1) as f32) * n_steps_f).max(1.0);
+        // Use population-rate differences instead of a pure ratio so sparse
+        // windows do not saturate steering to +/-1 from just a few spikes.
+        let turn = ((left_rate - right_rate) / 0.03).clamp(-1.0, 1.0);
 
         let fly_signal = if !vnc_flight.is_empty() {
             let fly_rate = flight_acc as f32 / ((vnc_flight.len() as f32) * n_steps_f).max(1.0);
@@ -1691,6 +2707,8 @@ impl DrosophilaSim {
             0.0
         };
 
+        self.feeding_feedback.decay(0.72);
+
         MotorOutput {
             speed,
             turn,
@@ -1710,40 +2728,26 @@ impl DrosophilaSim {
     /// Differential left-right activity produces turning; forward-backward
     /// produces speed.
     fn decode_motor(&mut self) {
-        let vnc_range = self.layout.range("VNC");
-        if vnc_range.is_empty() {
+        let vnc_left = self.vnc_left_range();
+        let vnc_right = self.vnc_right_range();
+        let vnc_fwd = self.vnc_forward_range();
+        let vnc_bwd = self.vnc_backward_range();
+        if vnc_left.is_empty() || vnc_right.is_empty() || vnc_fwd.is_empty() || vnc_bwd.is_empty() {
             return;
         }
-        let quarter = vnc_range.len() / 4;
-        if quarter == 0 {
-            return;
-        }
 
-        // Count spikes in each quadrant
-        let count_spikes = |start: usize, end: usize| -> f32 {
-            let mut count = 0u32;
-            for i in start..end {
-                if self.brain.neurons.fired[i] != 0 {
-                    count += 1;
-                }
-            }
-            count as f32
-        };
+        let left_rate =
+            self.brain.fired_count_range(vnc_left.clone()) as f32 / vnc_left.len().max(1) as f32;
+        let right_rate =
+            self.brain.fired_count_range(vnc_right.clone()) as f32 / vnc_right.len().max(1) as f32;
+        let fwd_rate =
+            self.brain.fired_count_range(vnc_fwd.clone()) as f32 / vnc_fwd.len().max(1) as f32;
+        let bwd_rate =
+            self.brain.fired_count_range(vnc_bwd.clone()) as f32 / vnc_bwd.len().max(1) as f32;
 
-        let left_spikes = count_spikes(vnc_range.start, vnc_range.start + quarter);
-        let right_spikes = count_spikes(vnc_range.start + quarter, vnc_range.start + 2 * quarter);
-        let fwd_spikes = count_spikes(vnc_range.start + 2 * quarter, vnc_range.start + 3 * quarter);
-        let bwd_spikes = count_spikes(vnc_range.start + 3 * quarter, vnc_range.end);
-
-        // Normalize by quadrant size
-        let max_rate = quarter as f32;
-        let left_rate = left_spikes / max_rate;
-        let right_rate = right_spikes / max_rate;
-        let fwd_rate = fwd_spikes / max_rate;
-        let bwd_rate = bwd_spikes / max_rate;
-
-        // Turn: differential left-right
-        let turn = (right_rate - left_rate) * 0.3; // max ~0.3 rad/body_step
+        // Turn: differential left-right, with positive turn meaning leftward
+        // steering to match the terrarium path and assay conventions.
+        let turn = (left_rate - right_rate) * 0.3; // max ~0.3 rad/body_step
         self.body.heading += turn;
 
         // Speed: net forward-backward
@@ -1757,19 +2761,10 @@ impl DrosophilaSim {
 
     /// Run one body step: encode sensory -> N neural steps -> decode motor -> update body.
     pub fn body_step(&mut self) {
-        // 1. Sensory encoding
-        self.encode_sensory();
-
-        // 2. Neural simulation (multiple neural steps per body step)
-        for _ in 0..self.neural_steps_per_body {
-            // FEP stimulation (if active)
-            let step_count = self.brain.step_count;
-            if let Some(ref mut fep) = self.fep {
-                fep.stimulate(&mut self.brain, step_count);
-            }
-            self.brain.step();
-        }
-        self.brain.sync_shadow_from_gpu();
+        // 1-2. Continuous sensory encoding across the neural window
+        self.run_neural_window_with_drive(self.neural_steps_per_body, |sim| {
+            sim.encode_sensory();
+        });
 
         // 3. Motor decoding
         self.decode_motor();
@@ -1789,44 +2784,35 @@ impl DrosophilaSim {
         right_light: f32,
         temperature: f32,
     ) {
-        self.encode_manual_sensory(odorant, left_light, right_light, temperature);
-
-        for _ in 0..self.neural_steps_per_body {
-            let step_count = self.brain.step_count;
-            if let Some(ref mut fep) = self.fep {
-                fep.stimulate(&mut self.brain, step_count);
-            }
-            self.brain.step();
-        }
-        self.brain.sync_shadow_from_gpu();
+        self.run_neural_window_with_drive(self.neural_steps_per_body, |sim| {
+            sim.encode_manual_sensory(odorant, left_light, right_light, temperature);
+        });
 
         self.decode_motor();
         self.body.update(self.world_width, self.world_height);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn body_step_terrarium(
+    /// Run one terrarium-integrated body step from an explicit local sensory slice.
+    pub fn body_step_terrarium_inputs(
         &mut self,
-        odorant: f32,
-        left_light: f32,
-        right_light: f32,
-        temperature: f32,
-        sugar_taste: f32,
-        bitter_taste: f32,
-        amino_taste: f32,
-        wind_x: f32,
-        wind_y: f32,
-        wind_z: f32,
-        food_available: f32,
-        reward_valence: f32,
+        inputs: TerrariumFlyInputs,
         air_density: f32,
     ) -> TerrariumFlyStepReport {
-        self.encode_manual_sensory(odorant, left_light, right_light, temperature);
-        self.stimulate_manual_taste(sugar_taste, bitter_taste, amino_taste);
-        self.stimulate_manual_wind(wind_x, wind_y, wind_z);
-        self.apply_reward_signal(reward_valence);
-
-        let motor = self.read_motor_output_window(self.neural_steps_per_body);
+        let motor = self.read_motor_output_window(
+            self.neural_steps_per_body,
+            inputs.odorant,
+            inputs.left_odorant,
+            inputs.right_odorant,
+            inputs.left_light,
+            inputs.right_light,
+            inputs.temperature,
+            inputs.sugar_taste,
+            inputs.bitter_taste,
+            inputs.amino_taste,
+            inputs.wind_x,
+            inputs.wind_y,
+            inputs.wind_z,
+        );
         if motor.fly_signal > 0.5 && !self.body.is_flying {
             self.body.takeoff();
         } else if motor.fly_signal < 0.2 && self.body.is_flying {
@@ -1834,7 +2820,9 @@ impl DrosophilaSim {
         }
 
         // Dynamic wing beat frequency calculation
-        self.body.wing_beat_freq = self.body.calculate_wing_beat_freq(air_density, motor.climb_signal);
+        self.body.wing_beat_freq = self
+            .body
+            .calculate_wing_beat_freq(air_density, motor.climb_signal);
 
         if self.body.is_flying {
             self.body.fly_3d(
@@ -1857,11 +2845,22 @@ impl DrosophilaSim {
 
         let mut consumed_food = 0.0;
         self.body.proboscis_extended = motor.feed_signal > 0.3;
-        if self.body.proboscis_extended && !self.body.is_flying && food_available > 0.1 {
-            self.body.energy = (self.body.energy + food_available * FLY_ENERGY_FEED_GAIN)
-                .clamp(0.0, FLY_ENERGY_MAX);
-            self.apply_reward_signal(0.5);
-            consumed_food = 0.03;
+        let nutritive_taste = (inputs.sugar_taste * 0.88 + inputs.amino_taste * 0.30
+            - inputs.bitter_taste * 0.55)
+            .clamp(0.0, 1.0);
+        if self.body.proboscis_extended
+            && !self.body.is_flying
+            && inputs.surface_contact > 0.05
+            && nutritive_taste > 0.02
+        {
+            let feeding_drive = ((motor.feed_signal - 0.3) / 0.7).clamp(0.0, 1.0);
+            let appetite = (0.25 + self.homeostasis.hunger * 0.75).clamp(0.0, 1.0);
+            consumed_food = (inputs.surface_contact
+                * nutritive_taste
+                * feeding_drive
+                * appetite
+                * TERRARIUM_FOOD_BITE_MAX)
+                .clamp(0.0, TERRARIUM_FOOD_BITE_MAX);
         }
 
         TerrariumFlyStepReport {
@@ -1882,6 +2881,51 @@ impl DrosophilaSim {
         }
     }
 
+    /// Legacy compatibility wrapper: scalar reward is translated into queued
+    /// peripheral taste state before the explicit terrarium sensory slice runs.
+    #[allow(clippy::too_many_arguments)]
+    pub fn body_step_terrarium(
+        &mut self,
+        odorant: f32,
+        left_odorant: f32,
+        right_odorant: f32,
+        left_light: f32,
+        right_light: f32,
+        temperature: f32,
+        sugar_taste: f32,
+        bitter_taste: f32,
+        amino_taste: f32,
+        wind_x: f32,
+        wind_y: f32,
+        wind_z: f32,
+        surface_contact: f32,
+        reward_valence: f32,
+        air_density: f32,
+    ) -> TerrariumFlyStepReport {
+        if reward_valence.abs() > 1.0e-6 {
+            self.queue_reward_signal(reward_valence);
+        }
+
+        self.body_step_terrarium_inputs(
+            TerrariumFlyInputs {
+                odorant,
+                left_odorant,
+                right_odorant,
+                left_light,
+                right_light,
+                temperature,
+                sugar_taste,
+                bitter_taste,
+                amino_taste,
+                wind_x,
+                wind_y,
+                wind_z,
+                surface_contact,
+            },
+            air_density,
+        )
+    }
+
     /// Run N body steps.
     pub fn run_body_steps(&mut self, n: u32) {
         for _ in 0..n {
@@ -1892,6 +2936,8 @@ impl DrosophilaSim {
     /// Reset body position and heading for a new episode.
     fn reset_episode(&mut self, x: f32, y: f32) {
         self.body = BodyState::new(x, y);
+        self.homeostasis = HomeostaticState::default();
+        self.feeding_feedback = PeripheralTasteState::default();
         // Reset spike counts for clean episode measurement
         self.brain.reset_spike_counts();
     }
@@ -2138,24 +3184,15 @@ impl DrosophilaSim {
     /// scale across all neurons, and measures spike suppression.
     pub fn run_drug_response(&mut self, n_episodes: u32) -> ExperimentResult {
         let neural_steps_per_episode = 500;
+        let odor_probe = 0.6;
+        let probe_temp_c = 18.0;
 
         // Run baseline
         let mut baseline_spikes = Vec::new();
         for _ep in 0..n_episodes {
             self.reset_episode(32.0, 32.0);
-            // Stimulate AL to generate activity
-            let al_range = self.layout.range("AL");
-            for i in al_range.clone() {
-                self.brain.stimulate(i, 20.0);
-            }
-            self.brain.run(neural_steps_per_episode);
-            let total: u64 = self
-                .brain
-                .neurons
-                .spike_count
-                .iter()
-                .map(|&c| c as u64)
-                .sum();
+            let total =
+                self.run_manual_odor_probe(neural_steps_per_episode, odor_probe, probe_temp_c);
             baseline_spikes.push(total);
         }
 
@@ -2168,19 +3205,8 @@ impl DrosophilaSim {
         let mut drug_spikes = Vec::new();
         for _ep in 0..n_episodes {
             self.reset_episode(32.0, 32.0);
-            // Same stimulation
-            let al_range = self.layout.range("AL");
-            for i in al_range.clone() {
-                self.brain.stimulate(i, 20.0);
-            }
-            self.brain.run(neural_steps_per_episode);
-            let total: u64 = self
-                .brain
-                .neurons
-                .spike_count
-                .iter()
-                .map(|&c| c as u64)
-                .sum();
+            let total =
+                self.run_manual_odor_probe(neural_steps_per_episode, odor_probe, probe_temp_c);
             drug_spikes.push(total);
         }
 
@@ -2221,50 +3247,58 @@ impl DrosophilaSim {
 
     /// Circadian: measure activity difference between day and night.
     ///
-    /// The circadian clock modulates excitability bias. Day phase should
-    /// produce more activity than night phase.
+    /// This path uses explicit fly homeostatic state through the regular
+    /// batched body-step interface rather than mutating brain phase directly.
     pub fn run_circadian(&mut self, n_episodes: u32) -> ExperimentResult {
-        let neural_steps_per_phase = 500;
+        let steps_per_phase = 120;
 
         let mut day_activity = Vec::new();
         let mut night_activity = Vec::new();
+        let mut trajectories = Vec::new();
 
         for _ep in 0..n_episodes {
-            // Day phase: advance circadian clock to noon-like state
-            // Reset brain and set circadian to high-excitability phase
             self.reset_episode(32.0, 32.0);
-            self.brain.circadian.set_phase(0.5); // Midday peak
-            self.brain.run(neural_steps_per_phase);
-            let day_total: u64 = self
-                .brain
-                .neurons
-                .spike_count
-                .iter()
-                .map(|&c| c as u64)
-                .sum();
-            day_activity.push(day_total);
+            self.set_energy(70.0);
+            self.set_homeostatic_inputs(0.15, 12.0, 1.15);
+            let mut day_total = 0.0f32;
+            for step in 0..steps_per_phase {
+                let report = self.body_step_terrarium_inputs(
+                    TerrariumFlyInputs {
+                        temperature: 18.0,
+                        ..TerrariumFlyInputs::default()
+                    },
+                    1.225,
+                );
+                day_total += report.activity_score();
+                if step % 20 == 0 {
+                    trajectories.push((report.x, report.y));
+                }
+            }
+            day_activity.push(day_total / steps_per_phase as f32);
 
-            // Night phase: set circadian to low-excitability phase
             self.reset_episode(32.0, 32.0);
-            self.brain.circadian.set_phase(0.0); // Midnight trough
-            self.brain.run(neural_steps_per_phase);
-            let night_total: u64 = self
-                .brain
-                .neurons
-                .spike_count
-                .iter()
-                .map(|&c| c as u64)
-                .sum();
-            night_activity.push(night_total);
+            self.set_energy(70.0);
+            self.set_homeostatic_inputs(0.15, 0.0, 0.2);
+            let mut night_total = 0.0f32;
+            for step in 0..steps_per_phase {
+                let report = self.body_step_terrarium_inputs(
+                    TerrariumFlyInputs {
+                        temperature: 18.0,
+                        ..TerrariumFlyInputs::default()
+                    },
+                    1.225,
+                );
+                night_total += report.activity_score();
+                if step % 20 == 0 {
+                    trajectories.push((report.x, report.y));
+                }
+            }
+            night_activity.push(night_total / steps_per_phase as f32);
         }
 
-        let day_mean = day_activity.iter().sum::<u64>() as f64 / day_activity.len() as f64;
-        let night_mean = night_activity.iter().sum::<u64>() as f64 / night_activity.len() as f64;
-        let ratio = if night_mean > 0.0 {
-            day_mean / night_mean
-        } else {
-            f64::INFINITY
-        };
+        let day_mean = day_activity.iter().sum::<f32>() as f64 / day_activity.len() as f64;
+        let night_mean = night_activity.iter().sum::<f32>() as f64 / night_activity.len() as f64;
+        let ratio = (day_mean + 1.0e-3) / (night_mean + 1.0e-3);
 
         ExperimentResult {
             name: "circadian".to_string(),
@@ -2273,10 +3307,10 @@ impl DrosophilaSim {
             metric_value: ratio,
             threshold: 1.1,
             details: format!(
-                "Day activity: {:.0}, Night activity: {:.0}, ratio: {:.2}",
+                "Day locomotor activity: {:.3}, Night locomotor activity: {:.3}, ratio: {:.2}",
                 day_mean, night_mean, ratio
             ),
-            trajectories: Vec::new(),
+            trajectories,
         }
     }
 
@@ -2318,6 +3352,107 @@ impl DrosophilaSim {
     /// Get current body state.
     pub fn body_state(&self) -> &BodyState {
         &self.body
+    }
+
+    pub fn checkpoint_state(&mut self) -> DrosophilaCheckpointState {
+        DrosophilaCheckpointState::Exact(DrosophilaExactState {
+            construction_seed: self.construction_seed,
+            scale: self.scale,
+            brain: self.brain.checkpoint(),
+            world: self.world.checkpoint(),
+            body: self.body.clone(),
+            homeostasis: self.homeostasis,
+            fep: self.fep.as_ref().map(FepState::checkpoint),
+            rng: Some(self.rng.clone()),
+            rng_resume_seed: None,
+            neural_steps_per_body: self.neural_steps_per_body,
+            world_width: self.world_width,
+            world_height: self.world_height,
+            feeding_feedback: self.feeding_feedback,
+        })
+    }
+
+    pub fn macro_state(&self) -> DrosophilaMacroState {
+        DrosophilaMacroState {
+            construction_seed: self.construction_seed,
+            scale: self.scale,
+            body: self.body.clone(),
+            hunger: self.homeostasis.hunger,
+            circadian_activity: self.homeostasis.circadian_activity,
+            neural_steps_per_body: self.neural_steps_per_body,
+            world_width: self.world_width,
+            world_height: self.world_height,
+            feeding_feedback_sugar: self.feeding_feedback.sugar,
+            feeding_feedback_bitter: self.feeding_feedback.bitter,
+            feeding_feedback_amino: self.feeding_feedback.amino,
+            rng: Some(self.rng.clone()),
+            rng_resume_seed: None,
+        }
+    }
+
+    fn from_exact_state(state: DrosophilaExactState) -> Self {
+        let mut sim = Self::new(state.scale, state.construction_seed);
+        sim.brain = MolecularBrain::from_checkpoint(state.brain);
+        sim.layout = RegionLayout::from_scale(state.scale);
+        sim.scale = state.scale;
+        sim.construction_seed = state.construction_seed;
+        sim.world = World::from_checkpoint(state.world);
+        sim.body = state.body;
+        sim.homeostasis = state.homeostasis;
+        sim.fep = state.fep.map(FepState::from_checkpoint);
+        sim.rng = state
+            .rng
+            .unwrap_or_else(|| ChaCha12Rng::seed_from_u64(state.rng_resume_seed.unwrap_or(0)));
+        sim.neural_steps_per_body = state.neural_steps_per_body;
+        sim.world_width = state.world_width.max(1.0);
+        sim.world_height = state.world_height.max(1.0);
+        sim.feeding_feedback = state.feeding_feedback;
+        sim
+    }
+
+    pub fn from_macro_state(state: DrosophilaMacroState) -> Self {
+        let DrosophilaMacroState {
+            construction_seed,
+            scale,
+            body,
+            hunger,
+            circadian_activity,
+            neural_steps_per_body,
+            world_width,
+            world_height,
+            feeding_feedback_sugar,
+            feeding_feedback_bitter,
+            feeding_feedback_amino,
+            rng,
+            rng_resume_seed,
+        } = state;
+        let mut sim = Self::new(scale, construction_seed);
+        sim.body = body;
+        sim.homeostasis = HomeostaticState {
+            hunger,
+            circadian_activity,
+        };
+        sim.neural_steps_per_body = neural_steps_per_body;
+        sim.world_width = world_width.max(1.0);
+        sim.world_height = world_height.max(1.0);
+        sim.world = World::new(
+            sim.world_width.round().max(1.0) as usize,
+            sim.world_height.round().max(1.0) as usize,
+        );
+        sim.feeding_feedback = PeripheralTasteState {
+            sugar: feeding_feedback_sugar,
+            bitter: feeding_feedback_bitter,
+            amino: feeding_feedback_amino,
+        };
+        sim.rng = rng.unwrap_or_else(|| ChaCha12Rng::seed_from_u64(rng_resume_seed.unwrap_or(0)));
+        sim
+    }
+
+    pub fn from_checkpoint_state(state: DrosophilaCheckpointState) -> Self {
+        match state {
+            DrosophilaCheckpointState::Exact(state) => Self::from_exact_state(state),
+            DrosophilaCheckpointState::Macro(state) => Self::from_macro_state(state),
+        }
     }
 
     /// Override body state for integration with an external world.
@@ -2368,6 +3503,31 @@ impl DrosophilaSim {
         self.body.energy = energy.clamp(0.0, FLY_ENERGY_MAX);
     }
 
+    /// Set low-dimensional homeostatic inputs supplied by explicit metabolism.
+    pub fn set_homeostatic_inputs(
+        &mut self,
+        hunger: f32,
+        circadian_phase_hours: f32,
+        circadian_activity: f32,
+    ) {
+        self.homeostasis.hunger = hunger.clamp(0.0, 1.0);
+        self.homeostasis.circadian_activity = circadian_activity.clamp(0.0, 1.5);
+        self.body.time_of_day = circadian_phase_hours.rem_euclid(24.0);
+    }
+
+    /// Register explicit post-ingestive/taste feedback from a real feeding event.
+    pub fn register_ingestion_feedback(&mut self, consumed_food: f32, hunger_signal: f32) {
+        let feedback = self.taste_feedback_from_ingestion(consumed_food, hunger_signal);
+        self.enqueue_taste_feedback(feedback);
+    }
+
+    /// Compatibility helper: map a coarse reinforcer into explicit short-lived
+    /// peripheral taste state instead of a scalar reward channel.
+    pub fn queue_reward_signal(&mut self, valence: f32) {
+        let feedback = self.taste_feedback_from_reward_valence(valence);
+        self.enqueue_taste_feedback(feedback);
+    }
+
     /// Override the native world bounds for external integration.
     pub fn set_world_bounds(&mut self, width: f32, height: f32) {
         self.world_width = width.max(2.0);
@@ -2383,10 +3543,7 @@ impl DrosophilaSim {
 
     /// Count fired neurons in a named region this step.
     pub fn region_fired_count(&self, name: &str) -> usize {
-        self.layout
-            .range(name)
-            .filter(|&i| self.brain.neurons.fired[i] != 0)
-            .count()
+        self.brain.fired_count_range(self.layout.range(name))
     }
 
     /// Get mean firing rate (Hz) across all neurons.
@@ -2542,6 +3699,365 @@ mod tests {
     }
 
     #[test]
+    fn test_manual_wind_reaches_other_and_cx_before_turn_output() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.reset_episode(32.0, 32.0);
+        sim.body.heading = 0.0;
+        sim.body.is_flying = false;
+
+        let (other_left, other_right) = sim.layout.bilateral_excitatory_ranges("OTHER");
+        let (cx_left, cx_right) = sim.layout.bilateral_excitatory_ranges("CX");
+        let (dn_left, dn_right) = sim.layout.bilateral_excitatory_ranges("DN");
+
+        sim.brain
+            .neurons
+            .external_current
+            .iter_mut()
+            .for_each(|current| *current = 0.0);
+        sim.stimulate_manual_wind(0.0, 1.0, 0.0);
+
+        let other_left_input: f32 = other_left
+            .clone()
+            .map(|idx| sim.brain.neurons.external_current[idx])
+            .sum::<f32>()
+            / other_left.len().max(1) as f32;
+        let other_right_input: f32 = other_right
+            .clone()
+            .map(|idx| sim.brain.neurons.external_current[idx])
+            .sum::<f32>()
+            / other_right.len().max(1) as f32;
+
+        let cx_left_prev = sim.brain.spike_count_range_sum(cx_left.clone());
+        let cx_right_prev = sim.brain.spike_count_range_sum(cx_right.clone());
+        let dn_left_prev = sim.brain.spike_count_range_sum(dn_left.clone());
+        let dn_right_prev = sim.brain.spike_count_range_sum(dn_right.clone());
+
+        sim.run_neural_window_with_drive(sim.neural_steps_per_body, |sim| {
+            sim.stimulate_manual_wind(0.0, 1.0, 0.0);
+            sim.stimulate_internal_arousal();
+        });
+
+        let cx_left_delta = sim
+            .brain
+            .spike_count_range_sum(cx_left)
+            .saturating_sub(cx_left_prev);
+        let cx_right_delta = sim
+            .brain
+            .spike_count_range_sum(cx_right)
+            .saturating_sub(cx_right_prev);
+        let dn_left_delta = sim
+            .brain
+            .spike_count_range_sum(dn_left)
+            .saturating_sub(dn_left_prev);
+        let dn_right_delta = sim
+            .brain
+            .spike_count_range_sum(dn_right)
+            .saturating_sub(dn_right_prev);
+
+        assert!(
+            other_left_input > other_right_input,
+            "left-lateral wind should first drive the left mechanosensory OTHER half (left={:.4}, right={:.4})",
+            other_left_input,
+            other_right_input,
+        );
+        assert!(
+            cx_left_delta > cx_right_delta,
+            "left-lateral wind should propagate to the left CX half through OTHER (left={}, right={})",
+            cx_left_delta,
+            cx_right_delta,
+        );
+
+        assert!(
+            dn_left_delta + dn_right_delta > 0,
+            "left-lateral wind should activate the descending command layer through OTHER (left={}, right={})",
+            dn_left_delta,
+            dn_right_delta,
+        );
+
+        let mut turn_sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        turn_sim.brain.enable_gpu = false;
+        turn_sim.brain.enable_circadian = false;
+        turn_sim.brain.enable_pharmacology = false;
+        turn_sim.brain.enable_glia = false;
+        turn_sim.reset_episode(32.0, 32.0);
+        turn_sim.body.heading = 0.0;
+        turn_sim.body.is_flying = false;
+
+        let mut turn_sum = 0.0f32;
+        for _ in 0..6 {
+            let report = turn_sim.body_step_terrarium_inputs(
+                TerrariumFlyInputs {
+                    temperature: 18.0,
+                    wind_y: 1.0,
+                    ..TerrariumFlyInputs::default()
+                },
+                1.225,
+            );
+            turn_sum += report.turn;
+        }
+        assert!(
+            turn_sum > 0.0,
+            "left-lateral wind should produce a positive turn through the live body-step path (turn_sum={:.4})",
+            turn_sum,
+        );
+    }
+
+    #[test]
+    fn test_reward_signal_routes_through_sez_without_direct_dan_current() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.reset_episode(32.0, 32.0);
+        sim.set_energy(55.0);
+        sim.set_homeostatic_inputs(0.7, 12.0, 1.0);
+
+        let sez_range = sim.layout.range("SEZ");
+        let dan_range = sim.layout.range("DAN");
+        let mean_external = |sim: &DrosophilaSim, range: std::ops::Range<usize>| -> f32 {
+            let len = range.len().max(1) as f32;
+            range
+                .map(|idx| sim.brain.neurons.external_current[idx])
+                .sum::<f32>()
+                / len
+        };
+
+        sim.brain
+            .neurons
+            .external_current
+            .iter_mut()
+            .for_each(|current| *current = 0.0);
+        sim.queue_reward_signal(0.8);
+
+        assert!(
+            sim.feeding_feedback.sugar > 0.0 || sim.feeding_feedback.amino > 0.0,
+            "compatibility reward should now populate buffered peripheral taste state ({:?})",
+            sim.feeding_feedback,
+        );
+
+        let dan_input = mean_external(&sim, dan_range.clone());
+        sim.stimulate_recent_feeding_feedback();
+        let sez_input = mean_external(&sim, sez_range.clone());
+
+        let sez_prev = sim.brain.spike_count_range_sum(sez_range.clone());
+        sim.run_neural_window_with_drive(sim.neural_steps_per_body, |sim| {
+            sim.stimulate_recent_feeding_feedback();
+            sim.stimulate_internal_arousal();
+        });
+        let sez_delta = sim
+            .brain
+            .spike_count_range_sum(sez_range)
+            .saturating_sub(sez_prev);
+
+        assert!(
+            sez_input > 0.0,
+            "buffered compatibility reward should enter through the gustatory SEZ path (input={:.4})",
+            sez_input,
+        );
+        assert!(
+            dan_input.abs() <= 1.0e-6,
+            "reward cleanup should avoid direct DAN current injection (input={:.4})",
+            dan_input,
+        );
+        assert!(
+            sez_delta > 0,
+            "reward-routed gustatory input should activate SEZ during the neural window (delta={})",
+            sez_delta,
+        );
+    }
+
+    #[test]
+    fn test_negative_reward_signal_routes_through_sez_aversion_path() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.reset_episode(32.0, 32.0);
+
+        let sez_range = sim.layout.range("SEZ");
+        let dan_range = sim.layout.range("DAN");
+        let mean_external = |sim: &DrosophilaSim, range: std::ops::Range<usize>| -> f32 {
+            let len = range.len().max(1) as f32;
+            range
+                .map(|idx| sim.brain.neurons.external_current[idx])
+                .sum::<f32>()
+                / len
+        };
+
+        sim.brain
+            .neurons
+            .external_current
+            .iter_mut()
+            .for_each(|current| *current = 0.0);
+        sim.queue_reward_signal(-0.8);
+
+        assert!(
+            sim.feeding_feedback.bitter > 0.0,
+            "negative compatibility reward should populate buffered bitter state ({:?})",
+            sim.feeding_feedback,
+        );
+
+        let dan_input = mean_external(&sim, dan_range.clone());
+        sim.stimulate_recent_feeding_feedback();
+        let sez_input = mean_external(&sim, sez_range.clone());
+
+        let sez_prev = sim.brain.spike_count_range_sum(sez_range.clone());
+        sim.run_neural_window_with_drive(sim.neural_steps_per_body, |sim| {
+            sim.stimulate_recent_feeding_feedback();
+            sim.stimulate_internal_arousal();
+        });
+        let sez_delta = sim
+            .brain
+            .spike_count_range_sum(sez_range)
+            .saturating_sub(sez_prev);
+
+        assert!(
+            sez_input > 0.0,
+            "negative reward should still enter through an explicit SEZ aversion path (input={:.4})",
+            sez_input,
+        );
+        assert!(
+            dan_input.abs() <= 1.0e-6,
+            "negative reward cleanup should avoid direct DAN current injection (input={:.4})",
+            dan_input,
+        );
+        assert!(
+            sez_delta > 0,
+            "negative reward should activate SEZ during the neural window (delta={})",
+            sez_delta,
+        );
+    }
+
+    #[test]
+    fn test_apply_reward_signal_has_immediate_explicit_taste_effect() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.reset_episode(32.0, 32.0);
+        sim.set_energy(55.0);
+        sim.set_homeostatic_inputs(0.7, 12.0, 1.0);
+
+        let sez_range = sim.layout.range("SEZ");
+        let dan_range = sim.layout.range("DAN");
+        let mean_external = |sim: &DrosophilaSim, range: std::ops::Range<usize>| -> f32 {
+            let len = range.len().max(1) as f32;
+            range
+                .map(|idx| sim.brain.neurons.external_current[idx])
+                .sum::<f32>()
+                / len
+        };
+
+        sim.brain
+            .neurons
+            .external_current
+            .iter_mut()
+            .for_each(|current| *current = 0.0);
+        sim.apply_reward_signal(0.8);
+
+        let sez_input = mean_external(&sim, sez_range);
+        let dan_input = mean_external(&sim, dan_range);
+
+        assert!(
+            sez_input > 0.0,
+            "compatibility reward should immediately stimulate explicit taste input (input={:.4})",
+            sez_input,
+        );
+        assert!(
+            dan_input.abs() <= 1.0e-6,
+            "compatibility reward should not restore direct DAN current injection (input={:.4})",
+            dan_input,
+        );
+        assert!(
+            sim.feeding_feedback.sugar > 0.0 || sim.feeding_feedback.amino > 0.0,
+            "compatibility reward should still queue explicit peripheral taste state ({:?})",
+            sim.feeding_feedback,
+        );
+    }
+
+    #[test]
+    fn test_ingestion_feedback_is_buffered_as_explicit_taste_state() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.reset_episode(32.0, 32.0);
+        sim.set_energy(45.0);
+        sim.set_homeostatic_inputs(0.8, 12.0, 1.0);
+
+        let sez_range = sim.layout.range("SEZ");
+        let dan_range = sim.layout.range("DAN");
+        let mean_external = |sim: &DrosophilaSim, range: std::ops::Range<usize>| -> f32 {
+            let len = range.len().max(1) as f32;
+            range
+                .map(|idx| sim.brain.neurons.external_current[idx])
+                .sum::<f32>()
+                / len
+        };
+
+        sim.register_ingestion_feedback(0.03, 0.8);
+        assert!(
+            sim.feeding_feedback.sugar > 0.0 || sim.feeding_feedback.amino > 0.0,
+            "ingestion should populate explicit short-lived taste state ({:?})",
+            sim.feeding_feedback,
+        );
+
+        sim.brain
+            .neurons
+            .external_current
+            .iter_mut()
+            .for_each(|current| *current = 0.0);
+        sim.stimulate_recent_feeding_feedback();
+
+        let sez_input = mean_external(&sim, sez_range.clone());
+        let dan_input = mean_external(&sim, dan_range.clone());
+        let sez_prev = sim.brain.spike_count_range_sum(sez_range.clone());
+        let dan_prev = sim.brain.spike_count_range_sum(dan_range.clone());
+
+        sim.run_neural_window_with_drive(sim.neural_steps_per_body, |sim| {
+            sim.stimulate_recent_feeding_feedback();
+            sim.stimulate_internal_arousal();
+        });
+        let sez_delta = sim
+            .brain
+            .spike_count_range_sum(sez_range)
+            .saturating_sub(sez_prev);
+        let dan_delta = sim
+            .brain
+            .spike_count_range_sum(dan_range)
+            .saturating_sub(dan_prev);
+
+        assert!(
+            sez_input > 0.0,
+            "explicit ingestion feedback should enter through SEZ (input={:.4})",
+            sez_input,
+        );
+        assert!(
+            dan_input.abs() <= 1.0e-6,
+            "ingestion feedback should not inject current directly into DAN (input={:.4})",
+            dan_input,
+        );
+        assert!(
+            sez_delta > 0,
+            "buffered taste feedback should still drive SEZ activity on the next neural window (delta={})",
+            sez_delta,
+        );
+        assert!(
+            dan_delta > 0,
+            "explicit SEZ-mediated ingestion feedback should recruit DAN through circuit activity (delta={})",
+            dan_delta,
+        );
+    }
+
+    #[test]
     fn test_brain_step_runs() {
         let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
         sim.brain.enable_gpu = false; // Force CPU for test portability
@@ -2584,6 +4100,120 @@ mod tests {
         assert!(sim.brain.step_count > 0);
         // The first step might not produce movement yet due to neural dynamics
         // but the system should not crash
+    }
+
+    #[test]
+    fn exact_checkpoint_state_preserves_next_terrarium_step() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 77);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.set_world_bounds(18.0, 14.0);
+        sim.set_body_state(
+            6.0,
+            5.0,
+            0.35,
+            Some(0.0),
+            Some(0.0),
+            Some(false),
+            Some(0.0),
+            Some(82.0),
+            Some(22.0),
+            Some(12.0),
+        );
+
+        let inputs = TerrariumFlyInputs {
+            odorant: 0.42,
+            left_odorant: 0.48,
+            right_odorant: 0.21,
+            left_light: 0.63,
+            right_light: 0.31,
+            temperature: 23.5,
+            sugar_taste: 0.22,
+            bitter_taste: 0.04,
+            amino_taste: 0.11,
+            wind_x: 0.15,
+            wind_y: -0.08,
+            wind_z: 0.03,
+            surface_contact: 0.18,
+        };
+
+        for _ in 0..3 {
+            sim.body_step_terrarium_inputs(inputs, 1.225);
+        }
+
+        let checkpoint = sim.checkpoint_state();
+        let mut restored = DrosophilaSim::from_checkpoint_state(checkpoint);
+
+        let expected = sim.body_step_terrarium_inputs(inputs, 1.225);
+        let observed = restored.body_step_terrarium_inputs(inputs, 1.225);
+
+        assert!((expected.x - observed.x).abs() < 1.0e-6);
+        assert!((expected.y - observed.y).abs() < 1.0e-6);
+        assert!((expected.z - observed.z).abs() < 1.0e-6);
+        assert!((expected.heading - observed.heading).abs() < 1.0e-6);
+        assert!((expected.pitch - observed.pitch).abs() < 1.0e-6);
+        assert!((expected.speed - observed.speed).abs() < 1.0e-6);
+        assert!((expected.turn - observed.turn).abs() < 1.0e-6);
+        assert!((expected.fly_signal - observed.fly_signal).abs() < 1.0e-6);
+        assert!((expected.feed_signal - observed.feed_signal).abs() < 1.0e-6);
+        assert!((expected.climb_signal - observed.climb_signal).abs() < 1.0e-6);
+        assert!((expected.energy - observed.energy).abs() < 1.0e-6);
+        assert_eq!(expected.is_flying, observed.is_flying);
+        assert_eq!(sim.brain.step_count, restored.brain.step_count);
+        assert_eq!(
+            sim.brain.neurons.spike_count,
+            restored.brain.neurons.spike_count
+        );
+        for i in 0..32 {
+            assert!(
+                (sim.brain.neurons.voltage[i] - restored.brain.neurons.voltage[i]).abs() < 1.0e-6
+            );
+        }
+    }
+
+    #[test]
+    fn exact_checkpoint_state_json_roundtrip_preserves_next_terrarium_step() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 91);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+
+        let inputs = TerrariumFlyInputs {
+            odorant: 0.35,
+            left_odorant: 0.41,
+            right_odorant: 0.19,
+            left_light: 0.56,
+            right_light: 0.28,
+            temperature: 22.7,
+            sugar_taste: 0.17,
+            bitter_taste: 0.03,
+            amino_taste: 0.07,
+            wind_x: -0.09,
+            wind_y: 0.12,
+            wind_z: 0.02,
+            surface_contact: 0.14,
+        };
+
+        for _ in 0..2 {
+            sim.body_step_terrarium_inputs(inputs, 1.225);
+        }
+
+        let checkpoint = sim.checkpoint_state();
+        let checkpoint_json = serde_json::to_string(&checkpoint).unwrap();
+        let checkpoint: DrosophilaCheckpointState = serde_json::from_str(&checkpoint_json).unwrap();
+        let mut restored = DrosophilaSim::from_checkpoint_state(checkpoint);
+
+        let expected = sim.body_step_terrarium_inputs(inputs, 1.225);
+        let observed = restored.body_step_terrarium_inputs(inputs, 1.225);
+
+        assert!((expected.x - observed.x).abs() < 1.0e-6);
+        assert!((expected.y - observed.y).abs() < 1.0e-6);
+        assert!((expected.heading - observed.heading).abs() < 1.0e-6);
+        assert!((expected.energy - observed.energy).abs() < 1.0e-6);
+        assert_eq!(expected.is_flying, observed.is_flying);
     }
 
     #[test]
@@ -2637,8 +4267,22 @@ mod tests {
             Some(22.0),
             Some(11.0),
         );
-        let report =
-            sim.body_step_terrarium(0.5, 0.6, 0.2, 21.0, 0.8, 0.0, 0.2, 0.1, 0.0, 0.0, 0.6, 0.0, 1.225);
+        let report = sim.body_step_terrarium_inputs(
+            TerrariumFlyInputs {
+                odorant: 0.5,
+                left_odorant: 0.7,
+                right_odorant: 0.3,
+                left_light: 0.6,
+                right_light: 0.2,
+                temperature: 21.0,
+                sugar_taste: 0.8,
+                amino_taste: 0.2,
+                wind_x: 0.1,
+                surface_contact: 0.6,
+                ..TerrariumFlyInputs::default()
+            },
+            1.225,
+        );
 
         assert!(report.x >= 0.0 && report.x <= 17.0);
         assert!(report.y >= 0.0 && report.y <= 13.0);
@@ -2647,6 +4291,61 @@ mod tests {
         assert!(report.turn.is_finite());
         assert!(report.feed_signal >= 0.0);
         assert!(sim.brain.step_count > 0);
+    }
+
+    #[test]
+    fn terrarium_food_contact_does_not_directly_increase_body_energy() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.reset_episode(8.0, 8.0);
+        sim.set_energy(35.0);
+        sim.set_homeostatic_inputs(0.9, 12.0, 1.0);
+        sim.body.is_flying = false;
+
+        let report = sim.body_step_terrarium_inputs(
+            TerrariumFlyInputs {
+                sugar_taste: 1.0,
+                surface_contact: 1.0,
+                ..TerrariumFlyInputs::default()
+            },
+            1.225,
+        );
+
+        assert!(
+            report.energy <= 35.0 + 1.0e-6,
+            "terrarium body-step should not mint energy outside explicit metabolism (energy={})",
+            report.energy
+        );
+    }
+
+    #[test]
+    fn terrarium_surface_contact_is_required_for_consumption() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+        sim.reset_episode(8.0, 8.0);
+        sim.set_energy(35.0);
+        sim.set_homeostatic_inputs(0.9, 12.0, 1.0);
+        sim.body.is_flying = false;
+
+        let report = sim.body_step_terrarium_inputs(
+            TerrariumFlyInputs {
+                sugar_taste: 1.0,
+                surface_contact: 0.0,
+                ..TerrariumFlyInputs::default()
+            },
+            1.225,
+        );
+
+        assert!(
+            report.consumed_food <= 1.0e-6,
+            "taste alone should not authorize consumption without explicit surface contact"
+        );
     }
 
     #[test]
@@ -2822,6 +4521,19 @@ mod tests {
     }
 
     #[test]
+    fn test_run_drug_response_returns_finite_metric() {
+        let mut sim = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
+        sim.brain.enable_gpu = false;
+        sim.brain.enable_circadian = false;
+        sim.brain.enable_pharmacology = false;
+        sim.brain.enable_glia = false;
+
+        let result = sim.run_drug_response(1);
+        assert_eq!(result.metric_name, "spike_suppression");
+        assert!(result.metric_value.is_finite());
+    }
+
+    #[test]
     fn hunger_correlates_with_energy() {
         // A fly's energy should decrease as it runs without food.
         let mut fly = DrosophilaSim::new(DrosophilaScale::Tiny, 42);
@@ -2860,17 +4572,29 @@ mod tests {
         use super::genome_stats::*;
         assert_eq!(CHROMOSOME_COUNT, 4, "Drosophila has 4 chromosomes");
         assert!((GENOME_MB - 180.0).abs() < 5.0, "Genome ~180Mb");
-        assert!(PROTEIN_GENES >= 13_000, "At least 13,000 protein-coding genes");
-        assert!(FULL_NEURON_COUNT == 139_000, "FlyWire connectome has 139k neurons");
+        assert!(
+            PROTEIN_GENES >= 13_000,
+            "At least 13,000 protein-coding genes"
+        );
+        assert!(
+            FULL_NEURON_COUNT == 139_000,
+            "FlyWire neuron census is ~139k"
+        );
     }
 
     #[test]
     fn test_chromosome_lengths() {
         use super::genome_stats::*;
         let total: f32 = CHROMOSOME_LENGTHS_MB.iter().sum();
-        assert!((total - GENOME_MB).abs() < 1.0, "Chromosome lengths should sum to genome size");
+        assert!(
+            (total - GENOME_MB).abs() < 1.0,
+            "Chromosome lengths should sum to genome size"
+        );
         // Chromosome 4 (dot) should be smallest
-        assert!(CHROMOSOME_LENGTHS_MB[3] < 5.0, "Chromosome 4 is the dot chromosome");
+        assert!(
+            CHROMOSOME_LENGTHS_MB[3] < 5.0,
+            "Chromosome 4 is the dot chromosome"
+        );
     }
 
     #[test]
@@ -2886,10 +4610,16 @@ mod tests {
             .iter()
             .filter(|g| g.function == super::GeneFunction::LearningMemory)
             .collect();
-        assert!(learning_genes.len() >= 3, "At least 3 learning/memory genes");
+        assert!(
+            learning_genes.len() >= 3,
+            "At least 3 learning/memory genes"
+        );
         // rut, dnc, CREB2 should all be present
         let names: Vec<_> = learning_genes.iter().map(|g| g.name.as_str()).collect();
-        assert!(names.contains(&"rut"), "rutabaga should be in learning genes");
+        assert!(
+            names.contains(&"rut"),
+            "rutabaga should be in learning genes"
+        );
         assert!(names.contains(&"dnc"), "dunce should be in learning genes");
     }
 

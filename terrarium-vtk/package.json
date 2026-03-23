@@ -1,0 +1,21 @@
+{
+  "name": "oneura-terrarium-vtk",
+  "version": "0.1.0",
+  "description": "Scientific visualization instrument for oNeura terrarium — vtk.js powered",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@kitware/vtk.js": "^30.8.0",
+    "gl-matrix": "^3.4.3",
+    "lil-gui": "^0.19.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "playwright": "^1.58.2",
+    "vite": "^6.3.5"
+  }
+}

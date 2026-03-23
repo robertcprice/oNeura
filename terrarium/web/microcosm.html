@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>oNeura — Microcosm</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    overflow: hidden;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+    color: #b0b0b0;
+  }
+  #canvas-container { width: 100vw; height: 100vh; }
+  canvas { display: block; }
+
+  /* ─── Title ─── */
+  #title-hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    pointer-events: none;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    z-index: 10;
+  }
+  #title-hud .name {
+    color: #ccc;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  #title-hud .time {
+    color: #666;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  /* ─── Environment HUD (bottom-left) ─── */
+  #env-hud {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    font-size: 11px;
+    line-height: 1.7;
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    z-index: 10;
+  }
+  .hud-row { display: flex; gap: 6px; align-items: baseline; }
+  .hud-label { color: #555; min-width: 60px; }
+  .hud-value { color: #ccc; }
+  .hud-unit { color: #444; font-size: 10px; }
+
+  /* ─── Chemistry HUD (bottom-right) ─── */
+  #chem-hud {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    font-size: 10px;
+    line-height: 1.7;
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    text-align: right;
+    z-index: 10;
+    color: #555;
+  }
+  #chem-hud .active { color: #888; }
+
+  /* ─── Status indicator ─── */
+  #status {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #444;
+    font-size: 13px;
+    letter-spacing: 1px;
+    z-index: 20;
+    transition: opacity 0.5s;
+  }
+  #status.hidden { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="status">connecting...</div>
+
+<div id="title-hud">
+  <div class="name">oNeura Microcosm</div>
+  <div class="time" id="time-label"></div>
+</div>
+
+<div id="env-hud">
+  <div class="hud-row">
+    <span class="hud-label">temp</span>
+    <span class="hud-value" id="hud-temp">&mdash;</span>
+    <span class="hud-unit">&deg;C</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">humidity</span>
+    <span class="hud-value" id="hud-humidity">&mdash;</span>
+    <span class="hud-unit">%</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">moisture</span>
+    <span class="hud-value" id="hud-moisture">&mdash;</span>
+    <span class="hud-unit">%</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">wind</span>
+    <span class="hud-value" id="hud-wind">&mdash;</span>
+    <span class="hud-unit">m/s</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">light</span>
+    <span class="hud-value" id="hud-daylight">&mdash;</span>
+  </div>
+</div>
+
+<div id="chem-hud">
+  <div id="chem-details"></div>
+</div>
+
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/OrbitControls.js"></script>
+<script src="/js/microcosm.js?v=6"></script>
+</body>
+</html>

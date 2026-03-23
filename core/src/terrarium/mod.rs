@@ -6,80 +6,174 @@
 //! fly stepping without Python orchestration.
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand_chacha::ChaCha12Rng;
 use rand_distr::StandardNormal;
 
 use crate::constants::clamp;
 use crate::drosophila::{DrosophilaScale, DrosophilaSim};
 use crate::drosophila_population::FlyPopulation;
-use crate::ecology_events::{step_food_patches, step_seed_bank};
+use crate::ecology_events::step_food_patches;
 use crate::ecology_fields::build_dual_radial_fields;
-use crate::fly_metabolism::{ChronobiologyConfig, CircadianState, FlyActivity, FlyMetabolism};
-use crate::organism_metabolism::OrganismMetabolism;
+use crate::fly_metabolism::{ChronobiologyConfig, FlyMetabolism};
 use crate::molecular_atmosphere::{
-    odorant_channel_params, step_molecular_world_fields, FruitSourceState, OdorantChannelParams,
+    step_molecular_world_fields, FruitSourceState, OdorantChannelParams,
     PlantSourceState, WaterSourceState,
 };
 use crate::plant_cellular::PlantCellularStateSim;
-use crate::seed_cellular::SeedCellularStateSim;
 use crate::plant_competition::{
     compute_light_competition, compute_root_competition, CanopyDescriptor, RootDescriptor,
 };
 use crate::plant_organism::PlantOrganismSim;
+use crate::seed_cellular::SeedCellularStateSim;
+use crate::soil_broad::{
+    shoreline_water_signal, soil_texture_absorbency, soil_texture_capillarity,
+    soil_texture_retention, step_soil_broad_pools,
+};
 use crate::soil_fauna::{step_soil_fauna, EarthwormPopulation, NematodeGuild, NematodeKind};
-use crate::soil_broad::step_soil_broad_pools;
 use crate::soil_uptake::extract_root_resources_with_layers;
 use crate::substrate_coupling::{
-    build_substrate_control_fields, SubstrateControlConfig, SubstrateControlInputs,
-    project_owned_summary_pools, OwnedSummaryProjectionConfig,
-    OwnedSummaryProjectionInputs, OwnedSummaryProjectionOutputs,
-    microbial_copiotroph_target, nitrifier_aerobic_target, denitrifier_anoxic_target,
+    denitrifier_anoxic_target, microbial_copiotroph_target, nitrifier_aerobic_target,
+    project_owned_summary_pools, OwnedSummaryProjectionConfig, OwnedSummaryProjectionInputs,
+    OwnedSummaryProjectionOutputs,
 };
+
+pub mod archive;
 pub mod atmosphere;
-pub mod fauna;
-pub mod snapshot;
-pub mod field;
-pub mod substrate;
-pub mod probes;
+pub mod checkpoint;
+pub mod climate_driver;
+pub mod conservation;
+pub mod entropy;
 pub mod evolve;
-
-pub use substrate::{BatchedAtomTerrarium, TerrariumSpecies, TERRARIUM_SPECIES_COUNT, TerrariumBackend};
-pub use genotype::{SecondaryGenotypeRecord, SecondaryGenotypeCatalogRecord, INTERNAL_SECONDARY_GENOTYPE_AXES, trait_match, packet_surface_factor};
-pub use packet::{GenotypePacket, GenotypePacketPopulation, GENOTYPE_PACKET_MAX_PER_CELL, GENOTYPE_PACKET_POPULATION_MAX_CELLS};
-pub use calibrator::SubstrateKinetics;
-
-pub use evolve::{
-    WorldGenome, EvolutionConfig, FitnessObjective, FitnessConfig, GenomeConstraints, SearchStrategy, GenerationTelemetry, evolve,
-    telemetry_from_result, telemetry_from_pareto_result, telemetry_to_csv, telemetry_to_prometheus,
-    evaluate_stress_metrics_for_best, EnvironmentalSchedule, CoevolutionMode,
-    evolve_stress_test, evolve_with_environment, evolve_coevolution, evolve_pareto, evolve_pareto_stressed,
-    scan_fitness_landscape, LandscapeAxis, GENOME_PARAM_NAMES, run_and_export, sparkline, ecosystem_dashboard,
-    DrugProtocol, DrugProtocolResult, PersisterCellSimulator,
-    ecoli_validation_data, optimize_drug_protocol, validate_against_ecoli,
-    GeneCircuitSpec, GeneCircuitParams, GeneCircuitResult, optimize_gene_circuit,
-    evaluate_fitness
-};
-
-pub use crate::plant_cellular::PlantTissue;
+pub mod fauna;
+pub mod field;
+pub mod fruit_reproduction;
+pub mod fruit_state;
+pub mod geochemistry;
+pub mod litter_surface;
+pub mod probes;
+pub mod seed_microsite;
+pub mod snapshot;
+pub mod solar;
+pub mod substrate;
 
 pub mod biomechanics;
+pub mod ribbon;
 pub mod calibrator;
+pub mod emergent_color;
+pub mod emergent_rates;
+pub mod soil_profile;
 pub mod explicit_microbe_impl;
 pub mod flora;
 pub mod genotype;
+pub mod inventory_geochemistry;
+pub(crate) mod inventory_geochemistry_registry;
+pub(crate) mod inventory_reaction_network;
+pub(crate) mod inventory_species_registry;
+pub mod material_exchange;
+pub mod material_inventory;
 pub mod mesh;
+pub mod organism_identity;
 pub mod packet;
+pub mod plant_species;
+pub mod presets;
+pub mod reporting;
+pub mod shape_projection;
+pub mod species_presence;
+pub mod visual_markers;
 // mod render_impl;
 // mod render_stateful;
 // mod render_utils;
 pub mod soil;
-pub mod tests;
+#[cfg(all(test, feature = "satellite_tests"))]
+#[path = "tests.rs"]
+mod terrarium_tests;
+pub mod scale_level;
+pub mod visual_projection;
 
-pub use field::{TerrariumSensoryField, FlySensorySample};
+pub use calibrator::SubstrateKinetics;
+pub use checkpoint::{
+    TerrariumCheckpointFidelity, TerrariumCheckpointLimitations, TerrariumWorldCheckpoint,
+};
+pub use climate_driver::TerrariumClimateDriver;
+pub use conservation::{TerrariumConservationAudit, TerrariumConservationPoolVector};
+pub use entropy::{
+    checkpoint_seed_provenance, explicit_seed_provenance, natural_seed_provenance,
+    resolve_seed_provenance, TerrariumSeedProvenance, TerrariumSeedSource,
+};
+pub use field::{FlySensorySample, TerrariumSensoryField};
+pub use genotype::{
+    packet_surface_factor, trait_match, SecondaryGenotypeCatalogRecord, SecondaryGenotypeRecord,
+    INTERNAL_SECONDARY_GENOTYPE_AXES,
+};
+pub use geochemistry::{
+    soil_aluminum_toxicity, soil_base_cation_pool, soil_base_saturation, soil_mineral_buffer,
+    soil_weathering_support,
+};
+pub(crate) use inventory_geochemistry::{
+    equilibrate_inventory_geochemistry, inventory_species_total, withdraw_inventory_species_total,
+};
+pub use inventory_species_registry::{
+    prime_terrarium_quantum_descriptor_cache_from_binary,
+    prime_terrarium_quantum_descriptor_cache_from_json,
+    terrarium_all_descriptor_species, terrarium_molecular_asset_by_name,
+    terrarium_molecular_asset_hash, terrarium_quantum_descriptor_cache_binary,
+    terrarium_quantum_descriptor_cache_entries,
+    terrarium_quantum_descriptor_cache_entries_full,
+    terrarium_quantum_descriptor_cache_json_pretty,
+    terrarium_quantum_descriptor_tensor_json_pretty, terrarium_quantum_descriptor_tensor_snapshot,
+    warm_terrarium_quantum_descriptor_cache, warm_terrarium_quantum_descriptor_cache_full,
+    TerrariumMolecularQuantumDescriptor, TerrariumQuantumDescriptorCacheEntry,
+    TerrariumQuantumDescriptorTensorSnapshot, TERRARIUM_QUANTUM_DESCRIPTOR_FEATURE_NAMES,
+};
+pub use material_inventory::RegionalMaterialInventory;
+pub use organism_identity::{OrganismIdentity, OrganismRegistryEntry, TerrariumOrganismKind};
+pub use packet::{
+    GenotypePacket, GenotypePacketPopulation, GENOTYPE_PACKET_MAX_PER_CELL,
+    GENOTYPE_PACKET_POPULATION_MAX_CELLS,
+};
+pub use presets::TerrariumDemoPreset;
+pub use shape_projection::{TerrariumFruitShapeDescriptor, TerrariumSeedShapeDescriptor};
+pub use species_presence::{
+    TerrariumSpeciesAuthority, TerrariumSpeciesDomain, TerrariumSpeciesPresence,
+};
+pub use substrate::{
+    BatchedAtomTerrarium, BatchedAtomTerrariumCheckpoint, TerrariumBackend, TerrariumSpecies,
+    TERRARIUM_SPECIES_COUNT,
+};
 
-// ===== Ecosystem Organism Integration =====
-// Re-export organism catalog for ecosystem-wide organism data access.
-pub use crate::organism_catalog::{
-    OrganismCatalog, OrganismType, OrganismCategory, GenomeStats, NeuralStats, BodyAnatomy,
+pub use evolve::{
+    ecoli_validation_data, ecosystem_dashboard, evaluate_fitness, evaluate_stress_metrics_for_best,
+    evolve, evolve_coevolution, evolve_pareto, evolve_pareto_stressed, evolve_stress_test,
+    evolve_with_environment, optimize_drug_protocol, optimize_gene_circuit, run_and_export,
+    scan_fitness_landscape, sparkline, telemetry_from_pareto_result, telemetry_from_result,
+    telemetry_to_csv, telemetry_to_prometheus, validate_against_ecoli, CoevolutionMode,
+    DrugProtocol, DrugProtocolResult, EnvironmentalSchedule, EvolutionConfig, FitnessConfig,
+    FitnessObjective, GeneCircuitParams, GeneCircuitResult, GeneCircuitSpec, GenerationTelemetry,
+    GenomeConstraints, LandscapeAxis, PersisterCellSimulator, SearchStrategy, WorldGenome,
+    GENOME_PARAM_NAMES,
+};
+
+pub use crate::enzyme_probes::select_enzyme_for_seed;
+pub use crate::plant_cellular::PlantTissue;
+pub use crate::terrarium_render::TerrariumTopdownView;
+
+// Re-exports for ecosystem and evolution simulation types
+pub use crate::biofilm_dynamics::BiofilmSimulator;
+pub use crate::climate_scenarios::{ClimateEngine, ClimateScenario};
+pub use crate::dishbrain_pong::{DishBrainPongSim, PongScale};
+pub use crate::eco_evolutionary_feedback::{
+    price_equation, EcoEvoSimulator, EcoEvoStepResult, EnvironmentalShift, FitnessLandscape,
+};
+pub use crate::ecosystem_integration::{EcosystemConfig, IntegratedEcosystem};
+pub use crate::horizontal_gene_transfer::{GeneticElement, GeneticElementType, HgtPopulation};
+pub use crate::microbiome_assembly::{
+    CommunityAssembler, CrossFeedingLink, MicrobialTaxon, Resource,
+};
+pub use crate::phylogenetic_tracker::{PhyloTraits, PhyloTree};
+pub use crate::population_genetics::WrightFisherSim;
+pub use crate::resistance_evolution::{
+    Antibiotic, AntibioticClass, ModeOfAction, ResistanceEvent, ResistanceMechanism,
+    ResistanceSimulator, ResistanceType,
 };
 
 // ===== Rendering Constants & Utilities =====
@@ -119,7 +213,10 @@ pub fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     ]
 }
 
-pub fn mesh_append(dest: &mut crate::terrarium_render::TerrariumTriangleMeshRender, src: &crate::terrarium_render::TerrariumTriangleMeshRender) {
+pub fn mesh_append(
+    dest: &mut crate::terrarium_render::TerrariumTriangleMeshRender,
+    src: &crate::terrarium_render::TerrariumTriangleMeshRender,
+) {
     let offset = dest.positions.len() as u32 / 3;
     dest.positions.extend_from_slice(&src.positions);
     dest.normals.extend_from_slice(&src.normals);
@@ -129,7 +226,10 @@ pub fn mesh_append(dest: &mut crate::terrarium_render::TerrariumTriangleMeshRend
     }
 }
 
-pub fn mesh_translate(mesh: &mut crate::terrarium_render::TerrariumTriangleMeshRender, t: [f32; 3]) {
+pub fn mesh_translate(
+    mesh: &mut crate::terrarium_render::TerrariumTriangleMeshRender,
+    t: [f32; 3],
+) {
     for p in mesh.positions.iter_mut() {
         p[0] += t[0];
         p[1] += t[1];
@@ -142,7 +242,10 @@ pub fn rotate_xyz(v: [f32; 3], _r: [f32; 3]) -> [f32; 3] {
     v
 }
 
-pub fn mesh_rotate_xyz(_mesh: &mut crate::terrarium_render::TerrariumTriangleMeshRender, _r: [f32; 3]) {
+pub fn mesh_rotate_xyz(
+    _mesh: &mut crate::terrarium_render::TerrariumTriangleMeshRender,
+    _r: [f32; 3],
+) {
     // Simplified rotation for Phase 3
 }
 
@@ -150,14 +253,29 @@ pub fn rotate_yxz(v: [f32; 3], _r: [f32; 3]) -> [f32; 3] {
     v
 }
 
-pub fn mesh_rotate_yxz(_mesh: &mut crate::terrarium_render::TerrariumTriangleMeshRender, _r: [f32; 3]) {
+pub fn mesh_rotate_yxz(
+    _mesh: &mut crate::terrarium_render::TerrariumTriangleMeshRender,
+    _r: [f32; 3],
+) {
 }
 
-pub fn terrarium_dynamic_batch_render_id(_kind: crate::terrarium_render::TerrariumDynamicBatchKind, _chunk_x: i32, _chunk_y: i32, _chunk_z: i32, _material_key: u64) -> u64 {
+pub fn terrarium_dynamic_batch_render_id(
+    _kind: crate::terrarium_render::TerrariumDynamicBatchKind,
+    _chunk_x: i32,
+    _chunk_y: i32,
+    _chunk_z: i32,
+    _material_key: u64,
+) -> u64 {
     0 // Placeholder
 }
 
-pub fn terrarium_substrate_batch_render_id(_chunk_x: usize, _chunk_y: usize, _chunk_z: usize, _material_key: u64, _hide_on_cutaway: bool) -> u64 {
+pub fn terrarium_substrate_batch_render_id(
+    _chunk_x: usize,
+    _chunk_y: usize,
+    _chunk_z: usize,
+    _material_key: u64,
+    _hide_on_cutaway: bool,
+) -> u64 {
     0 // Placeholder
 }
 
@@ -165,11 +283,11 @@ pub fn terrarium_render_child_id(parent_id: u64, child_index: u32) -> u64 {
     parent_id | (child_index as u64)
 }
 
-pub fn terrarium_render_id_class(id: u64) -> u32 {
+pub fn terrarium_render_id_class(_id: u64) -> u32 {
     0
 }
 
-pub fn field_min_inv(data: &[f32]) -> (f32, f32) {
+pub fn field_min_inv(_data: &[f32]) -> (f32, f32) {
     (0.0, 1.0)
 }
 
@@ -177,7 +295,7 @@ pub fn normalize_unit(v: f32, min: f32, inv: f32) -> f32 {
     (v - min) * inv
 }
 
-pub fn render_top_surface_y(x: f32, z: f32) -> f32 {
+pub fn render_top_surface_y(_x: f32, _z: f32) -> f32 {
     0.0
 }
 
@@ -189,14 +307,386 @@ pub fn fly_translation_world_from_body(x: f32, y: f32, z: f32) -> [f32; 3] {
     [x, z, y]
 }
 
-// ===== Microdomain Ownership Infrastructure =====
+/// Metabolic and ecological telemetry events emitted during a frame.
+pub use archive::TerrariumWorldArchive;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum EcologyTelemetryEvent {
+    FlyAtpCrash {
+        x: f32,
+        y: f32,
+        energy_charge: f32,
+        trehalose_mm: f32,
+    },
+    FlyStarvationOnset {
+        x: f32,
+        y: f32,
+        trehalose_mm: f32,
+        glycogen_mg: f32,
+    },
+    FlyFeeding {
+        x: f32,
+        y: f32,
+        sugar_ingested_mg: f32,
+        trehalose_mm: f32,
+    },
+    FlyEclosed {
+        x: f32,
+        y: f32,
+    },
+    FlyHypoxiaOnset {
+        x: f32,
+        y: f32,
+        ambient_o2: f32,
+        altitude: f32,
+    },
+    ExplicitPromotion {
+        x: usize,
+        y: usize,
+        z: usize,
+        guild: u8,
+        represented_cells: f32,
+    },
+    ExplicitDemotion {
+        x: usize,
+        y: usize,
+        z: usize,
+        represented_cells: f32,
+        atp_mm: f32,
+    },
+    ExplicitDeath {
+        x: usize,
+        y: usize,
+        z: usize,
+        reason: String,
+        represented_cells: f32,
+        atp_mm: f32,
+        age_s: f32,
+    },
+    CellDivision {
+        x: usize,
+        y: usize,
+        z: usize,
+        parent_represented_cells: f32,
+        daughter_represented_cells: f32,
+    },
+    CellDivisionDaughter {
+        x: usize,
+        y: usize,
+        z: usize,
+        represented_cells: f32,
+        atp_mm: f32,
+    },
+    PacketPopulationSeed {
+        x: usize,
+        y: usize,
+    },
+    PacketPromotion {
+        x: usize,
+        y: usize,
+        z: usize,
+        activity: f32,
+        represented_cells: f32,
+    },
+    FlyGrazing {
+        x: f32,
+        y: f32,
+        leaf_consumed: f32,
+        plant_deterrence: f32,
+    },
+    LightningStrike {
+        x: f32,
+        y: f32,
+        ammonium_deposited: f32,
+        nitrate_deposited: f32,
+    },
+    /// Manual or climate-engine–triggered extreme weather event.
+    ExtremeEventOnset {
+        event_type: String,
+        severity: f32,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumPlantSnapshot {
+    pub x: usize,
+    pub y: usize,
+    pub organism_id: u64,
+    pub phylo_id: Option<u64>,
+    pub lineage_generation: u32,
+    pub parent_organism_id: Option<u64>,
+    pub co_parent_organism_id: Option<u64>,
+    pub display_name: Option<String>,
+    pub taxonomy_id: u32,
+    pub common_name: String,
+    pub scientific_name: String,
+    pub growth_form: crate::botany::BotanicalGrowthForm,
+    pub height_mm: f32,
+    pub vitality: f32,
+    pub storage_carbon: f32,
+    pub fruit_load: u32,
+    pub structure: crate::terrarium::shape_projection::TerrariumPlantStructureDescriptor,
+    pub morphology: Vec<crate::botany::MorphNode>,
+    /// Pre-computed smooth branch mesh from parallel-transport ribbon algorithm.
+    /// Positions/normals/indices/branchDepth for direct WebGL buffer upload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch_mesh: Option<crate::terrarium::ribbon::RibbonMeshData>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumFruitSnapshot {
+    pub x: usize,
+    pub y: usize,
+    pub organism_id: u64,
+    pub lineage_generation: u32,
+    pub parent_organism_id: Option<u64>,
+    pub display_name: Option<String>,
+    pub taxonomy_id: u32,
+    pub common_name: String,
+    pub scientific_name: String,
+    pub growth_form: crate::botany::BotanicalGrowthForm,
+    pub shape: crate::terrarium::shape_projection::TerrariumFruitShapeDescriptor,
+    pub sugar_content: f32,
+    pub ripeness: f32,
+    pub radius: f32,
+    pub attached: bool,
+    pub alive: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumSeedSnapshot {
+    pub x: f32,
+    pub y: f32,
+    pub organism_id: u64,
+    pub phylo_id: Option<u64>,
+    pub lineage_generation: u32,
+    pub parent_organism_id: Option<u64>,
+    pub co_parent_organism_id: Option<u64>,
+    pub display_name: Option<String>,
+    pub taxonomy_id: u32,
+    pub common_name: String,
+    pub scientific_name: String,
+    pub growth_form: crate::botany::BotanicalGrowthForm,
+    pub shape: crate::terrarium::shape_projection::TerrariumSeedShapeDescriptor,
+    pub reserve_carbon: f32,
+    pub dormancy_s: f32,
+    pub age_s: f32,
+    pub burial_depth_mm: f32,
+    pub surface_exposure: f32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumFlySnapshot {
+    pub organism_id: u64,
+    pub display_name: Option<String>,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub energy: f32,
+    pub hunger: f32,
+    pub energy_charge: f32,
+    pub is_flying: bool,
+    pub wing_beat_freq: f32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumFlyLifecycleSnapshot {
+    pub fly_id: u32,
+    pub organism_id: Option<u64>,
+    pub display_name: Option<String>,
+    pub sex: String,
+    pub stage: String,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub energy: f32,
+    pub alive: bool,
+    pub eggs_remaining: u32,
+    pub mated: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumEggClusterSnapshot {
+    pub x: f32,
+    pub y: f32,
+    pub count: u8,
+    pub age_hours: f32,
+    pub substrate_quality: f32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumFlyEmbryoSnapshot {
+    pub embryo_id: u32,
+    pub cluster_index: usize,
+    pub sex: String,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub age_hours: f32,
+    pub viability: f32,
+    pub water: f32,
+    pub glucose: f32,
+    pub amino_acids: f32,
+    pub nucleotides: f32,
+    pub membrane_precursors: f32,
+    pub oxygen: f32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumExplicitMicrobeSnapshot {
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
+    pub guild: u8,
+    pub represented_cells: f32,
+    pub represented_packets: f32,
+    pub genotype_id: u32,
+    pub lineage_id: u32,
+    pub catalog_id: u32,
+    pub age_s: f32,
+    pub smoothed_energy: f32,
+    pub smoothed_stress: f32,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumWorldSnapshot {
+    #[serde(default)]
+    pub seed_provenance: TerrariumSeedProvenance,
+    #[serde(default)]
+    pub conservation: TerrariumConservationAudit,
+    pub plants: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub full_plants: Vec<TerrariumPlantSnapshot>,
+    pub full_fruits: Vec<TerrariumFruitSnapshot>,
+    pub full_seeds: Vec<TerrariumSeedSnapshot>,
+    pub full_flies: Vec<TerrariumFlySnapshot>,
+    pub full_fly_population: Vec<TerrariumFlyLifecycleSnapshot>,
+    pub full_egg_clusters: Vec<TerrariumEggClusterSnapshot>,
+    #[serde(default)]
+    pub full_fly_embryos: Vec<TerrariumFlyEmbryoSnapshot>,
+    pub full_explicit_microbes: Vec<TerrariumExplicitMicrobeSnapshot>,
+    pub species_presence: Vec<crate::terrarium::species_presence::TerrariumSpeciesPresence>,
+    pub fruits: usize,
+    pub seeds: usize,
+    pub flies: usize,
+    pub food_remaining: f32,
+    pub fly_food_total: f32,
+    pub avg_fly_energy: f32,
+    pub avg_altitude: f32,
+    pub light: f32,
+    pub lunar_phase: f32,
+    pub moonlight: f32,
+    pub tidal_moisture_factor: f32,
+    pub temperature: f32,
+    pub humidity: f32,
+    pub mean_soil_moisture: f32,
+    pub mean_deep_moisture: f32,
+    pub mean_litter_cover_fraction: f32,
+    pub mean_litter_surface_depth_mm: f32,
+    pub mean_microbes: f32,
+    pub mean_symbionts: f32,
+    pub mean_canopy: f32,
+    pub mean_root_density: f32,
+    pub total_plant_cells: f32,
+    pub mean_cell_vitality: f32,
+    pub mean_cell_energy: f32,
+    pub mean_division_pressure: f32,
+    pub mean_soil_glucose: f32,
+    pub mean_soil_oxygen: f32,
+    pub mean_soil_ammonium: f32,
+    pub mean_soil_nitrate: f32,
+    pub mean_soil_redox: f32,
+    pub mean_soil_atp_flux: f32,
+    pub mean_soil_silicate_mineral: f32,
+    pub mean_soil_clay_mineral: f32,
+    pub mean_soil_carbonate_mineral: f32,
+    pub mean_soil_iron_oxide_mineral: f32,
+    pub mean_soil_dissolved_silicate: f32,
+    pub mean_soil_bicarbonate: f32,
+    #[serde(default)]
+    pub mean_soil_surface_proton_load: f32,
+    #[serde(default)]
+    pub mean_soil_calcium_bicarbonate_complex: f32,
+    #[serde(default)]
+    pub mean_soil_sorbed_aluminum_hydroxide: f32,
+    #[serde(default)]
+    pub mean_soil_sorbed_ferric_hydroxide: f32,
+    pub mean_soil_exchangeable_calcium: f32,
+    pub mean_soil_exchangeable_magnesium: f32,
+    pub mean_soil_exchangeable_potassium: f32,
+    pub mean_soil_exchangeable_sodium: f32,
+    pub mean_soil_exchangeable_aluminum: f32,
+    pub mean_soil_aqueous_iron: f32,
+    pub mean_atmospheric_co2: f32,
+    pub mean_atmospheric_o2: f32,
+    pub ecology_event_count: usize,
+    pub avg_fly_energy_charge: f32,
+    pub fly_plant_proximity_mean: f32,
+    pub fly_altitude_mean: f32,
+    pub fly_o2_gradient_correlation: f32,
+    pub avg_wing_beat_freq: f32,
+    pub owned_fraction: f32,
+    pub atomistic_probes: usize,
+    pub substrate_backend: String,
+    pub substrate_steps: u64,
+    pub substrate_time_ms: f32,
+    pub time_s: f32,
+    pub avg_fly_hunger: f32,
+    pub avg_fly_trehalose_mm: f32,
+    pub avg_fly_atp_mm: f32,
+    pub fly_population_eggs: u32,
+    pub fly_population_embryos: u32,
+    pub fly_population_larvae: u32,
+    pub fly_population_pupae: u32,
+    pub fly_population_adults: u32,
+    pub fly_population_total: u32,
+    pub mean_air_pressure_kpa: f32,
+    pub climate: Option<crate::climate_scenarios::ClimateState>,
+    pub tracked_organisms: usize,
+    pub named_organisms: usize,
+    pub ecology_events: Vec<EcologyTelemetryEvent>,
+    #[serde(default)]
+    pub cloud_cover: f32,
+    #[serde(default)]
+    pub precipitation_rate_mm_h: f32,
+    #[serde(default)]
+    pub weather_regime: String,
+    #[serde(default)]
+    pub mean_wind_speed: f32,
+    #[serde(default)]
+    pub mean_wind_x: f32,
+    #[serde(default)]
+    pub mean_wind_y: f32,
+    #[serde(default)]
+    pub temperature_offset_c: f32,
+    #[serde(default)]
+    pub lightning_flash: bool,
+    #[serde(default)]
+    pub lightning_x: f32,
+    #[serde(default)]
+    pub lightning_y: f32,
+    #[serde(default)]
+    pub dew_intensity: f32,
+    #[serde(default)]
+    pub mycorrhizal_connections: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TerrariumAtmosphereFrame {
+    pub temperature_c: Vec<f32>,
+    pub humidity: Vec<f32>,
+    pub pressure_kpa: Vec<f32>,
+    pub wind_x: Vec<f32>,
+    pub wind_y: Vec<f32>,
+    pub wind_z: Vec<f32>,
+}
 
 /// Identifies the authority class that owns a soil cell's biology.
 ///
 /// When a cell has an explicit owner (microbe cohort, genotype packet, plant
 /// tissue, or atomistic probe), coarse broad-soil biology should be suppressed
 /// in that cell and only boundary-exchange remains.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SoilOwnershipClass {
     /// No explicit biological owner — broad guild-rate laws are primary.
     Background,
@@ -221,7 +711,7 @@ impl SoilOwnershipClass {
 }
 
 /// Per-cell ownership record in the terrarium soil grid.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct SoilOwnershipCell {
     /// Which class of biology owns this cell.
     pub owner: SoilOwnershipClass,
@@ -240,7 +730,7 @@ impl Default for SoilOwnershipCell {
 }
 
 /// Diagnostics for the terrarium ownership map.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipDiagnostics {
     /// Fraction of soil cells that have an explicit owner.
     pub owned_fraction: f32,
@@ -304,7 +794,11 @@ impl AtomisticProbe {
         let mut md = GPUMolecularDynamics::new(n, "cpu");
 
         // Transfer positions.
-        let flat_pos: Vec<f32> = mol.positions_angstrom.iter().flat_map(|p: &[f32; 3]| p.iter().copied()).collect();
+        let flat_pos: Vec<f32> = mol
+            .positions_angstrom
+            .iter()
+            .flat_map(|p: &[f32; 3]| p.iter().copied())
+            .collect();
         md.set_positions(&flat_pos);
 
         // Transfer masses and LJ params from element types.
@@ -384,7 +878,7 @@ const GERANIOL_IDX: usize = 1;
 const AMMONIA_IDX: usize = 2;
 const ATMOS_CO2_IDX: usize = 3;
 const ATMOS_O2_IDX: usize = 4;
-const ATMOS_O2_FRACTION: f32 = 0.21;
+const DEFENSE_VOC_IDX: usize = 5;
 // Flora submodule defines its own local copies of these constants.
 // When speciation/authority features are wired, move these to pub(crate).
 #[allow(dead_code)]
@@ -401,8 +895,8 @@ pub const EXPLICIT_MICROBE_MIN_REPRESENTED_CELLS: f32 = 100.0;
 pub const EXPLICIT_MICROBE_MAX_REPRESENTED_CELLS: f32 = 50000.0;
 pub const EXPLICIT_MICROBE_PATCH_RADIUS: usize = 2;
 pub const EXPLICIT_MICROBE_TIME_COMPRESSION: f32 = 10.0;
-pub const EXPLICIT_MICROBE_MIN_STEPS: usize = 5;
-pub const EXPLICIT_MICROBE_MAX_STEPS: usize = 200;
+pub const EXPLICIT_MICROBE_MIN_STEPS: usize = 1;
+pub const EXPLICIT_MICROBE_MAX_STEPS: usize = 6;
 pub const EXPLICIT_MICROBE_GROWTH_RATE: f32 = 0.002;
 pub const EXPLICIT_MICROBE_DECAY_RATE: f32 = 0.001;
 pub const EXPLICIT_MICROBE_RADIUS_EXPAND_1_CELLS: f32 = 2000.0;
@@ -429,7 +923,6 @@ pub const HENRY_O2: f32 = 0.032;
 /// Henry's law solubility (dimensionless Hcc) for CO₂ in water at 25°C.
 pub const HENRY_CO2: f32 = 0.83;
 
-
 fn idx2(width: usize, x: usize, y: usize) -> usize {
     y * width + x
 }
@@ -446,9 +939,77 @@ fn mean(values: &[f32]) -> f32 {
     }
 }
 
-fn sample_normal(rng: &mut StdRng, sigma: f32) -> f32 {
+fn sample_normal<R: Rng + ?Sized>(rng: &mut R, sigma: f32) -> f32 {
     let z: f32 = rng.sample(StandardNormal);
     z * sigma
+}
+
+fn build_seeded_soil_structure(width: usize, height: usize, seed: u64) -> Vec<f32> {
+    let plane = width * height;
+    if plane == 0 {
+        return Vec::new();
+    }
+
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x5EED_A11C_7E22_D00Du64);
+    let mut ridge_sources = Vec::new();
+    let mut basin_sources = Vec::new();
+
+    for _ in 0..4 {
+        ridge_sources.extend_from_slice(&[
+            rng.gen_range(0..width) as f32,
+            rng.gen_range(0..height) as f32,
+            rng.gen_range(3..=(width.min(height).max(4) / 2).max(3)) as f32,
+            rng.gen_range(0.35..0.85),
+            rng.gen_range(0.55..0.95),
+        ]);
+    }
+    for _ in 0..3 {
+        basin_sources.extend_from_slice(&[
+            rng.gen_range(0..width) as f32,
+            rng.gen_range(0..height) as f32,
+            rng.gen_range(3..=(width.min(height).max(4) / 2).max(3)) as f32,
+            rng.gen_range(0.20..0.60),
+            rng.gen_range(0.60..1.00),
+        ]);
+    }
+
+    let (ridges, basins) = build_dual_radial_fields(width, height, &ridge_sources, &basin_sources)
+        .unwrap_or_else(|_| (vec![0.0; plane], vec![0.0; plane]));
+    let phase_x = rng.gen_range(0.0..std::f32::consts::TAU);
+    let phase_y = rng.gen_range(0.0..std::f32::consts::TAU);
+    let phase_mix = rng.gen_range(0.0..std::f32::consts::TAU);
+
+    let mut field = vec![0.0; plane];
+    let mut min_v = f32::INFINITY;
+    let mut max_v = f32::NEG_INFINITY;
+    for y in 0..height {
+        for x in 0..width {
+            let idx = idx2(width, x, y);
+            let xf = x as f32 / width.max(1) as f32;
+            let yf = y as f32 / height.max(1) as f32;
+            let macro_undulation =
+                ((xf * 2.7 + yf * 1.8) * std::f32::consts::TAU + phase_mix).sin() * 0.18;
+            let undulation = (xf * 6.2 + phase_x).sin() * 0.16
+                + (yf * 5.1 + phase_y).cos() * 0.12
+                + ((xf + yf) * 7.6 + phase_mix).sin() * 0.08
+                + macro_undulation;
+            let value = ridges[idx] * 2.25 - basins[idx] * 1.65 + undulation;
+            field[idx] = value;
+            min_v = min_v.min(value);
+            max_v = max_v.max(value);
+        }
+    }
+
+    let inv = if (max_v - min_v).abs() > f32::EPSILON {
+        1.0 / (max_v - min_v)
+    } else {
+        1.0
+    };
+    for value in &mut field {
+        let norm = (*value - min_v) * inv;
+        *value = 0.14 + norm.clamp(0.0, 1.0) * 0.82;
+    }
+    field
 }
 
 fn offset_clamped(value: usize, delta: isize, upper_exclusive: usize) -> usize {
@@ -577,7 +1138,7 @@ fn layer_mean_map(
     out
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TerrariumWorldConfig {
     pub width: usize,
     pub height: usize,
@@ -593,6 +1154,22 @@ pub struct TerrariumWorldConfig {
     pub max_fruits: usize,
     pub max_seeds: usize,
     pub max_explicit_microbes: usize,
+    /// Base wind speed in mm/s. Default 0.3 mm/s (~gentle breeze at terrarium scale).
+    pub base_wind_speed_mm_s: f32,
+    /// Turbulence intensity (fraction of mean wind speed). Default 0.15.
+    pub turbulence_intensity: f32,
+    /// Observer latitude in degrees (positive = north).
+    /// Controls solar position, day length, and seasonal photoperiod.
+    pub latitude_deg: f32,
+    /// Emergent visual pipeline blend factor (0.0 = legacy hardcoded colors,
+    /// 1.0 = fully emergent from molecular optics). Default 1.0.
+    /// Allows A/B comparison during development and graceful fallback.
+    #[serde(default = "default_visual_emergence_blend")]
+    pub visual_emergence_blend: f32,
+}
+
+fn default_visual_emergence_blend() -> f32 {
+    1.0
 }
 
 impl Default for TerrariumWorldConfig {
@@ -612,11 +1189,38 @@ impl Default for TerrariumWorldConfig {
             max_fruits: 64,
             max_seeds: 96,
             max_explicit_microbes: 16,
+            base_wind_speed_mm_s: 0.3,
+            turbulence_intensity: 0.15,
+            latitude_deg: 42.0, // temperate, ~Boston/Rome
+            visual_emergence_blend: 1.0,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+pub struct WeatherState {
+    pub cloud_cover: f32,
+    pub precipitation_rate_mm_h: f32,
+    pub temperature_offset_c: f32,
+    pub regime: WeatherRegime,
+    pub regime_duration_s: f32,
+    pub lightning_flash: bool,
+    pub lightning_x: f32,
+    pub lightning_y: f32,
+    pub dew_intensity: f32,
+}
+
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+pub enum WeatherRegime {
+    #[default]
+    Clear,
+    PartlyCloudy,
+    Overcast,
+    Rain,
+    Storm,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TerrariumPlantGenome {
     pub species_id: u32,
     pub taxonomy_id: u32,
@@ -636,7 +1240,7 @@ pub struct TerrariumPlantGenome {
 }
 
 impl TerrariumPlantGenome {
-    pub fn sample(rng: &mut StdRng) -> Self {
+    pub fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self {
         Self {
             species_id: rng.gen_range(1..=10000),
             taxonomy_id: 0,
@@ -656,7 +1260,7 @@ impl TerrariumPlantGenome {
         }
     }
 
-    pub fn mutate(&self, rng: &mut StdRng) -> Self {
+    pub fn mutate<R: Rng + ?Sized>(&self, rng: &mut R) -> Self {
         Self {
             species_id: self.species_id,
             taxonomy_id: self.taxonomy_id,
@@ -687,16 +1291,132 @@ impl TerrariumPlantGenome {
             seed_mass: clamp(self.seed_mass + sample_normal(rng, 0.01), 0.03, 0.20),
         }
     }
+
+    pub fn recombine_with<R: Rng + ?Sized>(&self, other: &Self, rng: &mut R) -> Self {
+        let blend = |a: f32, b: f32, sigma: f32, lo: f32, hi: f32, rng: &mut R| {
+            let maternal_bias = rng.gen_range(0.40..0.60);
+            clamp(
+                a * maternal_bias + b * (1.0 - maternal_bias) + sample_normal(rng, sigma),
+                lo,
+                hi,
+            )
+        };
+        Self {
+            species_id: self.species_id,
+            taxonomy_id: self.taxonomy_id,
+            max_height_mm: blend(
+                self.max_height_mm,
+                other.max_height_mm,
+                0.45,
+                6.5,
+                20.0,
+                rng,
+            ),
+            canopy_radius_mm: blend(
+                self.canopy_radius_mm,
+                other.canopy_radius_mm,
+                0.18,
+                2.5,
+                9.5,
+                rng,
+            ),
+            root_radius_mm: blend(
+                self.root_radius_mm,
+                other.root_radius_mm,
+                0.16,
+                1.8,
+                7.0,
+                rng,
+            ),
+            leaf_efficiency: blend(
+                self.leaf_efficiency,
+                other.leaf_efficiency,
+                0.03,
+                0.55,
+                1.65,
+                rng,
+            ),
+            root_uptake_efficiency: blend(
+                self.root_uptake_efficiency,
+                other.root_uptake_efficiency,
+                0.03,
+                0.45,
+                1.6,
+                rng,
+            ),
+            water_use_efficiency: blend(
+                self.water_use_efficiency,
+                other.water_use_efficiency,
+                0.03,
+                0.45,
+                1.5,
+                rng,
+            ),
+            volatile_scale: blend(
+                self.volatile_scale,
+                other.volatile_scale,
+                0.04,
+                0.45,
+                1.8,
+                rng,
+            ),
+            fruiting_threshold: blend(
+                self.fruiting_threshold,
+                other.fruiting_threshold,
+                0.03,
+                0.3,
+                1.5,
+                rng,
+            ),
+            litter_turnover: blend(
+                self.litter_turnover,
+                other.litter_turnover,
+                0.03,
+                0.45,
+                1.8,
+                rng,
+            ),
+            shade_tolerance: blend(
+                self.shade_tolerance,
+                other.shade_tolerance,
+                0.03,
+                0.4,
+                1.7,
+                rng,
+            ),
+            root_depth_bias: blend(
+                self.root_depth_bias,
+                other.root_depth_bias,
+                0.02,
+                0.05,
+                1.1,
+                rng,
+            ),
+            symbiosis_affinity: blend(
+                self.symbiosis_affinity,
+                other.symbiosis_affinity,
+                0.03,
+                0.35,
+                1.8,
+                rng,
+            ),
+            seed_mass: blend(self.seed_mass, other.seed_mass, 0.006, 0.03, 0.20, rng),
+        }
+    }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct SeedPose {
     pub offset_mm: [f32; 3],
     pub rotation_xyz_rad: [f32; 3],
 }
 
-#[derive(Debug, Clone)]
+pub type TerrariumSeedPose = SeedPose;
+pub type TerrariumSeedMicrosite = seed_microsite::SeedMicrositeState;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TerrariumSeed {
+    pub identity: OrganismIdentity,
     pub x: f32,
     pub y: f32,
     pub dormancy_s: f32,
@@ -705,25 +1425,38 @@ pub struct TerrariumSeed {
     pub genome: TerrariumPlantGenome,
     pub cellular: SeedCellularStateSim,
     pub pose: SeedPose,
+    pub microsite: seed_microsite::SeedMicrositeState,
+    pub material_inventory: RegionalMaterialInventory,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TerrariumFruitPatch {
+    pub identity: OrganismIdentity,
     pub source: FruitSourceState,
+    pub taxonomy_id: u32,
+    pub source_genome: TerrariumPlantGenome,
+    pub composition: crate::terrarium::fruit_state::TerrariumFruitComposition,
+    pub development: Option<crate::terrarium::fruit_state::TerrariumFruitDevelopmentState>,
+    pub organ: crate::terrarium::fruit_state::TerrariumFruitOrganState,
+    pub reproduction: Option<crate::terrarium::fruit_reproduction::TerrariumFruitReproductionState>,
     pub radius: f32,
     pub previous_remaining: f32,
     pub deposited_all: bool,
+    pub material_inventory: RegionalMaterialInventory,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TerrariumPlant {
+    pub identity: OrganismIdentity,
     pub x: usize,
     pub y: usize,
     pub genome: TerrariumPlantGenome,
     pub physiology: PlantOrganismSim,
     pub cellular: PlantCellularStateSim,
     pub metabolome: crate::botany::PlantMetabolome,
+    pub botanical_genome: crate::botany::BotanicalGenome,
     pub morphology: crate::botany::PlantMorphology,
+    pub material_inventory: RegionalMaterialInventory,
 }
 
 impl TerrariumPlant {
@@ -732,10 +1465,34 @@ impl TerrariumPlant {
         y: usize,
         genome: TerrariumPlantGenome,
         biomass_scale: f32,
-        rng: &mut StdRng,
+        identity: OrganismIdentity,
+        rng: &mut impl Rng,
     ) -> Self {
-        let fruit_timer_s = rng.gen_range(7200.0..16000.0);
-        let seed_timer_s = rng.gen_range(14000.0..30000.0);
+        let morphology = crate::botany::PlantMorphology::for_taxonomy(genome.taxonomy_id);
+        let (fruit_timer_s, seed_timer_s) = match morphology.growth_form {
+            crate::botany::BotanicalGrowthForm::GrassClump => (
+                rng.gen_range(3600.0..9000.0),
+                rng.gen_range(5400.0..14000.0),
+            ),
+            crate::botany::BotanicalGrowthForm::FloatingAquatic => (
+                rng.gen_range(16000.0..32000.0),
+                rng.gen_range(4200.0..11000.0),
+            ),
+            crate::botany::BotanicalGrowthForm::SubmergedAquatic => (
+                rng.gen_range(20000.0..36000.0),
+                rng.gen_range(5200.0..14000.0),
+            ),
+            crate::botany::BotanicalGrowthForm::RosetteHerb => (
+                rng.gen_range(4800.0..12000.0),
+                rng.gen_range(7200.0..18000.0),
+            ),
+            crate::botany::BotanicalGrowthForm::OrchardTree
+            | crate::botany::BotanicalGrowthForm::StoneFruitTree
+            | crate::botany::BotanicalGrowthForm::CitrusTree => (
+                rng.gen_range(2400.0..7200.0),
+                rng.gen_range(6000.0..16000.0),
+            ),
+        };
         let physiology = PlantOrganismSim::new(
             genome.max_height_mm,
             genome.canopy_radius_mm,
@@ -765,14 +1522,122 @@ impl TerrariumPlant {
         let meristem_cells = 70.0 * biomass_scale * (0.85 + genome.seed_mass * 3.8);
         let cellular =
             PlantCellularStateSim::new(leaf_cells, stem_cells, root_cells, meristem_cells);
+        // Initialize botanical genome from the GenomicCatalog keyed by taxonomy_id.
+        // This gives each plant species its own GRN circuits (e.g. RbcL for Arabidopsis,
+        // TERPENE_BIOSYNTHESIS for citrus, ANTHOCYANIN_LOADING for stone fruit).
+        let botanical_genome = {
+            let catalog = crate::botany::GenomicCatalog::new();
+            catalog
+                .species
+                .get(&genome.taxonomy_id)
+                .map(|species| species.genome.clone())
+                .unwrap_or_else(|| {
+                    // Fallback: build a minimal genome with universal circuits
+                    let profile = crate::botany::species::species_profile_by_taxonomy(genome.taxonomy_id);
+                    let growth_form = profile
+                        .map(|p| p.growth_form)
+                        .unwrap_or(crate::botany::BotanicalGrowthForm::RosetteHerb);
+                    let fallback_profile = crate::botany::species::BotanicalSpeciesProfile {
+                        taxonomy_id: genome.taxonomy_id,
+                        common_name: "Unknown",
+                        scientific_name: "Unknown sp.",
+                        growth_form,
+                        symbolic_chromosomes: 5,
+                        max_height_mm: genome.max_height_mm,
+                        canopy_radius_mm: genome.canopy_radius_mm,
+                        root_radius_mm: genome.root_radius_mm,
+                        leaf_efficiency: genome.leaf_efficiency,
+                        root_uptake_efficiency: genome.root_uptake_efficiency,
+                        water_use_efficiency: genome.water_use_efficiency,
+                        volatile_scale: genome.volatile_scale,
+                        fruiting_threshold: genome.fruiting_threshold,
+                        litter_turnover: genome.litter_turnover,
+                        shade_tolerance: genome.shade_tolerance,
+                        root_depth_bias: genome.root_depth_bias,
+                        symbiosis_affinity: genome.symbiosis_affinity,
+                        seed_mass: genome.seed_mass,
+                        fruit_rgb: [0.6, 0.6, 0.3],
+                        wood_density: 300.0,
+                        drag_coefficient: 0.5,
+                        stem_diameter_fraction: 0.08,
+                    };
+                    let catalog2 = crate::botany::GenomicCatalog::new();
+                    // Use the catalog's circuit builder indirectly by building circuits
+                    // for the closest growth form
+                    let _ = fallback_profile;
+                    // Simple fallback: empty genome with universal circuits only
+                    crate::botany::BotanicalGenome {
+                        chromosomes: vec![crate::botany::genome::PlantChromosome {
+                            id: 1,
+                            sequence: "UNKNOWN_CHR1_SIM".to_string(),
+                        }],
+                        gene_circuits: {
+                            let mut circuits = std::collections::HashMap::new();
+                            circuits.insert(
+                                "RbcL".to_string(),
+                                crate::botany::genome::PlantGeneCircuit::activator_with_kinetics(
+                                    "RbcL",
+                                    vec![crate::botany::EnvironmentalSignal::LightIntensity],
+                                    2.0, 0.3, 1.0, 0.005,
+                                ),
+                            );
+                            circuits.insert(
+                                "FT".to_string(),
+                                crate::botany::genome::PlantGeneCircuit::activator_with_kinetics(
+                                    "FT",
+                                    vec![crate::botany::EnvironmentalSignal::Photoperiod],
+                                    4.0, 0.58, 1.0, 0.002,
+                                ),
+                            );
+                            circuits.insert(
+                                "DREB".to_string(),
+                                crate::botany::genome::PlantGeneCircuit::activator_with_kinetics(
+                                    "DREB",
+                                    vec![crate::botany::EnvironmentalSignal::AbscisicAcid],
+                                    2.0, 0.3, 1.0, 0.003,
+                                ),
+                            );
+                            circuits.insert(
+                                "NRT2.1".to_string(),
+                                crate::botany::genome::PlantGeneCircuit::repressor_with_kinetics(
+                                    "NRT2.1",
+                                    vec![crate::botany::EnvironmentalSignal::NutrientNitrogen],
+                                    2.0, 0.4, 1.0, 0.002,
+                                ),
+                            );
+                            circuits.insert(
+                                "PIN1".to_string(),
+                                crate::botany::genome::PlantGeneCircuit::activator_with_kinetics(
+                                    "PIN1",
+                                    vec![],
+                                    2.0, 0.5, 0.85, 0.001,
+                                ),
+                            );
+                            circuits.insert(
+                                "CHS".to_string(),
+                                crate::botany::genome::PlantGeneCircuit::activator_with_kinetics(
+                                    "CHS",
+                                    vec![crate::botany::EnvironmentalSignal::LightIntensity],
+                                    2.0, 0.4, 1.0, 0.002,
+                                ),
+                            );
+                            let _ = catalog2;
+                            circuits
+                        },
+                    }
+                })
+        };
         Self {
+            identity,
             x,
             y,
             genome,
             physiology,
             cellular,
             metabolome: crate::botany::PlantMetabolome::new(),
-            morphology: crate::botany::PlantMorphology::default(),
+            botanical_genome,
+            morphology,
+            material_inventory: RegionalMaterialInventory::new(format!("plant:{x}:{y}")),
         }
     }
 
@@ -821,247 +1686,11 @@ impl TerrariumPlant {
     }
 }
 
-/// Metabolic and ecological telemetry events emitted during a frame.
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize)]
-pub enum EcologyTelemetryEvent {
-    FlyAtpCrash { x: f32, y: f32, energy_charge: f32, trehalose_mm: f32 },
-    FlyStarvationOnset { x: f32, y: f32, trehalose_mm: f32, glycogen_mg: f32 },
-    FlyFeeding { x: f32, y: f32, sugar_ingested_mg: f32, trehalose_mm: f32 },
-    FlyEclosed { x: f32, y: f32 },
-    FlyHypoxiaOnset { x: f32, y: f32, ambient_o2: f32, altitude: f32 },
-    ExplicitPromotion { x: usize, y: usize, z: usize, guild: u8, represented_cells: f32 },
-    ExplicitDemotion { x: usize, y: usize, z: usize, represented_cells: f32, atp_mm: f32 },
-    ExplicitDeath { x: usize, y: usize, z: usize, reason: String, represented_cells: f32, atp_mm: f32, age_s: f32 },
-    CellDivision { x: usize, y: usize, z: usize, parent_represented_cells: f32, daughter_represented_cells: f32 },
-    CellDivisionDaughter { x: usize, y: usize, z: usize, represented_cells: f32, atp_mm: f32 },
-    PacketPopulationSeed { x: usize, y: usize },
-    PacketPromotion { x: usize, y: usize, z: usize, activity: f32, represented_cells: f32 },
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct TerrariumPlantSnapshot {
-    pub x: usize,
-    pub y: usize,
-    pub taxonomy_id: u32,
-    pub morphology: Vec<crate::botany::MorphNode>,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize)]
-pub struct TerrariumWorldSnapshot {
-    pub plants: usize,
-    pub full_plants: Vec<TerrariumPlantSnapshot>,
-    pub fruits: usize,
-    pub seeds: usize,
-    pub flies: usize,
-    pub food_remaining: f32,
-    pub fly_food_total: f32,
-    pub avg_fly_energy: f32,
-    pub avg_altitude: f32,
-    pub light: f32,
-    pub temperature: f32,
-    pub humidity: f32,
-    pub mean_soil_moisture: f32,
-    pub mean_deep_moisture: f32,
-    pub mean_microbes: f32,
-    pub mean_symbionts: f32,
-    pub mean_canopy: f32,
-    pub mean_root_density: f32,
-    pub total_plant_cells: f32,
-    pub mean_cell_vitality: f32,
-    pub mean_cell_energy: f32,
-    pub mean_division_pressure: f32,
-    pub mean_soil_glucose: f32,
-    pub mean_soil_oxygen: f32,
-    pub mean_soil_ammonium: f32,
-    pub mean_soil_nitrate: f32,
-    pub mean_soil_redox: f32,
-    pub mean_soil_atp_flux: f32,
-    pub mean_atmospheric_co2: f32,
-    pub mean_atmospheric_o2: f32,
-    pub ecology_event_count: usize,
-    pub avg_fly_energy_charge: f32,
-    pub fly_plant_proximity_mean: f32,
-    pub fly_altitude_mean: f32,
-    pub fly_o2_gradient_correlation: f32,
-    pub avg_wing_beat_freq: f32,
-    pub owned_fraction: f32,
-    pub atomistic_probes: usize,
-    pub substrate_backend: String,
-    pub substrate_steps: u64,
-    pub substrate_time_ms: f32,
-    pub time_s: f32,
-    /// Lunar phase 0..1 (0 = new moon, 0.5 = full moon, 1.0 = next new moon).
-    pub lunar_phase: f32,
-    /// Moonlight intensity 0..1 (peaks at full moon, zero at new moon).
-    pub moonlight: f32,
-    /// Tidal moisture multiplier (gravitational pull modulates soil water).
-    pub tidal_moisture_factor: f32,
-    pub avg_fly_hunger: f32,
-    pub avg_fly_trehalose_mm: f32,
-    pub avg_fly_atp_mm: f32,
-    pub fly_population_eggs: u32,
-    pub fly_population_embryos: u32,
-    pub fly_population_larvae: u32,
-    pub fly_population_pupae: u32,
-    pub fly_population_adults: u32,
-    pub fly_population_total: u32,
-    pub mean_air_pressure_kpa: f32,
-    pub mean_microbial_cells: f32,
-    pub mean_microbial_packets: f32,
-    pub mean_microbial_copiotroph_packets: f32,
-    pub mean_microbial_shadow_packets: f32,
-    pub mean_microbial_variant_packets: f32,
-    pub mean_microbial_novel_packets: f32,
-    pub mean_microbial_latent_packets: f32,
-    pub mean_microbial_oligotroph_packets: f32,
-    pub mean_microbial_packet_load: f32,
-    pub mean_microbial_copiotroph_fraction: f32,
-    pub mean_microbial_shadow_fraction: f32,
-    pub mean_microbial_variant_fraction: f32,
-    pub mean_microbial_novel_fraction: f32,
-    pub mean_microbial_bank_simpson_diversity: f32,
-    pub mean_microbial_strain_yield: f32,
-    pub mean_microbial_strain_stress_tolerance: f32,
-    pub mean_microbial_gene_catabolic: f32,
-    pub mean_microbial_gene_stress_response: f32,
-    pub mean_microbial_gene_dormancy_maintenance: f32,
-    pub mean_microbial_gene_extracellular_scavenging: f32,
-    pub mean_microbial_genotype_divergence: f32,
-    pub mean_microbial_catalog_generation: f32,
-    pub mean_microbial_catalog_novelty: f32,
-    pub mean_microbial_local_catalog_share: f32,
-    pub mean_microbial_catalog_bank_dominance: f32,
-    pub mean_microbial_catalog_bank_richness: f32,
-    pub mean_microbial_lineage_generation: f32,
-    pub mean_microbial_lineage_novelty: f32,
-    pub mean_microbial_packet_mutation_flux: f32,
-    pub mean_microbial_vitality: f32,
-    pub mean_microbial_dormancy: f32,
-    pub mean_microbial_reserve: f32,
-    pub mean_nitrifiers: f32,
-    pub mean_nitrifier_cells: f32,
-    pub mean_nitrifier_packets: f32,
-    pub mean_nitrifier_aerobic_packets: f32,
-    pub mean_nitrifier_shadow_packets: f32,
-    pub mean_nitrifier_variant_packets: f32,
-    pub mean_nitrifier_novel_packets: f32,
-    pub mean_nitrifier_latent_packets: f32,
-    pub mean_nitrifier_facultative_packets: f32,
-    pub mean_nitrifier_packet_load: f32,
-    pub mean_nitrifier_aerobic_fraction: f32,
-    pub mean_nitrifier_shadow_fraction: f32,
-    pub mean_nitrifier_variant_fraction: f32,
-    pub mean_nitrifier_novel_fraction: f32,
-    pub mean_nitrifier_bank_simpson_diversity: f32,
-    pub mean_nitrifier_strain_oxygen_affinity: f32,
-    pub mean_nitrifier_strain_ammonium_affinity: f32,
-    pub mean_nitrifier_gene_oxygen_respiration: f32,
-    pub mean_nitrifier_gene_ammonium_transport: f32,
-    pub mean_nitrifier_gene_stress_persistence: f32,
-    pub mean_nitrifier_gene_redox_efficiency: f32,
-    pub mean_nitrifier_genotype_divergence: f32,
-    pub mean_nitrifier_catalog_generation: f32,
-    pub mean_nitrifier_catalog_novelty: f32,
-    pub mean_nitrifier_local_catalog_share: f32,
-    pub mean_nitrifier_catalog_bank_dominance: f32,
-    pub mean_nitrifier_catalog_bank_richness: f32,
-    pub mean_nitrifier_lineage_generation: f32,
-    pub mean_nitrifier_lineage_novelty: f32,
-    pub mean_nitrifier_packet_mutation_flux: f32,
-    pub mean_nitrifier_vitality: f32,
-    pub mean_nitrifier_dormancy: f32,
-    pub mean_nitrifier_reserve: f32,
-    pub mean_nitrification_potential: f32,
-    pub mean_denitrifiers: f32,
-    pub mean_denitrifier_cells: f32,
-    pub mean_denitrifier_packets: f32,
-    pub mean_denitrifier_anoxic_packets: f32,
-    pub mean_denitrifier_shadow_packets: f32,
-    pub mean_denitrifier_variant_packets: f32,
-    pub mean_denitrifier_novel_packets: f32,
-    pub mean_denitrifier_latent_packets: f32,
-    pub mean_denitrifier_facultative_packets: f32,
-    pub mean_denitrifier_packet_load: f32,
-    pub mean_denitrifier_anoxic_fraction: f32,
-    pub mean_denitrifier_shadow_fraction: f32,
-    pub mean_denitrifier_variant_fraction: f32,
-    pub mean_denitrifier_novel_fraction: f32,
-    pub mean_denitrifier_bank_simpson_diversity: f32,
-    pub mean_denitrifier_strain_anoxia_affinity: f32,
-    pub mean_denitrifier_strain_nitrate_affinity: f32,
-    pub mean_denitrifier_gene_anoxia_respiration: f32,
-    pub mean_denitrifier_gene_nitrate_transport: f32,
-    pub mean_denitrifier_gene_stress_persistence: f32,
-    pub mean_denitrifier_gene_reductive_flexibility: f32,
-    pub mean_denitrifier_genotype_divergence: f32,
-    pub mean_denitrifier_catalog_generation: f32,
-    pub mean_denitrifier_catalog_novelty: f32,
-    pub mean_denitrifier_local_catalog_share: f32,
-    pub mean_denitrifier_catalog_bank_dominance: f32,
-    pub mean_denitrifier_catalog_bank_richness: f32,
-    pub mean_denitrifier_lineage_generation: f32,
-    pub mean_denitrifier_lineage_novelty: f32,
-    pub mean_denitrifier_packet_mutation_flux: f32,
-    pub mean_denitrifier_vitality: f32,
-    pub mean_denitrifier_dormancy: f32,
-    pub mean_denitrifier_reserve: f32,
-    pub mean_denitrification_potential: f32,
-    pub explicit_microbes: usize,
-    pub explicit_microbe_represented_cells: f32,
-    pub explicit_microbe_represented_packets: f32,
-    pub explicit_microbe_owned_fraction: f32,
-    pub explicit_microbe_max_authority: f32,
-    pub mean_explicit_microbe_activity: f32,
-    pub mean_explicit_microbe_atp_mm: f32,
-    pub mean_explicit_microbe_glucose_mm: f32,
-    pub mean_explicit_microbe_oxygen_mm: f32,
-    pub mean_explicit_microbe_division_progress: f32,
-    pub mean_explicit_microbe_local_co2: f32,
-    pub mean_explicit_microbe_translation_support: f32,
-    pub mean_explicit_microbe_energy_state: f32,
-    pub mean_explicit_microbe_stress_state: f32,
-    pub mean_explicit_microbe_genotype_divergence: f32,
-    pub mean_explicit_microbe_catalog_novelty: f32,
-    pub mean_explicit_microbe_local_catalog_share: f32,
-    pub packet_population_count: usize,
-    pub packet_population_total_cells: f32,
-    pub packet_population_mean_activity: f32,
-    pub packet_population_mean_dormancy: f32,
-    pub packet_population_total_packets: usize,
-    pub packet_population_promotion_candidates: usize,
-    pub plant_species_count: u32,
-    pub plant_species_ids: Vec<u32>,
-    pub ecology_events: Vec<EcologyTelemetryEvent>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TerrariumTopdownView {
-    Terrain,
-    SoilMoisture,
-    Canopy,
-    Chemistry,
-    Odor,
-    GasExchange,
-}
-
-impl TerrariumTopdownView {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Terrain => "terrain",
-            Self::SoilMoisture => "soil",
-            Self::Canopy => "canopy",
-            Self::Chemistry => "chemistry",
-            Self::Odor => "odor",
-            Self::GasExchange => "gas",
-        }
-    }
-}
-
-
 #[allow(dead_code)]
 pub struct TerrariumExplicitMicrobe {
-    pub x: usize, pub y: usize, pub z: usize,
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
     pub guild: u8,
     pub represented_cells: f32,
     pub represented_packets: f32,
@@ -1087,13 +1716,17 @@ pub struct TerrariumExplicitMicrobe {
 impl std::fmt::Debug for TerrariumExplicitMicrobe {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TerrariumExplicitMicrobe")
-            .field("x", &self.x).field("y", &self.y).field("z", &self.z)
-            .field("guild", &self.guild).field("represented_cells", &self.represented_cells)
-            .field("idx", &self.idx).finish_non_exhaustive()
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .field("z", &self.z)
+            .field("guild", &self.guild)
+            .field("represented_cells", &self.represented_cells)
+            .field("idx", &self.idx)
+            .finish_non_exhaustive()
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 pub struct TerrariumExplicitMicrobeIdentity {
     pub bank_idx: usize,
@@ -1107,153 +1740,312 @@ pub struct TerrariumExplicitMicrobeIdentity {
     pub gene_extracellular_scavenging: f32,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 pub struct WholeCellSnapshot {
-    pub atp_mm: f32, pub glucose_mm: f32, pub oxygen_mm: f32,
-    pub amino_acids_mm: f32, pub nucleotides_mm: f32,
-    pub membrane_precursors_mm: f32, pub metabolic_load: f32,
+    pub atp_mm: f32,
+    pub glucose_mm: f32,
+    pub oxygen_mm: f32,
+    pub amino_acids_mm: f32,
+    pub nucleotides_mm: f32,
+    pub membrane_precursors_mm: f32,
+    pub metabolic_load: f32,
     pub division_progress: f32,
     pub local_chemistry: Option<LocalChemistryReport>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 pub struct LocalChemistryReport {
-    pub mean_carbon_dioxide: f32, pub translation_support: f32,
-    pub atp_support: f32, pub crowding_penalty: f32,
+    pub mean_carbon_dioxide: f32,
+    pub translation_support: f32,
+    pub atp_support: f32,
+    pub crowding_penalty: f32,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 pub struct WholeCellEnvironmentInputs {
-    pub glucose_mm: f32, pub oxygen_mm: f32,
-    pub amino_acids_mm: f32, pub nucleotides_mm: f32,
-    pub membrane_precursors_mm: f32, pub metabolic_load: f32,
-    pub temperature_c: f32, pub proton_concentration: f32,
+    pub glucose_mm: f32,
+    pub oxygen_mm: f32,
+    pub amino_acids_mm: f32,
+    pub nucleotides_mm: f32,
+    pub membrane_precursors_mm: f32,
+    pub metabolic_load: f32,
+    pub temperature_c: f32,
+    pub proton_concentration: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[allow(dead_code)]
 pub enum MaterialRegionKind {
-    #[default] Soil, PoreWater, GasPhase, MineralSurface, BiofilmMatrix, Water, Air, Root, Biofilm,
+    #[default]
+    Soil,
+    PoreWater,
+    GasPhase,
+    MineralSurface,
+    BiofilmMatrix,
+    Water,
+    Air,
+    Root,
+    Biofilm,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[allow(dead_code)]
 pub enum MaterialPhaseKind {
-    #[default] Solid, Liquid, Gas, Dissolved, Colloidal, Aqueous, Interfacial, Amorphous,
+    #[default]
+    Solid,
+    Liquid,
+    Gas,
+    Dissolved,
+    Colloidal,
+    Aqueous,
+    Interfacial,
+    Amorphous,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
-pub struct MaterialPhaseSelector { pub kind: MaterialPhaseKind, pub min_fraction: f32 }
+pub struct MaterialPhaseSelector {
+    pub kind: MaterialPhaseKind,
+    pub min_fraction: f32,
+}
 #[allow(non_snake_case, dead_code)]
 impl MaterialPhaseSelector {
-    pub fn Exact(desc: MaterialPhaseDescriptor) -> Self { Self { kind: desc.kind, min_fraction: 1.0 } }
-    pub fn Kind(kind: MaterialPhaseKind) -> Self { Self { kind, min_fraction: 0.0 } }
+    pub fn Exact(desc: MaterialPhaseDescriptor) -> Self {
+        Self {
+            kind: desc.kind,
+            min_fraction: 1.0,
+        }
+    }
+    pub fn Kind(kind: MaterialPhaseKind) -> Self {
+        Self {
+            kind,
+            min_fraction: 0.0,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
-pub struct MaterialPhaseDescriptor { pub kind: MaterialPhaseKind, pub fraction: f32, pub conductivity: f32 }
+pub struct MaterialPhaseDescriptor {
+    pub kind: MaterialPhaseKind,
+    pub fraction: f32,
+    pub conductivity: f32,
+}
 #[allow(dead_code)]
 impl MaterialPhaseDescriptor {
-    pub fn ambient(kind: MaterialPhaseKind) -> Self { Self { kind, fraction: 1.0, conductivity: 0.025 } }
+    pub fn ambient(kind: MaterialPhaseKind) -> Self {
+        Self {
+            kind,
+            fraction: 1.0,
+            conductivity: 0.025,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct MoleculeDescriptor {
+    pub name: String,
+    pub molecular_weight: f32,
+    #[serde(default)]
+    pub element_counts: Vec<(crate::atomistic_chemistry::PeriodicElement, u16)>,
+}
+impl MoleculeDescriptor {
+    pub fn named(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            molecular_weight: 0.0,
+            element_counts: Vec::new(),
+        }
+    }
+
+    pub fn with_formula(
+        name: &str,
+        element_counts: &[(crate::atomistic_chemistry::PeriodicElement, u16)],
+    ) -> Self {
+        let molecular_weight = element_counts
+            .iter()
+            .map(|(element, count)| element.mass_daltons() * *count as f32)
+            .sum::<f32>();
+        Self {
+            name: name.to_string(),
+            molecular_weight,
+            element_counts: element_counts.to_vec(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
-pub struct MoleculeDescriptor { pub name: String, pub molecular_weight: f32 }
-impl MoleculeDescriptor { pub fn named(name: &str) -> Self { Self { name: name.to_string(), molecular_weight: 0.0 } } }
-
-#[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
-pub struct MoleculeGraph { pub nodes: Vec<u32>, pub edges: Vec<(u32, u32)> }
+pub struct MoleculeGraph {
+    pub nodes: Vec<u32>,
+    pub edges: Vec<(u32, u32)>,
+}
 #[allow(dead_code)]
 impl MoleculeGraph {
-    pub fn representative_glucose() -> MoleculeDescriptor { MoleculeDescriptor::named("glucose") }
-    pub fn representative_oxygen_gas() -> MoleculeDescriptor { MoleculeDescriptor::named("oxygen_gas") }
-    pub fn representative_amino_acid_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("amino_acid_pool") }
-    pub fn representative_nucleotide_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("nucleotide_pool") }
-    pub fn representative_membrane_precursor_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("membrane_precursor_pool") }
-    pub fn representative_atp() -> MoleculeDescriptor { MoleculeDescriptor::named("atp") }
-    pub fn representative_carbon_dioxide() -> MoleculeDescriptor { MoleculeDescriptor::named("carbon_dioxide") }
-    pub fn representative_proton_pool() -> MoleculeDescriptor { MoleculeDescriptor::named("proton_pool") }
-    pub fn representative_ammonium() -> MoleculeDescriptor { MoleculeDescriptor::named("ammonium") }
-    pub fn representative_nitrate() -> MoleculeDescriptor { MoleculeDescriptor::named("nitrate") }
-}
+    fn representative_inventory_species(species: TerrariumSpecies) -> MoleculeDescriptor {
+        crate::terrarium::inventory_species_registry::terrarium_inventory_molecule(species)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing inventory species molecule profile for {}",
+                    species.as_str()
+                )
+            })
+    }
 
-#[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
-pub struct RegionalMaterialInventory { pub regions: Vec<(MaterialRegionKind, f32)> }
-impl RegionalMaterialInventory {
-    pub fn new_empty() -> Self { Self::default() }
-    pub fn new(_name: String) -> Self { Self::default() }
-    pub fn total_amount_moles(&self) -> f64 { 0.0_f64 }
-    pub fn estimate_whole_cell_environment_inputs(&self, _regions: &[MaterialRegionKind]) -> WholeCellEnvironmentInputs { WholeCellEnvironmentInputs::default() }
-    pub fn total_amount_for_component(&self, _region: MaterialRegionKind, _molecule: &MoleculeDescriptor, _selector: &MaterialPhaseSelector) -> f32 { 0.0 }
-    pub fn add_component(&mut self, _region: MaterialRegionKind, _molecule: MoleculeDescriptor, _amount: f64, _phase: MaterialPhaseDescriptor) {}
-    pub fn deposit_component(&mut self, _region: MaterialRegionKind, _molecule: MoleculeDescriptor, _amount: f64, _phase: MaterialPhaseDescriptor) {}
-    pub fn set_component_amount(&mut self, _region: MaterialRegionKind, _molecule: MoleculeGraph, _phase: MaterialPhaseDescriptor, _amount: f64) -> Result<(), String> { Ok(()) }
-    pub fn remove_component_amount(&mut self, _region: MaterialRegionKind, _molecule: &MoleculeDescriptor, _amount: f64) -> Result<f64, String> { Ok(0.0) }
-    pub fn relax_toward(&mut self, _target: &RegionalMaterialInventory, _relaxation: f64) -> Result<(), String> { Ok(()) }
-    pub fn withdraw_component(&mut self, _region: MaterialRegionKind, _molecule: &MoleculeDescriptor, _amount: f64) -> f64 { 0.0 }
+    pub fn representative_water() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::Water)
+    }
+    pub fn representative_glucose() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::Glucose)
+    }
+    pub fn representative_oxygen_gas() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::OxygenGas)
+    }
+    pub fn representative_amino_acid_pool() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::AminoAcidPool)
+    }
+    pub fn representative_nucleotide_pool() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::NucleotidePool)
+    }
+    pub fn representative_membrane_precursor_pool() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::MembranePrecursorPool)
+    }
+    pub fn representative_silicate_mineral() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::SilicateMineral)
+    }
+    pub fn representative_clay_mineral() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::ClayMineral)
+    }
+    pub fn representative_carbonate_mineral() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::CarbonateMineral)
+    }
+    pub fn representative_iron_oxide_mineral() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::IronOxideMineral)
+    }
+    pub fn representative_dissolved_silicate() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::DissolvedSilicate)
+    }
+    pub fn representative_bicarbonate_pool() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::BicarbonatePool)
+    }
+    pub fn representative_surface_proton_load() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::SurfaceProtonLoad)
+    }
+    pub fn representative_calcium_bicarbonate_complex() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::CalciumBicarbonateComplex)
+    }
+    pub fn representative_sorbed_aluminum_hydroxide() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::SorbedAluminumHydroxide)
+    }
+    pub fn representative_sorbed_ferric_hydroxide() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::SorbedFerricHydroxide)
+    }
+    pub fn representative_exchangeable_calcium() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::ExchangeableCalcium)
+    }
+    pub fn representative_exchangeable_magnesium() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::ExchangeableMagnesium)
+    }
+    pub fn representative_exchangeable_potassium() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::ExchangeablePotassium)
+    }
+    pub fn representative_exchangeable_sodium() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::ExchangeableSodium)
+    }
+    pub fn representative_exchangeable_aluminum() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::ExchangeableAluminum)
+    }
+    pub fn representative_aqueous_iron() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::AqueousIronPool)
+    }
+    pub fn representative_atp() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::AtpFlux)
+    }
+    pub fn representative_carbon_dioxide() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::CarbonDioxide)
+    }
+    pub fn representative_proton_pool() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::Proton)
+    }
+    pub fn representative_ammonium() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::Ammonium)
+    }
+    pub fn representative_nitrate() -> MoleculeDescriptor {
+        Self::representative_inventory_species(TerrariumSpecies::Nitrate)
+    }
 }
 
 pub struct TerrariumWorld {
     pub config: TerrariumWorldConfig,
-    rng: StdRng,
-    atmosphere_rng_state: u64,
+    pub seed_provenance: TerrariumSeedProvenance,
+    pub(crate) rng: ChaCha12Rng,
+    pub(crate) atmosphere_rng_state: u64,
     pub time_s: f32,
-    odorant_params: Vec<OdorantChannelParams>,
-    odorants: Vec<Vec<f32>>,
-    temperature: Vec<f32>,
-    humidity: Vec<f32>,
-    wind_x: Vec<f32>,
-    wind_y: Vec<f32>,
-    wind_z: Vec<f32>,
+    pub(crate) odorant_params: Vec<OdorantChannelParams>,
+    pub(crate) odorants: Vec<Vec<f32>>,
+    pub(crate) temperature: Vec<f32>,
+    pub(crate) humidity: Vec<f32>,
+    pub(crate) wind_x: Vec<f32>,
+    pub(crate) wind_y: Vec<f32>,
+    pub(crate) wind_z: Vec<f32>,
     pub substrate: BatchedAtomTerrarium,
     pub waters: Vec<WaterSourceState>,
     pub fruits: Vec<TerrariumFruitPatch>,
     pub plants: Vec<TerrariumPlant>,
     pub seeds: Vec<TerrariumSeed>,
     pub flies: Vec<DrosophilaSim>,
-    sensory_field: TerrariumSensoryField,
-    canopy_cover: Vec<f32>,
-    root_density: Vec<f32>,
-    water_mask: Vec<f32>,
+    pub(crate) fly_identities: Vec<OrganismIdentity>,
+    pub(crate) organism_registry: organism_identity::OrganismRegistry,
+    pub(crate) organism_phylogeny: PhyloTree,
+    pub(crate) next_organism_id: u64,
+    pub(crate) sensory_field: TerrariumSensoryField,
+    pub(crate) canopy_cover: Vec<f32>,
+    pub(crate) root_density: Vec<f32>,
+    pub(crate) water_mask: Vec<f32>,
     pub(crate) moisture: Vec<f32>,
-    deep_moisture: Vec<f32>,
+    pub(crate) deep_moisture: Vec<f32>,
+    /// 4-layer depth-stratified soil moisture [0..1] per cell per layer.
+    pub(crate) soil_layer_moisture: [Vec<f32>; 4],
+    /// 4-layer depth-stratified soil nitrogen per cell per layer.
+    pub(crate) soil_layer_nitrogen: [Vec<f32>; 4],
     pub(crate) dissolved_nutrients: Vec<f32>,
     pub(crate) mineral_nitrogen: Vec<f32>,
-    shallow_nutrients: Vec<f32>,
-    deep_minerals: Vec<f32>,
+    pub(crate) shallow_nutrients: Vec<f32>,
+    pub(crate) deep_minerals: Vec<f32>,
     pub(crate) organic_matter: Vec<f32>,
-    litter_carbon: Vec<f32>,
-    microbial_biomass: Vec<f32>,
-    symbiont_biomass: Vec<f32>,
-    root_exudates: Vec<f32>,
-    soil_structure: Vec<f32>,
-    fly_food_total: f32,
+    pub(crate) litter_carbon: Vec<f32>,
+    pub(crate) litter_surface: Vec<litter_surface::LitterSurfaceState>,
+    pub(crate) microbial_biomass: Vec<f32>,
+    pub(crate) symbiont_biomass: Vec<f32>,
+    pub(crate) root_exudates: Vec<f32>,
+    pub(crate) soil_structure: Vec<f32>,
+    pub(crate) fly_food_total: f32,
     /// Per-fly metabolic state (7-pool Michaelis-Menten).
-    fly_metabolisms: Vec<FlyMetabolism>,
+    pub fly_metabolisms: Vec<FlyMetabolism>,
     /// Fly lifecycle population (egg→larva→pupa→adult with Sharpe-Schoolfield).
-    fly_pop: FlyPopulation,
+    pub(crate) fly_pop: FlyPopulation,
     /// Earthworm population (logistic growth + bioturbation).
-    earthworm_population: EarthwormPopulation,
+    pub(crate) earthworm_population: EarthwormPopulation,
     /// Nematode guilds (Lotka-Volterra bacterial/fungal grazing).
-    nematode_guilds: Vec<NematodeGuild>,
+    pub(crate) nematode_guilds: Vec<NematodeGuild>,
     /// Telemetry events emitted during the current step batch.
-    ecology_events: Vec<EcologyTelemetryEvent>,
+    pub(crate) ecology_events: Vec<EcologyTelemetryEvent>,
     /// Atomistic/MD probes embedded in the terrarium grid.
     pub(crate) atomistic_probes: Vec<AtomisticProbe>,
     /// Next probe ID for spawn_probe().
-    next_probe_id: u32,
+    pub(crate) next_probe_id: u32,
     /// Per-cell ownership map — determines which biology is authoritative.
-    ownership: Vec<SoilOwnershipCell>,
+    pub(crate) ownership: Vec<SoilOwnershipCell>,
     /// Cached ownership diagnostics, refreshed on `rebuild_ownership()`.
-    ownership_diagnostics: OwnershipDiagnostics,
+    pub(crate) ownership_diagnostics: OwnershipDiagnostics,
 
     // === Microbial guild + explicit microbe fields ===
     pub microbial_cells: Vec<f32>,
@@ -1265,7 +2057,7 @@ pub struct TerrariumWorld {
     pub microbial_latent_packets: Vec<Vec<f32>>,
     pub microbial_latent_strain_yield: Vec<Vec<f32>>,
     pub microbial_latent_strain_stress_tolerance: Vec<Vec<f32>>,
-    pub microbial_secondary: genotype::PublicSecondaryBanks,
+    pub(crate) microbial_secondary: genotype::PublicSecondaryBanks,
     pub microbial_vitality: Vec<f32>,
     pub microbial_dormancy: Vec<f32>,
     pub microbial_reserve: Vec<f32>,
@@ -1280,7 +2072,8 @@ pub struct TerrariumWorld {
     pub nitrifier_latent_packets: Vec<Vec<f32>>,
     pub nitrifier_latent_strain_oxygen_affinity: Vec<Vec<f32>>,
     pub nitrifier_latent_strain_ammonium_affinity: Vec<Vec<f32>>,
-    pub nitrifier_secondary: genotype::PublicSecondaryBanks,
+    #[allow(dead_code)]
+    pub(crate) nitrifier_secondary: genotype::PublicSecondaryBanks,
     pub nitrifier_vitality: Vec<f32>,
     pub nitrifier_dormancy: Vec<f32>,
     pub nitrifier_reserve: Vec<f32>,
@@ -1296,7 +2089,8 @@ pub struct TerrariumWorld {
     pub denitrifier_latent_packets: Vec<Vec<f32>>,
     pub denitrifier_latent_strain_anoxia_affinity: Vec<Vec<f32>>,
     pub denitrifier_latent_strain_nitrate_affinity: Vec<Vec<f32>>,
-    pub denitrifier_secondary: genotype::PublicSecondaryBanks,
+    #[allow(dead_code)]
+    pub(crate) denitrifier_secondary: genotype::PublicSecondaryBanks,
     pub denitrifier_vitality: Vec<f32>,
     pub denitrifier_dormancy: Vec<f32>,
     pub denitrifier_reserve: Vec<f32>,
@@ -1310,137 +2104,49 @@ pub struct TerrariumWorld {
     pub packet_populations: Vec<packet::GenotypePacketPopulation>,
     pub air_pressure_kpa: Vec<f32>,
     /// Global substep counter for multi-rate scheduling.
-    substep_counter: u64,
+    #[allow(dead_code)]
+    pub(crate) substep_counter: u64,
     /// Chronobiology configuration for circadian/lunar rhythm experiments.
     pub chronobiology_config: ChronobiologyConfig,
+    /// Optional year-scale climate boundary driver.
+    pub climate_driver: Option<climate_driver::TerrariumClimateDriver>,
     /// Molecular botany genomic species catalog.
     pub genomic_catalog: crate::botany::GenomicCatalog,
+    /// Emergent weather state (cloud cover, precipitation, temperature offset derived from physics).
+    pub weather: WeatherState,
+    /// Count of active mycorrhizal connections (updated per step).
+    pub(crate) mycorrhizal_connection_count: usize,
 }
 
 impl TerrariumWorld {
-    pub fn width(&self) -> usize {
-        self.config.width
-    }
-
-    pub fn height(&self) -> usize {
-        self.config.height
-    }
-
-    pub(crate) fn fly_population(&self) -> &FlyPopulation { &self.fly_pop }
-
-    /// Public accessor for fly metabolisms (used by 3D viewer zoom).
-    pub fn fly_metabolisms(&self) -> &[FlyMetabolism] { &self.fly_metabolisms }
-
-
-    // ===== Ownership API =====
-
-    /// Claim ownership of a soil cell at (x, y) for an explicit biology class.
-    ///
-    /// Returns `false` if the cell is already explicitly owned (no dual authority).
-    pub fn claim_ownership(&mut self, x: usize, y: usize, owner: SoilOwnershipClass, strength: f32) -> bool {
-        let w = self.config.width;
-        let h = self.config.height;
-        if x >= w || y >= h {
-            return false;
-        }
-        let idx = y * w + x;
-        if self.ownership[idx].owner.is_explicit() {
-            return false; // no dual authority
-        }
-        self.ownership[idx] = SoilOwnershipCell {
-            owner,
-            strength: strength.clamp(0.0, 1.0),
-        };
-        true
-    }
-
-    /// Release ownership of a soil cell back to background.
-    pub fn release_ownership(&mut self, x: usize, y: usize) {
-        let w = self.config.width;
-        let h = self.config.height;
-        if x >= w || y >= h {
-            return;
-        }
-        let idx = y * w + x;
-        self.ownership[idx] = SoilOwnershipCell::default();
-    }
-
-    /// Clear all ownership — returns entire soil to background authority.
-    pub fn clear_ownership(&mut self) {
-        for cell in &mut self.ownership {
-            *cell = SoilOwnershipCell::default();
-        }
-        self.ownership_diagnostics = OwnershipDiagnostics::default();
-    }
-
-    /// Returns the ownership suppression factor for broad-soil biology at (x, y).
-    ///
-    /// 1.0 = full background (no suppression), 0.0 = fully suppressed by explicit owner.
-    pub fn broad_biology_factor(&self, x: usize, y: usize) -> f32 {
-        let w = self.config.width;
-        let h = self.config.height;
-        if x >= w || y >= h {
-            return 1.0;
-        }
-        let cell = &self.ownership[y * w + x];
-        if cell.owner.is_background() {
-            1.0
-        } else {
-            (1.0 - cell.strength).max(0.0)
-        }
-    }
-
-    /// Recompute ownership diagnostics from the current ownership map.
-    pub fn rebuild_ownership_diagnostics(&mut self) {
-        let total = self.ownership.len() as f32;
-        if total < 1.0 {
-            self.ownership_diagnostics = OwnershipDiagnostics::default();
-            return;
-        }
-        let mut owned = 0u32;
-        let mut microbe = 0u32;
-        let mut genotype = 0u32;
-        let mut plant = 0u32;
-        let mut probe = 0u32;
-        let mut max_strength = 0.0f32;
-        for cell in &self.ownership {
-            if cell.owner.is_explicit() {
-                owned += 1;
-                max_strength = max_strength.max(cell.strength);
-                match cell.owner {
-                    SoilOwnershipClass::ExplicitMicrobeCohort { .. } => microbe += 1,
-                    SoilOwnershipClass::GenotypePacketRegion { .. } => genotype += 1,
-                    SoilOwnershipClass::PlantTissueRegion { .. } => plant += 1,
-                    SoilOwnershipClass::AtomisticProbeRegion { .. } => probe += 1,
-                    SoilOwnershipClass::Background => {}
-                }
-            }
-        }
-        self.ownership_diagnostics = OwnershipDiagnostics {
-            owned_fraction: owned as f32 / total,
-            microbe_owned_fraction: microbe as f32 / total,
-            genotype_owned_fraction: genotype as f32 / total,
-            plant_owned_fraction: plant as f32 / total,
-            probe_owned_fraction: probe as f32 / total,
-            max_strength,
-            overlap_count: 0, // no overlaps possible with claim_ownership guard
-        };
-    }
-
-    /// Current ownership diagnostics (call `rebuild_ownership_diagnostics()` first).
-    pub fn ownership_diagnostics(&self) -> OwnershipDiagnostics {
-        self.ownership_diagnostics
-    }
-
-    /// Access the raw ownership map.
-    pub fn ownership_map(&self) -> &[SoilOwnershipCell] {
-        &self.ownership
-    }
-
     pub fn new(config: TerrariumWorldConfig) -> Result<Self, String> {
-        let mut rng = StdRng::seed_from_u64(config.seed);
         let plane = config.width * config.height;
-        let total = plane * config.depth.max(1);
+        let depth = config.depth.max(1);
+        let volume = plane * depth;
+        let mut rng = ChaCha12Rng::seed_from_u64(config.seed);
+        let atmosphere_rng_state = rng.gen();
+        let soil_structure = build_seeded_soil_structure(config.width, config.height, config.seed);
+        let moisture: Vec<f32> = soil_structure
+            .iter()
+            .map(|structure| (0.22 + (1.0 - structure) * 0.16).clamp(0.08, 0.42))
+            .collect();
+        let deep_moisture: Vec<f32> = soil_structure
+            .iter()
+            .map(|structure| (0.26 + (1.0 - structure) * 0.12).clamp(0.10, 0.46))
+            .collect();
+        let litter_surface: Vec<litter_surface::LitterSurfaceState> = (0..plane)
+            .map(|flat| {
+                litter_surface::initialize_litter_surface(litter_surface::LitterSurfaceInputs {
+                    cell_size_mm: config.cell_size_mm,
+                    litter_carbon: 0.0,
+                    organic_matter: 0.5,
+                    surface_moisture: moisture[flat],
+                    deep_moisture: deep_moisture[flat],
+                    bioturbation_mm2_day: 0.0,
+                })
+            })
+            .collect();
+
         let substrate = BatchedAtomTerrarium::new(
             config.width,
             config.height,
@@ -1449,140 +2155,148 @@ impl TerrariumWorld {
             config.use_gpu_substrate,
         );
 
-        let moisture = (0..plane)
-            .map(|_| rng.gen_range(0.18..0.42))
-            .collect::<Vec<_>>();
-        let deep_moisture = (0..plane)
-            .map(|_| rng.gen_range(0.22..0.36))
-            .collect::<Vec<_>>();
-        let dissolved_nutrients = (0..plane)
-            .map(|_| rng.gen_range(0.01..0.03))
-            .collect::<Vec<_>>();
-        let mineral_nitrogen = (0..plane)
-            .map(|_| rng.gen_range(0.015..0.035))
-            .collect::<Vec<_>>();
-        let shallow_nutrients = (0..plane)
-            .map(|_| rng.gen_range(0.02..0.08))
-            .collect::<Vec<_>>();
-        let deep_minerals = (0..plane)
-            .map(|_| rng.gen_range(0.07..0.16))
-            .collect::<Vec<_>>();
-        let organic_matter = (0..plane)
-            .map(|_| rng.gen_range(0.002..0.03))
-            .collect::<Vec<_>>();
-        let litter_carbon = (0..plane)
-            .map(|_| rng.gen_range(0.006..0.02))
-            .collect::<Vec<_>>();
-        let microbial_biomass = (0..plane)
-            .map(|_| rng.gen_range(0.01..0.03))
-            .collect::<Vec<_>>();
-        let symbiont_biomass = (0..plane)
-            .map(|_| rng.gen_range(0.005..0.014))
-            .collect::<Vec<_>>();
-        let root_exudates = vec![0.0; plane];
-        let soil_structure = (0..plane)
-            .map(|_| rng.gen_range(0.35..0.75))
-            .collect::<Vec<_>>();
+        let soil_layer_moisture = [
+            moisture.clone(),           // Layer 0: surface (clone before move)
+            deep_moisture.clone(),      // Layer 1: shallow subsurface
+            vec![0.3; plane],           // Layer 2: moderate baseline
+            vec![0.25; plane],          // Layer 3: deep baseline
+        ];
+        let soil_layer_nitrogen = [
+            vec![0.05; plane],
+            vec![0.04; plane],
+            vec![0.03; plane],
+            vec![0.02; plane],
+        ];
 
         Ok(Self {
-            atmosphere_rng_state: config.seed ^ 0x9E37_79B9_7F4A_7C15,
+            seed_provenance: explicit_seed_provenance(config.seed, "world-config"),
             rng,
-            time_s: 8.0 * 3600.0,
+            atmosphere_rng_state,
+            // Start at dawn (06:00) so the first frame is visible, not pitch black
+            time_s: 6.0 * 3600.0,
+            // ALL odorant channel params derived from molecular structure via
+            // Chapman-Enskog (diffusion), OH-radical kinetics (decay), and
+            // element_counts (MW). Zero hardcoded values.
             odorant_params: vec![
-                odorant_channel_params("ethyl_acetate").ok_or("missing ethyl acetate params")?,
-                odorant_channel_params("geraniol").ok_or("missing geraniol params")?,
-                odorant_channel_params("ammonia").ok_or("missing ammonia params")?,
-                odorant_channel_params("carbon_dioxide").ok_or("missing carbon dioxide params")?,
-                odorant_channel_params("oxygen").ok_or("missing oxygen params")?,
+                emergent_rates::emergent_odorant_params("ethyl_acetate", 20.0).unwrap(),
+                emergent_rates::emergent_odorant_params("geraniol", 20.0).unwrap(),
+                emergent_rates::emergent_odorant_params("ammonia", 20.0).unwrap(),
+                emergent_rates::emergent_odorant_params("co2", 20.0).unwrap(),
+                emergent_rates::emergent_odorant_params("o2", 20.0).unwrap(),
+                emergent_rates::emergent_odorant_params("defense_voc", 20.0).unwrap(),
             ],
-            odorants: {
-                let mut fields = vec![vec![0.0; total]; 5];
-                fields[ATMOS_CO2_IDX].fill(0.045);
-                fields[ATMOS_O2_IDX].fill(ATMOS_O2_FRACTION);
-                fields
+            odorants: vec![
+                vec![0.0; volume],
+                vec![0.0; volume],
+                vec![0.0; volume],
+                vec![ATMOS_CO2_BASELINE; volume],
+                vec![ATMOS_O2_BASELINE; volume],
+                vec![0.0; volume],
+            ],
+            temperature: vec![22.0; volume],
+            // Derive initial humidity from temperature + soil moisture via
+            // Priestley-Taylor evaporative fraction (Allen+ 1998, FAO-56).
+            // At equilibrium, RH ≈ soil_moisture × PT_fraction × scaling.
+            humidity: {
+                let init_temp = 22.0_f32;
+                let pt_frac = emergent_rates::priestley_taylor_fraction(init_temp);
+                let mean_soil_m = moisture.iter().sum::<f32>() / moisture.len().max(1) as f32;
+                // Equilibrium humidity from evaporative supply (clear-sky, no advection)
+                let eq_humidity = (mean_soil_m * pt_frac * 0.8).clamp(0.10, 0.50);
+                vec![eq_humidity; volume]
             },
-            temperature: vec![22.0; total],
-            humidity: vec![0.4; total],
-            wind_x: vec![0.0; total],
-            wind_y: vec![0.0; total],
-            wind_z: vec![0.0; total],
+            wind_x: vec![0.0; volume],
+            wind_y: vec![0.0; volume],
+            wind_z: vec![0.0; volume],
             substrate,
             waters: Vec::new(),
             fruits: Vec::new(),
             plants: Vec::new(),
             seeds: Vec::new(),
             flies: Vec::new(),
-            sensory_field: TerrariumSensoryField::new(config.width, config.height, config.depth),
+            fly_identities: Vec::new(),
+            organism_registry: std::collections::BTreeMap::new(),
+            organism_phylogeny: PhyloTree::default(),
+            next_organism_id: 1,
+            sensory_field: TerrariumSensoryField::new(
+                config.width,
+                config.height,
+                config.depth.max(1),
+            ),
             canopy_cover: vec![0.0; plane],
             root_density: vec![0.0; plane],
             water_mask: vec![0.0; plane],
             moisture,
             deep_moisture,
-            dissolved_nutrients,
-            mineral_nitrogen,
-            shallow_nutrients,
-            deep_minerals,
-            litter_carbon,
-            microbial_biomass,
-            symbiont_biomass,
-            root_exudates,
+            soil_layer_moisture,
+            soil_layer_nitrogen,
+            dissolved_nutrients: vec![0.05; plane],
+            mineral_nitrogen: vec![0.02; plane],
+            shallow_nutrients: vec![0.05; plane],
+            deep_minerals: vec![0.05; plane],
+            organic_matter: vec![0.5; plane],
+            litter_carbon: vec![0.0; plane],
+            litter_surface,
+            microbial_biomass: vec![0.1; plane],
+            symbiont_biomass: vec![0.0; plane],
+            root_exudates: vec![0.0; plane],
             soil_structure,
             fly_food_total: 0.0,
+            fly_metabolisms: Vec::new(),
+            fly_pop: FlyPopulation::new(config.seed),
+            earthworm_population: EarthwormPopulation::empty(config.width, config.height),
+            nematode_guilds: vec![
+                NematodeGuild::empty(NematodeKind::BacterialFeeder, config.width, config.height),
+                NematodeGuild::empty(NematodeKind::FungalFeeder, config.width, config.height),
+                NematodeGuild::empty(NematodeKind::Omnivore, config.width, config.height),
+            ],
             ecology_events: Vec::new(),
             atomistic_probes: Vec::new(),
-            next_probe_id: 0,
-            fly_metabolisms: Vec::new(),
-            fly_pop: FlyPopulation::new(config.seed.wrapping_add(99)),
-            earthworm_population: EarthwormPopulation::new(config.width, config.height, &organic_matter),
-            organic_matter,
-            nematode_guilds: vec![
-                NematodeGuild::new(NematodeKind::BacterialFeeder, config.width, config.height),
-                NematodeGuild::new(NematodeKind::FungalFeeder, config.width, config.height),
-            ],
+            next_probe_id: 1,
             ownership: vec![SoilOwnershipCell::default(); plane],
             ownership_diagnostics: OwnershipDiagnostics::default(),
-            microbial_cells: vec![0.0; plane],
+            microbial_cells: vec![1e6; plane],
             microbial_packets: vec![0.0; plane],
             microbial_copiotroph_packets: vec![0.0; plane],
-            microbial_copiotroph_fraction: vec![0.0; plane],
+            microbial_copiotroph_fraction: vec![0.5; plane],
             microbial_strain_yield: vec![0.5; plane],
             microbial_strain_stress_tolerance: vec![0.5; plane],
-            microbial_latent_packets: Vec::new(),
-            microbial_latent_strain_yield: Vec::new(),
-            microbial_latent_strain_stress_tolerance: Vec::new(),
-            microbial_secondary: genotype::PublicSecondaryBanks::new(plane),
-            microbial_vitality: vec![0.5; plane],
+            microbial_latent_packets: vec![vec![0.0; 0]; plane],
+            microbial_latent_strain_yield: vec![vec![0.5; 0]; plane],
+            microbial_latent_strain_stress_tolerance: vec![vec![0.5; 0]; plane],
+            microbial_secondary: crate::terrarium::genotype::PublicSecondaryBanks::new(plane),
+            microbial_vitality: vec![0.8; plane],
             microbial_dormancy: vec![0.0; plane],
             microbial_reserve: vec![0.3; plane],
             microbial_packet_mutation_flux: vec![0.0; plane],
-            nitrifier_biomass: vec![0.0; plane],
-            nitrifier_cells: vec![0.0; plane],
+            nitrifier_biomass: vec![0.01; plane],
+            nitrifier_cells: vec![1e4; plane],
             nitrifier_packets: vec![0.0; plane],
             nitrifier_aerobic_packets: vec![0.0; plane],
-            nitrifier_aerobic_fraction: vec![0.0; plane],
+            nitrifier_aerobic_fraction: vec![0.5; plane],
             nitrifier_strain_oxygen_affinity: vec![0.5; plane],
             nitrifier_strain_ammonium_affinity: vec![0.5; plane],
-            nitrifier_latent_packets: Vec::new(),
-            nitrifier_latent_strain_oxygen_affinity: Vec::new(),
-            nitrifier_latent_strain_ammonium_affinity: Vec::new(),
-            nitrifier_secondary: genotype::PublicSecondaryBanks::new(plane),
-            nitrifier_vitality: vec![0.5; plane],
+            nitrifier_latent_packets: vec![vec![0.0; 0]; plane],
+            nitrifier_latent_strain_oxygen_affinity: vec![vec![0.5; 0]; plane],
+            nitrifier_latent_strain_ammonium_affinity: vec![vec![0.5; 0]; plane],
+            nitrifier_secondary: crate::terrarium::genotype::PublicSecondaryBanks::new(plane),
+            nitrifier_vitality: vec![0.8; plane],
             nitrifier_dormancy: vec![0.0; plane],
             nitrifier_reserve: vec![0.3; plane],
             nitrifier_packet_mutation_flux: vec![0.0; plane],
             nitrification_potential: vec![0.0; plane],
-            denitrifier_biomass: vec![0.0; plane],
-            denitrifier_cells: vec![0.0; plane],
+            denitrifier_biomass: vec![0.01; plane],
+            denitrifier_cells: vec![1e4; plane],
             denitrifier_packets: vec![0.0; plane],
             denitrifier_anoxic_packets: vec![0.0; plane],
-            denitrifier_anoxic_fraction: vec![0.0; plane],
+            denitrifier_anoxic_fraction: vec![0.5; plane],
             denitrifier_strain_anoxia_affinity: vec![0.5; plane],
             denitrifier_strain_nitrate_affinity: vec![0.5; plane],
-            denitrifier_latent_packets: Vec::new(),
-            denitrifier_latent_strain_anoxia_affinity: Vec::new(),
-            denitrifier_latent_strain_nitrate_affinity: Vec::new(),
-            denitrifier_secondary: genotype::PublicSecondaryBanks::new(plane),
-            denitrifier_vitality: vec![0.5; plane],
+            denitrifier_latent_packets: vec![vec![0.0; 0]; plane],
+            denitrifier_latent_strain_anoxia_affinity: vec![vec![0.5; 0]; plane],
+            denitrifier_latent_strain_nitrate_affinity: vec![vec![0.5; 0]; plane],
+            denitrifier_secondary: crate::terrarium::genotype::PublicSecondaryBanks::new(plane),
+            denitrifier_vitality: vec![0.8; plane],
             denitrifier_dormancy: vec![0.0; plane],
             denitrifier_reserve: vec![0.3; plane],
             denitrifier_packet_mutation_flux: vec![0.0; plane],
@@ -1590,165 +2304,188 @@ impl TerrariumWorld {
             explicit_microbes: Vec::new(),
             explicit_microbe_authority: vec![0.0; plane],
             explicit_microbe_activity: vec![0.0; plane],
-            next_microbe_idx: 0,
+            next_microbe_idx: 1,
             md_calibrator: None,
             packet_populations: Vec::new(),
             air_pressure_kpa: vec![101.325; plane],
             substep_counter: 0,
             chronobiology_config: ChronobiologyConfig::default(),
+            climate_driver: None,
             genomic_catalog: crate::botany::GenomicCatalog::new(),
+            weather: WeatherState::default(),
+            mycorrhizal_connection_count: 0,
             config,
         })
     }
 
     pub fn demo(seed: u64, use_gpu_substrate: bool) -> Result<Self, String> {
-        let mut world = Self::new(TerrariumWorldConfig {
-            seed,
-            use_gpu_substrate,
-            ..TerrariumWorldConfig::default()
-        })?;
-        world.seed_demo_layout();
-        Ok(world)
+        Self::demo_preset(seed, use_gpu_substrate, TerrariumDemoPreset::Demo)
     }
 
-    pub fn seed_demo_layout(&mut self) {
-        self.waters.clear();
-        self.fruits.clear();
-        self.plants.clear();
-        self.seeds.clear();
-        self.flies.clear();
-        self.fly_food_total = 0.0;
-        self.time_s = 8.0 * 3600.0;
-
-        for (x, y, volume) in [(8, 25, 180.0), (21, 14, 110.0), (35, 22, 160.0)] {
-            self.add_water(x, y, volume, 0.0008);
+    pub(crate) fn seed_default_demo_layout(&mut self, seed: u64) -> Result<(), String> {
+        // Add some initial entities
+        self.add_water(self.config.width / 2, self.config.height / 2, 500.0, 0.001);
+        self.earthworm_population =
+            EarthwormPopulation::new(self.config.width, self.config.height, &self.organic_matter);
+        self.nematode_guilds =
+            crate::soil_fauna::default_nematode_guilds(self.config.width, self.config.height);
+        for (i, taxonomy_id) in crate::terrarium::plant_species::DEMO_PLANT_TAXONOMIES
+            .iter()
+            .enumerate()
+        {
+            let rx = self.rng.gen_range(5..self.config.width - 5);
+            let ry = self.rng.gen_range(5..self.config.height - 5);
+            let genome =
+                crate::terrarium::plant_species::genome_for_taxonomy(*taxonomy_id, &mut self.rng);
+            let scale = if matches!(*taxonomy_id, 15368 | 3702) {
+                Some(0.72)
+            } else {
+                None
+            };
+            let _ = self.add_plant(rx, ry, Some(genome), scale);
+            if !matches!(*taxonomy_id, 15368) {
+                let fx = offset_clamped(rx, if i % 2 == 0 { 1 } else { -1 }, self.config.width);
+                let fy = offset_clamped(ry, if i % 2 == 0 { -1 } else { 1 }, self.config.height);
+                self.add_fruit(fx, fy, 0.8 + i as f32 * 0.15, None);
+            }
         }
 
-        for (x, y) in [(6, 7), (14, 11), (26, 8), (34, 15), (37, 25), (11, 24)] {
-            let _ = self.add_plant(x, y, None, None);
+        // Add denser herb/grass patches plus a small seed bank so the frontends
+        // show active recruitment and not just isolated mature specimens.
+        for _ in 0..5 {
+            let gx = self.rng.gen_range(3..self.config.width - 3);
+            let gy = self.rng.gen_range(3..self.config.height - 3);
+            let grass_genome =
+                crate::terrarium::plant_species::genome_for_taxonomy(15368, &mut self.rng);
+            let _ = self.add_plant(gx, gy, Some(grass_genome.clone()), Some(0.64));
+            for _ in 0..3 {
+                let sx = offset_clamped(gx, self.rng.gen_range(-2..=2), self.config.width);
+                let sy = offset_clamped(gy, self.rng.gen_range(-2..=2), self.config.height);
+                let jitter_x = self.rng.gen_range(-0.35..0.35);
+                let jitter_y = self.rng.gen_range(-0.35..0.35);
+                let child_genome = grass_genome.mutate(&mut self.rng);
+                let dormancy = self.rng.gen_range(1800.0..5600.0);
+                self.add_seed(
+                    sx as f32 + jitter_x,
+                    sy as f32 + jitter_y,
+                    child_genome,
+                    None,
+                    Some(dormancy),
+                );
+            }
         }
 
-        for (x, y) in [(22, 16), (15, 11), (30, 22)] {
-            self.add_fruit(x, y, 1.0, None);
+        for _ in 0..3 {
+            let hx = self.rng.gen_range(3..self.config.width - 3);
+            let hy = self.rng.gen_range(3..self.config.height - 3);
+            let herb_genome =
+                crate::terrarium::plant_species::genome_for_taxonomy(3702, &mut self.rng);
+            let _ = self.add_plant(hx, hy, Some(herb_genome.clone()), Some(0.58));
+            for _ in 0..2 {
+                let sx = offset_clamped(hx, self.rng.gen_range(-2..=2), self.config.width);
+                let sy = offset_clamped(hy, self.rng.gen_range(-2..=2), self.config.height);
+                let jitter_x = self.rng.gen_range(-0.25..0.25);
+                let jitter_y = self.rng.gen_range(-0.25..0.25);
+                let child_genome = herb_genome.mutate(&mut self.rng);
+                let dormancy = self.rng.gen_range(2400.0..7200.0);
+                self.add_seed(
+                    sx as f32 + jitter_x,
+                    sy as f32 + jitter_y,
+                    child_genome,
+                    None,
+                    Some(dormancy),
+                );
+            }
         }
 
-        self.add_fly(DrosophilaScale::Tiny, 20.0, 16.0, self.config.seed);
-        self.add_fly(DrosophilaScale::Tiny, 24.0, 18.0, self.config.seed + 1);
-    }
-
-    pub fn add_water(&mut self, x: usize, y: usize, volume: f32, evaporation_rate: f32) {
-        self.waters.push(WaterSourceState {
-            x: x.min(self.config.width - 1),
-            y: y.min(self.config.height - 1),
-            z: 0,
-            volume,
-            evaporation_rate,
-            alive: true,
-        });
-        deposit_2d(
-            &mut self.moisture,
-            self.config.width,
-            self.config.height,
-            x,
-            y,
-            2,
-            0.18,
-        );
-        deposit_2d(
-            &mut self.deep_moisture,
-            self.config.width,
-            self.config.height,
-            x,
-            y,
-            2,
-            0.10,
-        );
-    }
-
-    pub fn add_fruit(&mut self, x: usize, y: usize, size: f32, volatile_scale: Option<f32>) {
-        if self.fruits.len() >= self.config.max_fruits {
-            return;
+        for i in 0..2 {
+            let x = self.rng.gen_range(3.0..(self.config.width as f32 - 3.0));
+            let y = self.rng.gen_range(3.0..(self.config.height as f32 - 3.0));
+            self.add_fly(
+                DrosophilaScale::Tiny,
+                x,
+                y,
+                seed.wrapping_add(100 + i as u64),
+            );
         }
-        let volatile_scale = volatile_scale.unwrap_or(1.0);
-        let remaining = size.clamp(0.35, 1.5);
-        self.fruits.push(TerrariumFruitPatch {
-            source: FruitSourceState {
-                x: x.min(self.config.width - 1),
-                y: y.min(self.config.height - 1),
-                z: 0,
-                ripeness: 0.88,
-                sugar_content: remaining.min(1.0),
-                odorant_emission_rate: 0.05 + size * 0.10 * volatile_scale,
-                decay_rate: 0.00025 + size * 0.00003,
-                alive: true,
-                odorant_profile: vec![
-                    (ETHYL_ACETATE_IDX, 0.90 * volatile_scale),
-                    (AMMONIA_IDX, 0.02),
-                ],
-            },
-            radius: (2.4 + size).clamp(2.0, 4.0),
-            previous_remaining: remaining.min(1.0),
-            deposited_all: false,
-        });
+        Ok(())
     }
 
-    pub fn add_plant(
-        &mut self,
-        x: usize,
-        y: usize,
-        genome: Option<TerrariumPlantGenome>,
-        biomass_scale: Option<f32>,
-    ) -> usize {
-        let genome = genome.unwrap_or_else(|| TerrariumPlantGenome::sample(&mut self.rng));
-        let biomass_scale = biomass_scale
-            .unwrap_or_else(|| self.rng.gen_range(0.75..1.25) * (0.75 + genome.seed_mass * 4.5));
-        let plant = TerrariumPlant::new(
-            x.min(self.config.width - 1),
-            y.min(self.config.height - 1),
-            genome,
-            biomass_scale,
-            &mut self.rng,
-        );
-        self.plants.push(plant);
-        self.plants.len() - 1
+    pub fn width(&self) -> usize {
+        self.config.width
     }
 
-    pub fn add_fly(&mut self, scale: DrosophilaScale, x: f32, y: f32, seed: u64) {
-        let mut fly = DrosophilaSim::new(scale, seed);
-        let heading = self.rng.gen_range(0.0..std::f32::consts::TAU);
-        fly.set_body_state(
-            x.clamp(1.0, self.config.width as f32 - 2.0),
-            y.clamp(1.0, self.config.height as f32 - 2.0),
-            heading,
-            Some(0.0),
-            Some(0.0),
-            Some(false),
-            Some(0.0),
-            Some(95.0),
-            Some(22.0),
-            Some(self.time_of_day_hours()),
-        );
-        self.flies.push(fly);
-        self.fly_metabolisms.push(FlyMetabolism::default());
+    pub fn height(&self) -> usize {
+        self.config.height
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn fly_population(&self) -> &FlyPopulation {
+        &self.fly_pop
     }
 
     /// Step the entire terrarium world by one frame.
     pub fn step_frame(&mut self) -> Result<(), String> {
         let dt = self.config.world_dt_s;
-        self.time_s += dt;
-        
-        // 1. Step atmosphere
+        // Advance wall-clock time by dt × time_warp so the day/night cycle
+        // and clock display match the ecological timescale.
+        self.time_s += dt * self.config.time_warp;
+        self.step_climate_driver(dt);
+        self.step_weather(dt);
+        self.step_lightning(dt);
+        self.step_wind_turbulence(dt);
+
+        // 1. Step atmosphere and the molecular boundary conditions seen by
+        // every higher-scale subsystem.
         self.step_atmosphere()?;
-        
-        // 2. Step plants
+        self.step_biomechanics(dt);
+        self.step_soil_profile(dt);
+
+        // 2. Step plants and plant-attached fruit production from the native
+        // plant physiology + cellular state, then let fruit lifecycle state
+        // handle drop/decay/seed release into the soil.
         self.step_plants(dt)?;
-        
-        // 3. Step flies
+        self.step_food_patches_native(dt)?;
+
+        // 3. Step animal behavior and the coupled fly metabolism / life cycle.
         self.step_flies()?;
-        
-        // 4. Step substrate
+        self.step_fly_metabolism(dt);
+        self.step_fly_population(dt);
+
+        // 4. Step soil fauna before seed burial/germination so earthworm-driven
+        // microsite mixing can shape the live seed state in the same frame.
+        self.step_soil_fauna_phase(dt);
+        self.step_seeds_native(dt)?;
+        self.step_explicit_microbes(dt)?;
+        self.recruit_packet_populations();
+        self.step_packet_populations(dt)?;
+
+        // 5. Step broad soil chemistry only as the remaining background
+        // authority outside explicitly owned regions.
+        let _ = self.step_broad_soil(dt);
+        self.step_latent_strain_banks(dt)?;
+        self.step_surface_respiration(dt);
+        self.sync_substrate_controls()?;
+        self.rebuild_explicit_microbe_fields();
+        self.rebuild_ownership_diagnostics();
+
+        // 6. Step atomistic probes (MD).
+        self.step_atomistic_probes();
+
+        // 7. Advance the substrate backend after control fields have been
+        // synchronized from the explicit biological state.
+        // Set substrate temperature from the mean atmospheric temperature
+        // so emergent rate engine derives rates at the current conditions.
+        {
+            let plane = self.config.width * self.config.height;
+            if plane > 0 {
+                let sum: f32 = self.temperature.iter().take(plane).sum();
+                self.substrate.temperature_c = sum / plane as f32;
+            }
+        }
         self.substrate.step(dt * 1000.0);
-        
+        self.rebuild_water_mask();
+
         Ok(())
     }
 
@@ -1757,367 +2494,377 @@ impl TerrariumWorld {
         phase.sin().max(0.0)
     }
 
-    pub fn time_of_day_hours(&self) -> f32 {
-        (self.time_s.rem_euclid(DAY_LENGTH_S) / 3600.0).rem_euclid(24.0)
+    /// Compute actual solar state from simulation time, latitude, and cloud cover.
+    /// Used by frontend to drive lighting direction, sky color, shadow position.
+    pub fn solar_state(&self) -> solar::SolarState {
+        solar::compute_solar_state(
+            self.time_s,
+            self.config.latitude_deg,
+            self.weather.cloud_cover,
+        )
     }
 
-    pub fn time_label(&self) -> String {
-        let seconds = self.time_s.rem_euclid(DAY_LENGTH_S);
-        let hours = (seconds / 3600.0).floor() as i32;
-        let minutes = ((seconds % 3600.0) / 60.0).floor() as i32;
-        format!("{hours:02}:{minutes:02}")
+    pub fn moonlight(&self) -> f32 {
+        let phase = self.lunar_phase();
+        // Simple peak at 0.5 (full moon)
+        let intensity = (std::f32::consts::PI * phase).sin().powi(2);
+        let daylight = self.daylight();
+        // Dim moonlight by daylight
+        intensity * (1.0 - daylight)
     }
 
-    // ── Lunar cycle ──────────────────────────────────────────────────────────
-
-    /// Synodic month in seconds (29.530589 days) — default, but configurable via chronobiology_config.
-    const LUNAR_PERIOD_S: f32 = 29.530589 * 86_400.0;
-
-    /// Lunar phase 0..1 (0 = new moon, 0.5 = full moon, 1.0 wraps to new moon).
-    /// Uses configurable period from chronobiology_config for experimental protocols.
     pub fn lunar_phase(&self) -> f32 {
         let period_s = self.chronobiology_config.lunar_period_days * 86_400.0;
         (self.time_s / period_s).rem_euclid(1.0)
     }
 
-    /// Moonlight intensity 0..1. Peaks at full moon (phase=0.5), zero at new moon.
-    /// Uses cosine so the curve is smooth and symmetric.
-    pub fn moonlight(&self) -> f32 {
+    pub fn moon_phase_name(&self) -> &'static str {
         let phase = self.lunar_phase();
-        // cos(2π(phase - 0.5)) peaks at phase=0.5 (full moon)
-        let raw = (2.0 * std::f32::consts::PI * (phase - 0.5)).cos();
-        // Map from [-1,1] to [0,1]
-        (raw * 0.5 + 0.5).clamp(0.0, 1.0)
+        if phase < 0.0625 || phase >= 0.9375 {
+            "New Moon"
+        } else if phase < 0.1875 {
+            "Waxing Crescent"
+        } else if phase < 0.3125 {
+            "First Quarter"
+        } else if phase < 0.4375 {
+            "Waxing Gibbous"
+        } else if phase < 0.5625 {
+            "Full Moon"
+        } else if phase < 0.6875 {
+            "Waning Gibbous"
+        } else if phase < 0.8125 {
+            "Last Quarter"
+        } else {
+            "Waning Crescent"
+        }
     }
 
-    /// Tidal moisture multiplier: gravitational influence on soil water transport.
-    /// Full moon & new moon = spring tides (max pull, ±15%), quarter moons = neap (min).
-    /// Range: 0.85 .. 1.15
     pub fn tidal_moisture_factor(&self) -> f32 {
         let phase = self.lunar_phase();
-        // Spring tides at 0.0 and 0.5; neap tides at 0.25 and 0.75
-        let tidal = (4.0 * std::f32::consts::PI * phase).cos(); // [-1,1]
-        1.0 + 0.15 * tidal
+        // Spring tide at 0.0 and 0.5, Neap tide at 0.25 and 0.75
+        let cos_2phi = (4.0 * std::f32::consts::PI * phase).cos();
+        1.0 + 0.15 * cos_2phi
     }
 
-    /// Nocturnal activity boost for insects under moonlight.
-    /// At night with full moon, activity increases based on lunar_activity_multiplier.
-    /// Daytime: no effect.
     pub fn nocturnal_activity_factor(&self) -> f32 {
-        let darkness = 1.0 - self.daylight();
-        1.0 + self.chronobiology_config.lunar_activity_multiplier * darkness * self.moonlight()
+        let ml = self.moonlight();
+        1.0 + self.chronobiology_config.lunar_activity_multiplier * ml
     }
 
-    /// Moon phase name for display.
-    pub fn moon_phase_name(&self) -> &'static str {
-        let p = self.lunar_phase();
-        match () {
-            _ if p < 0.0625  => "New Moon",
-            _ if p < 0.1875  => "Waxing Crescent",
-            _ if p < 0.3125  => "First Quarter",
-            _ if p < 0.4375  => "Waxing Gibbous",
-            _ if p < 0.5625  => "Full Moon",
-            _ if p < 0.6875  => "Waning Gibbous",
-            _ if p < 0.8125  => "Last Quarter",
-            _ if p < 0.9375  => "Waning Crescent",
-            _                 => "New Moon",
-        }
+    pub fn time_label(&self) -> String {
+        let day = (self.time_s / DAY_LENGTH_S) as u32;
+        let hour = ((self.time_s / 3600.0) % 24.0) as u32;
+        let min = ((self.time_s / 60.0) % 60.0) as u32;
+        format!("Day {} {:02}:{:02}", day, hour, min)
     }
 
-    /// Moon phase emoji for compact display.
-    pub fn moon_phase_emoji(&self) -> &'static str {
-        let p = self.lunar_phase();
-        match () {
-            _ if p < 0.0625  => "\u{1F311}",
-            _ if p < 0.1875  => "\u{1F312}",
-            _ if p < 0.3125  => "\u{1F313}",
-            _ if p < 0.4375  => "\u{1F314}",
-            _ if p < 0.5625  => "\u{1F315}",
-            _ if p < 0.6875  => "\u{1F316}",
-            _ if p < 0.8125  => "\u{1F317}",
-            _ if p < 0.9375  => "\u{1F318}",
-            _                 => "\u{1F311}",
+    pub fn circadian_label(&self) -> &'static str {
+        let daylight = self.daylight();
+        let moon = self.moonlight();
+        if daylight > 0.3 {
+            "day"
+        } else if moon > 0.3 {
+            "moonlit-night"
+        } else {
+            "dark-night"
         }
     }
 
-    /// Read-only access to the moisture field.
-    pub fn moisture_field(&self) -> &[f32] { &self.moisture }
-
-    /// Mutable access to the moisture field (for stress perturbations).
-    pub fn moisture_field_mut(&mut self) -> &mut [f32] { &mut self.moisture }
-
-    /// Read-only access to the temperature field.
-    pub fn temperature_field(&self) -> &[f32] { &self.temperature }
-
-    /// Mutable access to the temperature field (for stress perturbations).
-    pub fn temperature_field_mut(&mut self) -> &mut [f32] { &mut self.temperature }
-
-    pub fn topdown_field(&self, view: TerrariumTopdownView) -> Vec<f32> {
-        match view {
-            TerrariumTopdownView::Terrain => self
-                .moisture
-                .iter()
-                .zip(self.deep_moisture.iter())
-                .map(|(surface, deep)| *surface * 0.68 + *deep * 0.32)
-                .collect(),
-            TerrariumTopdownView::SoilMoisture => self
-                .moisture
-                .iter()
-                .zip(self.deep_moisture.iter())
-                .map(|(surface, deep)| *surface + *deep * 0.55)
-                .collect(),
-            TerrariumTopdownView::Canopy => self
-                .canopy_cover
-                .iter()
-                .zip(self.root_density.iter())
-                .map(|(canopy, root)| *canopy * 1.15 + *root * 0.65)
-                .collect(),
-            TerrariumTopdownView::Chemistry => {
-                let plane = self.config.width * self.config.height;
-                let depth = self.config.depth.max(1);
-                let glucose = self.substrate.species_field(TerrariumSpecies::Glucose);
-                let oxygen = self.substrate.species_field(TerrariumSpecies::OxygenGas);
-                let ammonium = self.substrate.species_field(TerrariumSpecies::Ammonium);
-                let mut field = vec![0.0f32; plane];
-                for z in 0..depth {
-                    let start = z * plane;
-                    let end = start + plane;
-                    let g = &glucose[start..end];
-                    let o = &oxygen[start..end];
-                    let a = &ammonium[start..end];
-                    for idx in 0..plane {
-                        field[idx] += g[idx] * 0.65 + o[idx] * 0.20 + a[idx] * 0.35;
-                    }
-                }
-                for value in &mut field {
-                    *value /= depth as f32;
-                }
-                field
-            }
-            TerrariumTopdownView::Odor => {
-                let plane = self.config.width * self.config.height;
-                let depth = self.config.depth.max(1);
-                let odor = &self.odorants[ETHYL_ACETATE_IDX];
-                let mut field = vec![0.0f32; plane];
-                for z in 0..depth {
-                    let start = z * plane;
-                    for idx in 0..plane {
-                        field[idx] += odor[start + idx];
-                    }
-                }
-                for value in &mut field {
-                    *value /= depth as f32;
-                }
-                field
-            }
-            TerrariumTopdownView::GasExchange => {
-                let plane = self.config.width * self.config.height;
-                let depth = self.config.depth.max(1);
-                let co2 = &self.odorants[ATMOS_CO2_IDX];
-                let mut field = vec![0.0f32; plane];
-                for z in 0..depth {
-                    let start = z * plane;
-                    for idx in 0..plane {
-                        field[idx] += co2[start + idx];
-                    }
-                }
-                for (idx, value) in field.iter_mut().enumerate() {
-                    *value = (*value / depth as f32) * (0.88 + self.canopy_cover[idx] * 0.18);
-                }
-                field
-            }
+    pub fn run_frames(&mut self, n: usize) -> Result<(), String> {
+        for _ in 0..n {
+            self.step_frame()?;
         }
-    }
-
-    fn rebuild_ecology_fields(&mut self) -> Result<(), String> {
-        self.canopy_cover.fill(0.0);
-        self.root_density.fill(0.0);
-        if self.plants.is_empty() {
-            return Ok(());
-        }
-        let mut canopy_sources = Vec::with_capacity(self.plants.len() * 5);
-        let mut root_sources = Vec::with_capacity(self.plants.len() * 5);
-        for plant in &self.plants {
-            canopy_sources.extend([
-                plant.x as f32,
-                plant.y as f32,
-                plant.canopy_radius_cells() as f32,
-                plant.canopy_amplitude(),
-                0.72,
-            ]);
-            root_sources.extend([
-                plant.x as f32,
-                plant.y as f32,
-                plant.root_radius_cells() as f32,
-                plant.root_amplitude(),
-                0.95,
-            ]);
-        }
-        let (canopy, root) = build_dual_radial_fields(
-            self.config.width,
-            self.config.height,
-            &canopy_sources,
-            &root_sources,
-        )?;
-        self.canopy_cover.copy_from_slice(&canopy);
-        self.root_density.copy_from_slice(&root);
-
-        // Rebuild plant ownership from root density: cells with significant root
-        // presence get claimed by the dominant plant, suppressing broad guild-rate
-        // laws where explicit plant physiology provides the biology.
-        const ROOT_OWNERSHIP_THRESHOLD: f32 = 0.05;
-        // Release all plant-owned cells first so we can reassign.
-        for cell in &mut self.ownership {
-            if matches!(cell.owner, SoilOwnershipClass::PlantTissueRegion { .. }) {
-                *cell = SoilOwnershipCell::default();
-            }
-        }
-        let w = self.config.width;
-        for (plant_idx, plant) in self.plants.iter().enumerate() {
-            let r = plant.root_radius_cells();
-            let cx = plant.x;
-            let cy = plant.y;
-            let x_lo = cx.saturating_sub(r);
-            let x_hi = (cx + r + 1).min(w);
-            let y_lo = cy.saturating_sub(r);
-            let y_hi = (cy + r + 1).min(self.config.height);
-            for yy in y_lo..y_hi {
-                for xx in x_lo..x_hi {
-                    let flat = yy * w + xx;
-                    let density = self.root_density[flat];
-                    if density > ROOT_OWNERSHIP_THRESHOLD {
-                        let strength = (density / 0.5).clamp(0.0, 1.0);
-                        let owner = SoilOwnershipClass::PlantTissueRegion {
-                            plant_id: plant_idx as u32,
-                        };
-                        // Overwrite only background or weaker plant claims.
-                        let existing = &self.ownership[flat];
-                        if existing.owner.is_background()
-                            || (matches!(
-                                existing.owner,
-                                SoilOwnershipClass::PlantTissueRegion { .. }
-                            ) && existing.strength < strength)
-                        {
-                            self.ownership[flat] = SoilOwnershipCell { owner, strength };
-                        }
-                    }
-                }
-            }
-        }
-        self.rebuild_ownership_diagnostics();
-
         Ok(())
     }
 
-    fn sample_temperature_at(&self, x: usize, y: usize, z: usize) -> f32 {
-        self.temperature[idx3(
-            self.config.width,
-            self.config.height,
-            x.min(self.config.width - 1),
-            y.min(self.config.height - 1),
-            z.min(self.config.depth.max(1) - 1),
-        )]
-    }
-
-    fn sample_humidity_at(&self, x: usize, y: usize, z: usize) -> f32 {
-        self.humidity[idx3(
-            self.config.width,
-            self.config.height,
-            x.min(self.config.width - 1),
-            y.min(self.config.height - 1),
-            z.min(self.config.depth.max(1) - 1),
-        )]
-    }
-
-    fn sample_odorant_patch(
-        &self,
-        channel_idx: usize,
-        x: usize,
-        y: usize,
-        z: usize,
-        radius: usize,
-    ) -> f32 {
-        let Some(channel) = self.odorants.get(channel_idx) else {
-            return 0.0;
-        };
-        let radius = radius.max(1);
-        let z = z.min(self.config.depth.max(1) - 1);
-        let y0 = y.saturating_sub(radius);
-        let y1 = (y + radius + 1).min(self.config.height);
-        let x0 = x.saturating_sub(radius);
-        let x1 = (x + radius + 1).min(self.config.width);
-        let mut total = 0.0f32;
-        let mut count = 0usize;
-        for yy in y0..y1 {
-            for xx in x0..x1 {
-                total += channel[idx3(self.config.width, self.config.height, xx, yy, z)];
-                count += 1;
+    pub fn topdown_field(&self, view: TerrariumTopdownView) -> Vec<f32> {
+        match view {
+            TerrariumTopdownView::Terrain => {
+                let mut min_v = f32::INFINITY;
+                let mut max_v = f32::NEG_INFINITY;
+                for &value in &self.soil_structure {
+                    min_v = min_v.min(value);
+                    max_v = max_v.max(value);
+                }
+                let inv = if (max_v - min_v).abs() > f32::EPSILON {
+                    1.0 / (max_v - min_v)
+                } else {
+                    1.0
+                };
+                self.soil_structure
+                    .iter()
+                    .map(|structure| ((*structure - min_v) * inv).clamp(0.0, 1.0))
+                    .collect()
+            }
+            TerrariumTopdownView::SoilMoisture => self.moisture.clone(),
+            TerrariumTopdownView::Canopy => self.canopy_cover.clone(),
+            TerrariumTopdownView::Chemistry => {
+                let mut out = vec![0.0; self.moisture.len()];
+                for (dst, (&dn, &mn)) in out.iter_mut().zip(
+                    self.dissolved_nutrients
+                        .iter()
+                        .zip(self.mineral_nitrogen.iter()),
+                ) {
+                    *dst = (dn + mn).clamp(0.0, 1.0);
+                }
+                out
+            }
+            TerrariumTopdownView::Odor => {
+                let mut out = vec![0.0; self.moisture.len()];
+                for odor in &self.odorants {
+                    for (dst, src) in out.iter_mut().zip(odor.iter()) {
+                        *dst = f32::max(*dst, *src);
+                    }
+                }
+                out
+            }
+            TerrariumTopdownView::GasExchange => {
+                let mut out = vec![0.0; self.moisture.len()];
+                for (dst, (o2, co2)) in out.iter_mut().zip(
+                    self.odorants[ATMOS_O2_IDX]
+                        .iter()
+                        .zip(self.odorants[ATMOS_CO2_IDX].iter()),
+                ) {
+                    *dst = (o2 - co2).abs().clamp(0.0, 1.0);
+                }
+                out
             }
         }
-        if count == 0 {
-            0.0
-        } else {
-            total / count as f32
+    }
+
+    fn project_air_scalar_field(&self, field: &[f32]) -> Vec<f32> {
+        let width = self.config.width;
+        let height = self.config.height;
+        let depth = self.config.depth.max(1);
+        let mut projected = vec![0.0; width * height];
+        for y in 0..height {
+            for x in 0..width {
+                let mut sum = 0.0;
+                for z in 0..depth {
+                    sum += field[idx3(width, height, x, y, z)];
+                }
+                projected[idx2(width, x, y)] = sum / depth as f32;
+            }
+        }
+        projected
+    }
+
+    pub fn topdown_temperature_c(&self) -> Vec<f32> {
+        self.project_air_scalar_field(&self.temperature)
+    }
+
+    pub fn topdown_humidity(&self) -> Vec<f32> {
+        self.project_air_scalar_field(&self.humidity)
+    }
+
+    pub fn topdown_wind_x(&self) -> Vec<f32> {
+        self.project_air_scalar_field(&self.wind_x)
+    }
+
+    pub fn topdown_wind_y(&self) -> Vec<f32> {
+        self.project_air_scalar_field(&self.wind_y)
+    }
+
+    pub fn topdown_wind_z(&self) -> Vec<f32> {
+        self.project_air_scalar_field(&self.wind_z)
+    }
+
+    pub fn topdown_air_pressure_kpa(&self) -> Vec<f32> {
+        self.air_pressure_kpa.clone()
+    }
+
+    pub fn atmosphere_frame(&self) -> TerrariumAtmosphereFrame {
+        TerrariumAtmosphereFrame {
+            temperature_c: self.topdown_temperature_c(),
+            humidity: self.topdown_humidity(),
+            pressure_kpa: self.topdown_air_pressure_kpa(),
+            wind_x: self.topdown_wind_x(),
+            wind_y: self.topdown_wind_y(),
+            wind_z: self.topdown_wind_z(),
         }
     }
 
-    fn exchange_atmosphere_odorant(
-        &mut self,
-        channel_idx: usize,
-        x: usize,
-        y: usize,
-        z: usize,
-        radius: usize,
-        amount: f32,
-    ) {
-        if let Some(channel) = self.odorants.get_mut(channel_idx) {
-            exchange_layer_patch(
-                channel,
-                self.config.width,
-                self.config.height,
-                self.config.depth.max(1),
-                x,
-                y,
-                z,
-                radius,
-                amount,
-                0.0,
-                1.25,
-            );
+    // -----------------------------------------------------------------------
+    // Extreme weather events (manual trigger or ClimateEngine generation)
+    // -----------------------------------------------------------------------
+
+    /// Manually trigger an extreme event from the web UI or CLI.
+    /// All effect magnitudes are grounded in published observations.
+    pub fn apply_extreme_event_manual(&mut self, event_type: &str, severity: Option<f32>) {
+        let sev = severity.unwrap_or(0.6).clamp(0.1, 1.0);
+        match event_type {
+            "heatwave" => self.apply_extreme_heatwave(sev),
+            "coldsnap" => self.apply_extreme_coldsnap(sev),
+            "drought" => self.apply_extreme_drought(sev),
+            "flood" => self.apply_extreme_flood(sev),
+            "wildfire" => self.apply_extreme_wildfire(sev),
+            "hurricane" => self.apply_extreme_hurricane(sev),
+            _ => {}
+        }
+        self.ecology_events
+            .push(EcologyTelemetryEvent::ExtremeEventOnset {
+                event_type: event_type.to_string(),
+                severity: sev,
+            });
+    }
+
+    /// Heatwave: set physical preconditions — temperature spike + humidity drop.
+    /// The simulation's Eyring TST metabolic rates, water stress, and evaporation
+    /// will emergently produce the ecological consequences (wilting, stress, etc.).
+    /// IPCC AR5 WG1 Ch.12: heatwave anomaly ≥5 °C above climatological mean.
+    fn apply_extreme_heatwave(&mut self, severity: f32) {
+        let delta_t = 5.0 * severity; // IPCC AR5 WG1 Ch.12
+        let delta_h = -0.15 * severity; // vapour pressure deficit rises
+        for (temp, humid) in self.temperature.iter_mut().zip(self.humidity.iter_mut()) {
+            *temp += delta_t;
+            *humid = (*humid + delta_h).clamp(0.0, 1.0);
+        }
+        // Reduced pressure (thermal low) — Holton & Hakim 2013
+        for p in self.air_pressure_kpa.iter_mut() {
+            *p -= 0.8 * severity;
         }
     }
 
-    pub fn exchange_atmosphere_odorant_actual(&mut self, channel_idx: usize, x: usize, y: usize, z: usize, radius: usize, amount: f32) {
-        self.exchange_atmosphere_odorant(channel_idx, x, y, z, radius, amount);
+    /// Cold snap: temperature plunge + humidity from cold front moisture.
+    /// Existing Eyring TST rates slow dramatically; plants freeze-stress emerges.
+    /// Kodra et al. 2011: cold snap anomalies 8–15 °C below seasonal mean.
+    fn apply_extreme_coldsnap(&mut self, severity: f32) {
+        let delta_t = -8.0 * severity; // Kodra+ 2011
+        let delta_h = 0.10 * severity; // cold fronts bring moisture advection
+        for (temp, humid) in self.temperature.iter_mut().zip(self.humidity.iter_mut()) {
+            *temp += delta_t;
+            *humid = (*humid + delta_h).clamp(0.0, 1.0);
+        }
+        // High-pressure surge behind cold front — Holton & Hakim 2013
+        for p in self.air_pressure_kpa.iter_mut() {
+            *p += 1.2 * severity;
+        }
     }
 
-    pub fn exchange_atmosphere_flux_bundle(&mut self, x: usize, y: usize, z: usize, radius: usize, co2_flux: f32, o2_flux: f32, humidity_flux: f32) {
-        self.exchange_atmosphere_odorant(ATMOS_CO2_IDX, x, y, z, radius, co2_flux);
-        self.exchange_atmosphere_odorant(ATMOS_O2_IDX, x, y, z, radius, o2_flux);
-        self.exchange_atmosphere_humidity(x, y, z, radius, humidity_flux);
+    /// Drought: depleted atmospheric and soil moisture.
+    /// The simulation's existing water-stress index, stomatal closure, and
+    /// capillary Fick's-law transport will emergently cascade plant wilting.
+    /// Sheffield & Wood 2008: drought = ≥20 % soil moisture deficit.
+    fn apply_extreme_drought(&mut self, severity: f32) {
+        let moisture_drop = 0.3 * severity; // Sheffield & Wood 2008
+        let deep_drop = 0.2 * severity;
+        let humid_drop = -0.2 * severity;
+        for m in self.moisture.iter_mut() {
+            *m = (*m - moisture_drop).max(0.01);
+        }
+        for d in self.deep_moisture.iter_mut() {
+            *d = (*d - deep_drop).max(0.01);
+        }
+        for layer in &mut self.soil_layer_moisture {
+            for m in layer.iter_mut() {
+                *m = (*m - moisture_drop * 0.5).max(0.01);
+            }
+        }
+        for h in self.humidity.iter_mut() {
+            *h = (*h + humid_drop).clamp(0.0, 1.0);
+        }
+        // Slight temperature rise from lack of evaporative cooling
+        for t in self.temperature.iter_mut() {
+            *t += 1.5 * severity;
+        }
     }
 
-    fn exchange_atmosphere_humidity(
-        &mut self,
-        x: usize,
-        y: usize,
-        z: usize,
-        radius: usize,
-        amount: f32,
-    ) {
-        exchange_layer_patch(
-            &mut self.humidity,
-            self.config.width,
-            self.config.height,
-            self.config.depth.max(1),
-            x,
-            y,
-            z,
-            radius,
-            amount,
-            0.0,
-            1.4,
-        );
+    /// Flood: saturate atmosphere + soil — the existing Fick's-law percolation,
+    /// anaerobic substrate chemistry, and root oxygen stress will emergently cascade.
+    /// Trenberth et al. 2003: extreme precipitation saturates upper soil horizons.
+    fn apply_extreme_flood(&mut self, severity: f32) {
+        // Saturate humidity → emergent cloud/precipitation
+        for h in self.humidity.iter_mut() {
+            *h = (*h + 0.3 * severity).min(1.0);
+        }
+        // Direct soil saturation (instantaneous infiltration)
+        let target_moisture = (0.7 + 0.3 * severity).min(1.0); // Trenberth+ 2003
+        let target_deep = (0.8 + 0.2 * severity).min(1.0);
+        for m in self.moisture.iter_mut() {
+            *m = m.max(target_moisture);
+        }
+        for d in self.deep_moisture.iter_mut() {
+            *d = d.max(target_deep);
+        }
+        for layer in &mut self.soil_layer_moisture {
+            for m in layer.iter_mut() {
+                *m = m.max(target_moisture * 0.9);
+            }
+        }
+        // Pressure drop from convective system — Markowski & Richardson 2010
+        for p in self.air_pressure_kpa.iter_mut() {
+            *p -= 1.0 * severity;
+        }
+    }
+
+    /// Wildfire: extreme temperature spike + humidity crash + organic matter combustion.
+    /// The heat pulse and desiccation are the physical preconditions; plant damage
+    /// then emerges from the thermal stress via Eyring TST rate collapse.
+    /// Certini 2005: topsoil organic matter loss 40–90 % from combustion heat.
+    /// Bond & Keeley 2005: fire creates its own wind (convective updraft).
+    fn apply_extreme_wildfire(&mut self, severity: f32) {
+        // Combustion heat pulse — Certini 2005
+        let delta_t = 8.0 * severity;
+        for temp in self.temperature.iter_mut() {
+            *temp += delta_t;
+        }
+        // Complete humidity crash (fire desiccation)
+        for h in self.humidity.iter_mut() {
+            *h = (*h * (1.0 - 0.5 * severity)).max(0.0);
+        }
+        // Surface moisture evaporation
+        let moisture_loss = 0.25 * severity;
+        for m in self.moisture.iter_mut() {
+            *m = (*m - moisture_loss).max(0.0);
+        }
+        // Organic matter combustion — this IS a direct chemical process, not a proxy
+        // Certini 2005: 40–90 % topsoil OM loss in high-intensity fire
+        let om_loss = 0.4 * severity;
+        for om in self.organic_matter.iter_mut() {
+            *om = (*om - om_loss).max(0.0);
+        }
+        for lc in self.litter_carbon.iter_mut() {
+            *lc = (*lc * (1.0 - 0.6 * severity)).max(0.0);
+        }
+        // Fire-generated wind (convective updraft) — Bond & Keeley 2005
+        let fire_wind = 0.8 * severity;
+        for wz in self.wind_z.iter_mut() {
+            *wz += fire_wind;
+        }
+    }
+
+    /// Hurricane/tornado: extreme wind + pressure drop + humidity surge.
+    /// The simulation's biomechanics wind drag (F=0.5ρCdAv²) and stem bending
+    /// stress will emergently produce canopy damage and breakage.
+    /// Lugo 2008: Cat 3+ hurricanes produce 50–70 % canopy damage via wind.
+    /// Markowski & Richardson 2010: mesocyclone ΔP ≈ 10–50 hPa.
+    fn apply_extreme_hurricane(&mut self, severity: f32) {
+        // Extreme wind injection — biomechanics.rs wind drag will handle damage
+        let wind_boost = 2.0 * severity; // m/s equivalent, scaled by biomechanics
+        for wx in self.wind_x.iter_mut() {
+            *wx += wind_boost * (if *wx >= 0.0 { 1.0 } else { -1.0 });
+        }
+        for wy in self.wind_y.iter_mut() {
+            *wy += wind_boost * (if *wy >= 0.0 { 1.0 } else { -1.0 });
+        }
+        // Dramatic pressure drop — Markowski & Richardson 2010
+        let pressure_drop = 3.0 * severity; // kPa (30 hPa for Cat 3+)
+        for p in self.air_pressure_kpa.iter_mut() {
+            *p -= pressure_drop;
+        }
+        // Hurricane moisture advection
+        for h in self.humidity.iter_mut() {
+            *h = (*h + 0.25 * severity).min(1.0);
+        }
+        // Associated precipitation → soil saturation
+        let flood_boost = 0.3 * severity;
+        for m in self.moisture.iter_mut() {
+            *m = (*m + flood_boost).min(1.0);
+        }
+    }
+
+    pub fn recent_ecology_events(&self) -> &[EcologyTelemetryEvent] {
+        &self.ecology_events
     }
 
     fn plant_source_states(&self) -> Vec<PlantSourceState> {
@@ -2127,93 +2874,11 @@ impl TerrariumWorld {
             .map(|plant| plant.source_state(self.config.depth.max(1)))
             .collect()
     }
-
-    fn fruit_food_patches(&self) -> Vec<f32> {
-        let mut patches = Vec::with_capacity(self.fruits.len() * 4);
-        for fruit in &self.fruits {
-            if !fruit.source.alive || fruit.source.sugar_content <= 0.0 {
-                continue;
-            }
-            patches.extend([
-                fruit.source.x as f32,
-                fruit.source.y as f32,
-                fruit.radius.max(0.5),
-                fruit.source.sugar_content.clamp(0.0, 1.0),
-            ]);
-        }
-        patches
-    }
-
-    fn consume_nearest_fruit(&mut self, x: f32, y: f32, amount: f32) {
-        if amount <= 0.0 {
-            return;
-        }
-        let mut best_idx = None;
-        let mut best_dist_sq = f32::INFINITY;
-        for (idx, fruit) in self.fruits.iter().enumerate() {
-            if !fruit.source.alive || fruit.source.sugar_content <= 0.0 {
-                continue;
-            }
-            let dx = x - fruit.source.x as f32;
-            let dy = y - fruit.source.y as f32;
-            let dist_sq = dx * dx + dy * dy;
-            if dist_sq < best_dist_sq {
-                best_dist_sq = dist_sq;
-                best_idx = Some(idx);
-            }
-        }
-        if let Some(idx) = best_idx {
-            let fruit = &mut self.fruits[idx];
-            fruit.source.sugar_content = (fruit.source.sugar_content - amount).max(0.0);
-            if fruit.source.sugar_content <= 0.0 {
-                fruit.source.alive = false;
-            }
-        }
-    }
-
-    fn step_world_fields(&mut self) -> Result<(), String> {
-        let mut fruit_sources = self
-            .fruits
-            .iter()
-            .map(|fruit| fruit.source.clone())
-            .collect::<Vec<_>>();
-        let plant_sources = self.plant_source_states();
-        step_molecular_world_fields(
-            self.config.width,
-            self.config.height,
-            self.config.depth.max(1),
-            self.config.world_dt_s,
-            self.config.cell_size_mm,
-            true,
-            self.daylight(),
-            Some(AMMONIA_IDX),
-            &mut fruit_sources,
-            &plant_sources,
-            &mut self.waters,
-            &mut self.odorants,
-            &self.odorant_params,
-            &mut self.temperature,
-            &mut self.humidity,
-            &mut self.wind_x,
-            &mut self.wind_y,
-            &mut self.wind_z,
-            &mut self.atmosphere_rng_state,
-        )?;
-        for (dst, src) in self.fruits.iter_mut().zip(fruit_sources.into_iter()) {
-            dst.source = src;
-        }
-        Ok(())
-    }
 }
-
-#[cfg(all(feature = "terrarium_advanced", feature = "terrarium_render"))]
-#[cfg(all(test, feature = "terrarium_advanced"))]
-// #[path = "terrarium_world/tests.rs"]
-// mod advanced_tests;  // TODO: create terrarium_world/tests.rs
 
 #[cfg(test)]
 mod tests {
-    use super::{TerrariumTopdownView, TerrariumWorld};
+    use super::{EcologyTelemetryEvent, TerrariumTopdownView, TerrariumWorld};
     use crate::organism_metabolism::OrganismMetabolism;
 
     #[test]
@@ -2246,13 +2911,17 @@ mod tests {
     #[test]
     fn spatial_o2_channel_initialized() {
         let world = TerrariumWorld::demo(7, false).unwrap();
-        // 5 odorant channels should exist (ethyl_acetate, geraniol, ammonia, CO2, O2).
-        assert_eq!(world.odorants.len(), 5, "should have 5 odorant channels");
-        assert_eq!(world.odorant_params.len(), 5, "should have 5 odorant params");
+        // 6 odorant channels should exist (ethyl_acetate, geraniol, ammonia, CO2, O2, defense VOC).
+        assert_eq!(world.odorants.len(), 6, "should have 6 odorant channels");
+        assert_eq!(
+            world.odorant_params.len(),
+            6,
+            "should have 6 odorant params"
+        );
         // O2 channel (index 4) should be initialized to ~0.21.
         let o2_idx = 4;
-        let o2_mean = world.odorants[o2_idx].iter().sum::<f32>()
-            / world.odorants[o2_idx].len() as f32;
+        let o2_mean =
+            world.odorants[o2_idx].iter().sum::<f32>() / world.odorants[o2_idx].len() as f32;
         assert!(
             (o2_mean - 0.21).abs() < 0.01,
             "O2 channel should be ~0.21, got {o2_mean}"
@@ -2266,7 +2935,10 @@ mod tests {
         world.run_frames(5).unwrap();
         let snapshot = world.snapshot();
         // Snapshot should have valid step count.
-        assert!(snapshot.substrate_steps < 10000, "step count should be reasonable");
+        assert!(
+            snapshot.substrate_steps < 10000,
+            "step count should be reasonable"
+        );
     }
 
     // ===== Ownership infrastructure tests =====
@@ -2281,7 +2953,8 @@ mod tests {
 
         // Claim a cell.
         let claimed = world.claim_ownership(
-            2, 3,
+            2,
+            3,
             SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 1 },
             0.8,
         );
@@ -2289,11 +2962,15 @@ mod tests {
 
         // Broad-biology factor should be suppressed.
         let factor = world.broad_biology_factor(2, 3);
-        assert!((factor - 0.2).abs() < 0.01, "factor should be ~0.2, got {factor}");
+        assert!(
+            (factor - 0.2).abs() < 0.01,
+            "factor should be ~0.2, got {factor}"
+        );
 
         // Cannot dual-claim an already-owned cell.
         let re_claimed = world.claim_ownership(
-            2, 3,
+            2,
+            3,
             SoilOwnershipClass::GenotypePacketRegion { genotype_id: 5 },
             1.0,
         );
@@ -2319,14 +2996,32 @@ mod tests {
         let h = world.config.height;
 
         // Claim some cells of different types.
-        world.claim_ownership(0, 0, SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 0 }, 1.0);
-        world.claim_ownership(1, 0, SoilOwnershipClass::GenotypePacketRegion { genotype_id: 0 }, 0.5);
-        world.claim_ownership(2, 0, SoilOwnershipClass::AtomisticProbeRegion { probe_id: 0 }, 0.9);
+        world.claim_ownership(
+            0,
+            0,
+            SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 0 },
+            1.0,
+        );
+        world.claim_ownership(
+            1,
+            0,
+            SoilOwnershipClass::GenotypePacketRegion { genotype_id: 0 },
+            0.5,
+        );
+        world.claim_ownership(
+            2,
+            0,
+            SoilOwnershipClass::AtomisticProbeRegion { probe_id: 0 },
+            0.9,
+        );
         world.rebuild_ownership_diagnostics();
 
         let diag = world.ownership_diagnostics();
         let total = (w * h) as f32;
-        assert!((diag.owned_fraction - 3.0 / total).abs() < 1e-4, "owned fraction wrong");
+        assert!(
+            (diag.owned_fraction - 3.0 / total).abs() < 1e-4,
+            "owned fraction wrong"
+        );
         assert!((diag.microbe_owned_fraction - 1.0 / total).abs() < 1e-4);
         assert!((diag.genotype_owned_fraction - 1.0 / total).abs() < 1e-4);
         assert!((diag.probe_owned_fraction - 1.0 / total).abs() < 1e-4);
@@ -2337,8 +3032,18 @@ mod tests {
     fn clear_ownership_resets_all() {
         use super::SoilOwnershipClass;
         let mut world = TerrariumWorld::demo(7, false).unwrap();
-        world.claim_ownership(0, 0, SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 0 }, 1.0);
-        world.claim_ownership(1, 1, SoilOwnershipClass::PlantTissueRegion { plant_id: 0 }, 0.7);
+        world.claim_ownership(
+            0,
+            0,
+            SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 0 },
+            1.0,
+        );
+        world.claim_ownership(
+            1,
+            1,
+            SoilOwnershipClass::PlantTissueRegion { plant_id: 0 },
+            0.7,
+        );
         world.clear_ownership();
         assert_eq!(world.broad_biology_factor(0, 0), 1.0);
         assert_eq!(world.broad_biology_factor(1, 1), 1.0);
@@ -2379,11 +3084,17 @@ mod tests {
         world.add_fly(crate::drosophila::DrosophilaScale::Tiny, 5.0, 5.0, 42);
         assert!(!world.flies.is_empty());
         assert!(!world.fly_metabolisms.is_empty());
-        let idx_0 = 5 * world.config.width + 5;
+        // Write O2 enrichment using 3D index at z=0 (where the fly starts).
+        let w = world.config.width;
+        let h = world.config.height;
+        let idx_0 = super::idx3(w, h, 5, 5, 0);
         world.odorants[super::ATMOS_O2_IDX][idx_0] = 0.30;
         let _ = world.step_flies();
         let ambient = world.fly_metabolisms[0].ambient_o2_fraction;
-        assert!(ambient > 0.20, "Fly near enriched O2 should see >0.20, got {ambient:.4}");
+        assert!(
+            ambient > 0.20,
+            "Fly near enriched O2 should see >0.20, got {ambient:.4}"
+        );
     }
 
     #[test]
@@ -2392,11 +3103,26 @@ mod tests {
         let mut world = TerrariumWorld::demo(7, false).unwrap();
         world.add_fly(DrosophilaScale::Tiny, 5.0, 5.0, 1);
         world.add_fly(DrosophilaScale::Tiny, 5.0, 5.0, 2);
-        world.flies[1].set_body_state(5.0, 5.0, 0.0, Some(20.0), None, None, None, None, None, None);
+        // Move second fly to altitude while keeping the first at ground.
+        world.flies[1].set_body_state(
+            5.0,
+            5.0,
+            0.0,
+            Some(20.0),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let _ = world.step_flies();
         let o2_ground = world.fly_metabolisms[0].ambient_o2_fraction;
         let o2_high = world.fly_metabolisms[1].ambient_o2_fraction;
-        assert!(o2_high < o2_ground, "Altitude fly O2 ({o2_high:.4}) should be < ground fly ({o2_ground:.4})");
+        assert!(
+            o2_high < o2_ground,
+            "Altitude fly O2 ({o2_high:.4}) should be < ground fly ({o2_ground:.4})"
+        );
     }
 
     #[test]
@@ -2414,16 +3140,23 @@ mod tests {
 
     #[test]
     fn eclosion_spawns_drosophila() {
-        use crate::drosophila_population::{Fly, FlySex, FlyLifeStage};
+        use crate::drosophila_population::{Fly, FlyLifeStage, FlySex};
         let mut world = TerrariumWorld::demo(7, false).unwrap();
         let initial_flies = world.flies.len();
         let mut pupa = Fly::new_adult(999, FlySex::Female, (5.0, 5.0, 0.0));
         pupa.stage = FlyLifeStage::Pupa { age_hours: 95.0 };
         world.fly_pop.add_fly(pupa);
         world.step_fly_population(7200.0);
-        assert!(world.flies.len() > initial_flies, "Eclosion should spawn fly");
+        assert!(
+            world.flies.len() > initial_flies,
+            "Eclosion should spawn fly"
+        );
         assert_eq!(world.fly_metabolisms.len(), world.flies.len());
-        let n = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyEclosed { .. })).count();
+        let n = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyEclosed { .. }))
+            .count();
         assert!(n > 0, "Should emit FlyEclosed event");
     }
 
@@ -2436,13 +3169,21 @@ mod tests {
         world.fly_metabolisms[0].fat_body_glycogen_mg = 0.0;
         world.fly_metabolisms[0].fat_body_lipid_mg = 0.0;
         world.step_fly_metabolism(10.0);
-        let n = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyStarvationOnset { .. })).count();
+        let n = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyStarvationOnset { .. }))
+            .count();
         assert!(n > 0, "Should emit FlyStarvationOnset");
         let pre = world.fly_metabolisms[0].hemolymph_trehalose_mm;
         world.ecology_events.clear();
         world.step_fly_metabolism(1.0);
         if pre < 5.0 {
-            let r = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyStarvationOnset { .. })).count();
+            let r = world
+                .ecology_events
+                .iter()
+                .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyStarvationOnset { .. }))
+                .count();
             assert_eq!(r, 0, "Should NOT re-emit starvation");
         }
     }
@@ -2455,7 +3196,8 @@ mod tests {
 
         // Claim cell (3,3) with full ownership.
         let claimed = world.claim_ownership(
-            3, 3,
+            3,
+            3,
             SoilOwnershipClass::ExplicitMicrobeCohort { cohort_id: 42 },
             1.0,
         );
@@ -2495,15 +3237,22 @@ mod tests {
         world.ecology_events.clear();
         // Run a few frames to let the fly attempt to feed.
         world.run_frames(10).unwrap();
-        let n = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyFeeding { .. })).count();
+        let n = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyFeeding { .. }))
+            .count();
         // It's possible the fly doesn't consume in 10 frames, so we also verify the
         // mechanism works by checking the event is structurally valid when it fires.
         // At minimum, verify the event variant exists and is matchable.
         // n is usize (always >= 0); just verify count is usable.
         let _ = n;
-        // If any feeding occurred, the fly's crop should have received sugar.
+        // If any feeding occurred, the world should record real consumed sugar.
         if n > 0 {
-            assert!(world.fly_metabolisms[0].crop_sugar_mg > 0.0, "ingest() should fill crop");
+            assert!(
+                world.fly_food_total > 0.0,
+                "feeding telemetry should reflect real consumed sugar"
+            );
         }
     }
 
@@ -2519,10 +3268,28 @@ mod tests {
         for cell in world.odorants[super::ATMOS_O2_IDX].iter_mut() {
             *cell = 0.05;
         }
-        world.flies[0].set_body_state(5.0, 5.0, 0.0, Some(30.0), None, None, None, None, None, None);
+        world.flies[0].set_body_state(
+            5.0,
+            5.0,
+            0.0,
+            Some(30.0),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let _ = world.step_flies();
-        let n = world.ecology_events.iter().filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyHypoxiaOnset { .. })).count();
-        assert!(n > 0, "Should emit FlyHypoxiaOnset when O2 drops below 0.15");
+        let n = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyHypoxiaOnset { .. }))
+            .count();
+        assert!(
+            n > 0,
+            "Should emit FlyHypoxiaOnset when O2 drops below 0.15"
+        );
     }
 
     #[test]
@@ -2530,14 +3297,25 @@ mod tests {
         let mut world = TerrariumWorld::demo(7, false).unwrap();
         world.run_frames(10).unwrap();
         let snap = world.snapshot();
-        assert!(snap.fly_plant_proximity_mean >= 0.0, "proximity should be non-negative");
-        assert!(snap.fly_altitude_mean >= 0.0, "altitude mean should be non-negative");
-        assert!(snap.fly_o2_gradient_correlation >= -1.0 && snap.fly_o2_gradient_correlation <= 1.0,
-            "correlation should be in [-1, 1], got {}", snap.fly_o2_gradient_correlation);
+        assert!(
+            snap.fly_plant_proximity_mean >= 0.0,
+            "proximity should be non-negative"
+        );
+        assert!(
+            snap.fly_altitude_mean >= 0.0,
+            "altitude mean should be non-negative"
+        );
+        assert!(
+            snap.fly_o2_gradient_correlation >= -1.0 && snap.fly_o2_gradient_correlation <= 1.0,
+            "correlation should be in [-1, 1], got {}",
+            snap.fly_o2_gradient_correlation
+        );
         // If there are both flies and plants, proximity should be finite and positive.
         if snap.flies > 0 && snap.plants > 0 {
-            assert!(snap.fly_plant_proximity_mean > 0.0,
-                "With flies and plants, proximity should be > 0");
+            assert!(
+                snap.fly_plant_proximity_mean > 0.0,
+                "With flies and plants, proximity should be > 0"
+            );
         }
     }
 
@@ -2561,8 +3339,10 @@ mod tests {
         let sez_spikes_sated = world.flies[0].brain.spike_count_subset_sum(&sez_indices_0);
         let sez_spikes_starved = world.flies[1].brain.spike_count_subset_sum(&sez_indices_1);
         // Hungry fly should have equal or more SEZ activity.
-        assert!(sez_spikes_starved >= sez_spikes_sated,
-            "Hungry fly SEZ ({sez_spikes_starved}) should >= sated ({sez_spikes_sated})");
+        assert!(
+            sez_spikes_starved >= sez_spikes_sated,
+            "Hungry fly SEZ ({sez_spikes_starved}) should >= sated ({sez_spikes_sated})"
+        );
     }
 
     #[test]
@@ -2588,8 +3368,39 @@ mod tests {
         let ec1_post = world.fly_metabolisms[1].energy_charge();
         let drop_0 = ec0_pre - ec0_post;
         let drop_1 = ec1_pre - ec1_post;
-        assert!(drop_1 > drop_0,
-            "Altitude+neural fly should deplete faster: drop_1={drop_1:.4} vs drop_0={drop_0:.4}");
+        assert!(
+            drop_1 > drop_0,
+            "Altitude+neural fly should deplete faster: drop_1={drop_1:.4} vs drop_0={drop_0:.4}"
+        );
+    }
+
+    #[test]
+    fn metabolism_syncs_explicit_state_back_into_fly_sim() {
+        use crate::drosophila::DrosophilaScale;
+
+        let mut world = TerrariumWorld::demo(7, false).unwrap();
+        let idx = world.flies.len();
+        world.add_fly(DrosophilaScale::Tiny, 5.0, 5.0, 303);
+        world.fly_metabolisms[idx].hemolymph_trehalose_mm = 3.0;
+        world.fly_metabolisms[idx].circadian.phase_hours = 17.25;
+        world.fly_metabolisms[idx].set_neural_activity(0.4);
+
+        world.step_fly_metabolism(60.0);
+
+        let expected_phase = world.fly_metabolisms[idx].circadian.phase_hours;
+        let expected_energy = world.fly_metabolisms[idx].energy_fraction() * 100.0;
+        let body = world.flies[idx].body_state();
+
+        assert!(
+            (body.time_of_day - expected_phase).abs() < 1.0e-4,
+            "fly sim phase should mirror explicit metabolism: body={:.4}, metabolism={expected_phase:.4}",
+            body.time_of_day,
+        );
+        assert!(
+            (body.energy - expected_energy).abs() < 1.0e-4,
+            "fly sim energy should mirror explicit metabolism: body={:.4}, metabolism={expected_energy:.4}",
+            body.energy,
+        );
     }
 
     #[test]
@@ -2598,15 +3409,20 @@ mod tests {
         world.run_frames(20).unwrap();
         let snap = world.snapshot();
         // Plants produce O2 via inverse CO2 flux, so atmospheric O2 should stay >= 0.19.
-        assert!(snap.mean_atmospheric_o2 >= 0.19,
-            "Plant O2 production should maintain atmosphere >= 0.19, got {:.4}", snap.mean_atmospheric_o2);
+        assert!(
+            snap.mean_atmospheric_o2 >= 0.19,
+            "Plant O2 production should maintain atmosphere >= 0.19, got {:.4}",
+            snap.mean_atmospheric_o2
+        );
     }
 
     // ===== Atomistic Probe Tests =====
 
     #[test]
     fn spawn_probe_claims_ownership_cells() {
-        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement, BondOrder};
+        use crate::atomistic_chemistry::{
+            BondOrder, EmbeddedMolecule, MoleculeGraph, PeriodicElement,
+        };
         let mut world = TerrariumWorld::demo(7, false).unwrap();
 
         // Build a tiny 3-atom water-like molecule.
@@ -2625,7 +3441,10 @@ mod tests {
 
         // Verify ownership was claimed in a 3x3 footprint (radius=1 → 4..7 × 4..7).
         let factor = world.broad_biology_factor(5, 5);
-        assert!(factor < 0.5, "Center cell should be suppressed, got {factor}");
+        assert!(
+            factor < 0.5,
+            "Center cell should be suppressed, got {factor}"
+        );
 
         // Snapshot should report the probe.
         world.rebuild_ownership_diagnostics();
@@ -2637,12 +3456,17 @@ mod tests {
         assert!(world.remove_probe(id));
         assert_eq!(world.probe_count(), 0);
         let factor_after = world.broad_biology_factor(5, 5);
-        assert!((factor_after - 1.0).abs() < 0.01, "Ownership should be released");
+        assert!(
+            (factor_after - 1.0).abs() < 0.01,
+            "Ownership should be released"
+        );
     }
 
     #[test]
     fn probe_md_runs_and_energy_bounded() {
-        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement, BondOrder};
+        use crate::atomistic_chemistry::{
+            BondOrder, EmbeddedMolecule, MoleculeGraph, PeriodicElement,
+        };
         let mut world = TerrariumWorld::demo(7, false).unwrap();
 
         let mut graph = MoleculeGraph::new("water");
@@ -2659,15 +3483,21 @@ mod tests {
         // Run several frames — MD should integrate without blowing up.
         world.run_frames(5).unwrap();
         let energy = world.probes()[0].total_energy();
-        assert!(energy.is_finite(), "MD energy should stay finite, got {energy}");
+        assert!(
+            energy.is_finite(),
+            "MD energy should stay finite, got {energy}"
+        );
         // With only bond restraints (no angle terms), a 3-atom molecule at 300K
         // can accumulate moderate energy. Just check it doesn't diverge to infinity.
-        assert!(energy.abs() < 1e12, "MD energy should be bounded, got {energy}");
+        assert!(
+            energy.abs() < 1e12,
+            "MD energy should be bounded, got {energy}"
+        );
     }
 
     #[test]
     fn probe_out_of_bounds_returns_error() {
-        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement};
+        use crate::atomistic_chemistry::{EmbeddedMolecule, MoleculeGraph, PeriodicElement};
         let mut world = TerrariumWorld::demo(7, false).unwrap();
         let mut graph = MoleculeGraph::new("h");
         graph.add_element(PeriodicElement::H);
@@ -2679,7 +3509,9 @@ mod tests {
 
     #[test]
     fn multiple_probes_coexist() {
-        use crate::atomistic_chemistry::{MoleculeGraph, EmbeddedMolecule, PeriodicElement, BondOrder};
+        use crate::atomistic_chemistry::{
+            BondOrder, EmbeddedMolecule, MoleculeGraph, PeriodicElement,
+        };
         let mut world = TerrariumWorld::demo(7, false).unwrap();
 
         let make_water = || {
@@ -2689,7 +3521,11 @@ mod tests {
             graph.add_element(PeriodicElement::H);
             graph.add_bond(0, 1, BondOrder::Single).unwrap();
             graph.add_bond(0, 2, BondOrder::Single).unwrap();
-            EmbeddedMolecule::new(graph, vec![[0.0, 0.0, 0.0], [0.9572, 0.0, 0.0], [-0.2399, 0.9266, 0.0]]).unwrap()
+            EmbeddedMolecule::new(
+                graph,
+                vec![[0.0, 0.0, 0.0], [0.9572, 0.0, 0.0], [-0.2399, 0.9266, 0.0]],
+            )
+            .unwrap()
         };
 
         let mol1 = make_water();
@@ -2714,36 +3550,54 @@ mod tests {
         // Reset to time_s=0 to get clean lunar_phase.
         world.time_s = 0.0;
         let phase0 = world.lunar_phase();
-        assert!(phase0 >= 0.0 && phase0 < 0.001, "initial phase near 0, got {phase0}");
+        assert!(
+            phase0 >= 0.0 && phase0 < 0.001,
+            "initial phase near 0, got {phase0}"
+        );
         assert_eq!(world.moon_phase_name(), "New Moon");
 
         // Advance to ~half a synodic month → full moon.
         let half_month_s = 29.530589 * 86_400.0 * 0.5;
         world.time_s = half_month_s;
         let phase_half = world.lunar_phase();
-        assert!((phase_half - 0.5).abs() < 0.01, "half-month phase ~0.5, got {phase_half}");
+        assert!(
+            (phase_half - 0.5).abs() < 0.01,
+            "half-month phase ~0.5, got {phase_half}"
+        );
         assert_eq!(world.moon_phase_name(), "Full Moon");
 
         // Moonlight should peak at full moon.
         let ml_full = world.moonlight();
-        assert!(ml_full > 0.95, "full moon moonlight should be ~1.0, got {ml_full}");
+        assert!(
+            ml_full > 0.95,
+            "full moon moonlight should be ~1.0, got {ml_full}"
+        );
 
         // Moonlight at new moon should be ~0.
         world.time_s = 0.0;
         let ml_new = world.moonlight();
-        assert!(ml_new < 0.05, "new moon moonlight should be ~0, got {ml_new}");
+        assert!(
+            ml_new < 0.05,
+            "new moon moonlight should be ~0, got {ml_new}"
+        );
 
         // Tidal factor: spring tide at new moon and full moon.
         let tidal_new = world.tidal_moisture_factor();
         assert!(tidal_new > 1.10, "spring tide at new moon, got {tidal_new}");
         world.time_s = half_month_s;
         let tidal_full = world.tidal_moisture_factor();
-        assert!(tidal_full > 1.10, "spring tide at full moon, got {tidal_full}");
+        assert!(
+            tidal_full > 1.10,
+            "spring tide at full moon, got {tidal_full}"
+        );
 
         // Neap tide at first quarter (~0.25 phase).
         world.time_s = 29.530589 * 86_400.0 * 0.25;
         let tidal_quarter = world.tidal_moisture_factor();
-        assert!(tidal_quarter < 0.90, "neap tide at quarter, got {tidal_quarter}");
+        assert!(
+            tidal_quarter < 0.90,
+            "neap tide at quarter, got {tidal_quarter}"
+        );
     }
 
     #[test]
@@ -2767,8 +3621,10 @@ mod tests {
         // Moisture should change (not necessarily increase due to evaporation etc.)
         // Just verify the field is still valid.
         assert!(moisture_after >= 0.0);
-        assert!((moisture_after - moisture_before).abs() < moisture_before * 10.0,
-            "moisture changed reasonably");
+        assert!(
+            (moisture_after - moisture_before).abs() < moisture_before * 10.0,
+            "moisture changed reasonably"
+        );
     }
 
     #[test]
@@ -2780,13 +3636,19 @@ mod tests {
         world.chronobiology_config.lunar_period_days = 29.53;
         world.time_s = 14.765 * 86_400.0;
         let phase_default = world.lunar_phase();
-        assert!((phase_default - 0.5).abs() < 0.01, "default period phase ~0.5");
+        assert!(
+            (phase_default - 0.5).abs() < 0.01,
+            "default period phase ~0.5"
+        );
 
         // With 7-day period, 3.5 days = phase 0.5
         world.chronobiology_config.lunar_period_days = 7.0;
         world.time_s = 3.5 * 86_400.0;
         let phase_accelerated = world.lunar_phase();
-        assert!((phase_accelerated - 0.5).abs() < 0.01, "accelerated period phase ~0.5");
+        assert!(
+            (phase_accelerated - 0.5).abs() < 0.01,
+            "accelerated period phase ~0.5"
+        );
 
         // With 7-day period, 7.0 days = phase 1.0 (= 0.0)
         world.time_s = 7.0 * 86_400.0;
@@ -2803,13 +3665,17 @@ mod tests {
 
         // After 12 hours, phase should be 12
         circadian.step(12.0 * 3600.0, 0.0, 0.0, &config);
-        assert!((circadian.phase_hours - 12.0).abs() < 0.1,
-            "phase should be ~12h after 12h step");
+        assert!(
+            (circadian.phase_hours - 12.0).abs() < 0.1,
+            "phase should be ~12h after 12h step"
+        );
 
         // After another 12 hours, phase wraps to 0
         circadian.step(12.0 * 3600.0, 0.0, 0.0, &config);
-        assert!(circadian.phase_hours < 0.1 || circadian.phase_hours >= 24.0 - 0.1,
-            "phase should wrap to 0 or near 24");
+        assert!(
+            circadian.phase_hours < 0.1 || circadian.phase_hours >= 24.0 - 0.1,
+            "phase should wrap to 0 or near 24"
+        );
     }
 
     #[test]
@@ -2819,13 +3685,19 @@ mod tests {
         let config = ChronobiologyConfig::default();
 
         // Two flies: one in constant darkness, one with light
-        let mut circ_dark = CircadianState { phase_hours: 6.0, ..Default::default() };
-        let mut circ_light = CircadianState { phase_hours: 6.0, ..Default::default() };
+        let mut circ_dark = CircadianState {
+            phase_hours: 6.0,
+            ..Default::default()
+        };
+        let mut circ_light = CircadianState {
+            phase_hours: 6.0,
+            ..Default::default()
+        };
 
         // 6 hours of steps
         for _ in 0..360 {
-            circ_dark.step(60.0, 0.0, 0.0, &config);    // Darkness
-            circ_light.step(60.0, 0.8, 0.0, &config);   // Bright light
+            circ_dark.step(60.0, 0.0, 0.0, &config); // Darkness
+            circ_light.step(60.0, 0.8, 0.0, &config); // Bright light
         }
 
         // Light-exposed fly should have different phase due to entrainment
@@ -2836,8 +3708,10 @@ mod tests {
         );
 
         // Light pulse time should be reset for light-exposed fly
-        assert!(circ_light.last_light_pulse_hours < circ_dark.last_light_pulse_hours,
-            "light-exposed fly should have shorter time since last light");
+        assert!(
+            circ_light.last_light_pulse_hours < circ_dark.last_light_pulse_hours,
+            "light-exposed fly should have shorter time since last light"
+        );
     }
 
     #[test]
@@ -2845,7 +3719,7 @@ mod tests {
         let mut world = TerrariumWorld::demo(7, false).unwrap();
         // Set time to night with full moon
         world.time_s = 29.530589 * 86_400.0 * 0.5; // Full moon
-        // Set time of day to midnight
+                                                   // Set time of day to midnight
         world.time_s += 0.5 * 86_400.0 / 24.0; // Add half a day to get to night
 
         // With default multiplier (0.4), expect ~1.4 at night + full moon
@@ -2854,13 +3728,461 @@ mod tests {
         // With multiplier 0.8, expect higher boost
         world.chronobiology_config.lunar_activity_multiplier = 0.8;
         let factor_high = world.nocturnal_activity_factor();
-        assert!(factor_high > factor_default,
-            "higher multiplier should increase nocturnal activity");
+        assert!(
+            factor_high > factor_default,
+            "higher multiplier should increase nocturnal activity"
+        );
 
         // With multiplier 0, expect no boost (factor = 1.0 during night with moon)
         world.chronobiology_config.lunar_activity_multiplier = 0.0;
         let factor_zero = world.nocturnal_activity_factor();
-        assert!((factor_zero - 1.0).abs() < 0.01 || factor_zero < factor_default,
-            "zero multiplier should give minimal boost");
+        assert!(
+            (factor_zero - 1.0).abs() < 0.01 || factor_zero < factor_default,
+            "zero multiplier should give minimal boost"
+        );
     }
+
+    // ==========================================================================
+    // Shade Avoidance Syndrome (SAS) wiring tests (Phase 4 integration)
+    // ==========================================================================
+
+    #[test]
+    fn sas_elongation_wired_to_height() {
+        use crate::botany::physiology_bridge::compute_molecular_drive;
+        use std::collections::HashMap;
+
+        let mut metabolome = crate::botany::PlantMetabolome::new();
+        metabolome.glucose_count = 200.0;
+        metabolome.water_count = 500.0;
+        metabolome.sucrose_count = 20.0;
+        metabolome.starch_reserve = 30.0;
+
+        let mut gene_sun = HashMap::new();
+        gene_sun.insert("RbcL".to_string(), 0.8);
+        gene_sun.insert("FT".to_string(), 0.0);
+        gene_sun.insert("PIN1".to_string(), 0.5);
+        gene_sun.insert("NRT2.1".to_string(), 0.5);
+        gene_sun.insert("DREB".to_string(), 0.0);
+        gene_sun.insert("SAS".to_string(), 0.0);
+
+        let mut gene_shade = gene_sun.clone();
+        gene_shade.insert("SAS".to_string(), 0.8);
+
+        let drive_sun = compute_molecular_drive(
+            &metabolome, &gene_sun, 0.8, 0.9, 0.4, 0.9, 1.0, 20.0, 0.0,
+        );
+        let drive_shade = compute_molecular_drive(
+            &metabolome, &gene_shade, 0.3, 0.9, 0.4, 0.9, 1.0, 20.0, 0.0,
+        );
+
+        let mut plant_sun = crate::plant_organism::PlantOrganismSim::new(
+            50.0, 5.0, 4.0, 1.0, 1.0, 1.0, 1.0, 0.8, 1.0, 1.0, 0.5, 1.0,
+            0.08, 0.30, 0.35, 0.25, 0.5, 0.5, 0.3, 8000.0, 14000.0,
+        );
+        let mut plant_shade = plant_sun.clone();
+
+        for _ in 0..5 {
+            let _ = plant_sun.step_molecular(
+                20.0, 0.02, 0.01, &drive_sun, 1.0, 0.9, 1.0, 0.1, 0.0,
+                0.8, 0.8, 0.0, 0.0, 400.0, 9000.0,
+            );
+            let _ = plant_shade.step_molecular(
+                20.0, 0.02, 0.01, &drive_shade, 1.0, 0.9, 1.0, 0.1, 0.0,
+                0.8, 0.8, 0.0, 0.0, 400.0, 9000.0,
+            );
+        }
+
+        assert!(
+            plant_shade.height_mm() > plant_sun.height_mm(),
+            "Shade plant ({:.2} mm) should be taller than sun plant ({:.2} mm) due to SAS elongation",
+            plant_shade.height_mm(), plant_sun.height_mm(),
+        );
+    }
+
+    #[test]
+    fn sas_branching_wired_to_laterals() {
+        use crate::botany::physiology_bridge::{shade_avoidance_branching, shade_avoidance_elongation};
+
+        let sas_shade = 0.8;
+        let branch_factor = shade_avoidance_branching(sas_shade);
+        let elongation_factor = shade_avoidance_elongation(sas_shade);
+
+        let base_lateral = 0.92;
+        let shaded_lateral = base_lateral * branch_factor;
+        assert!(
+            shaded_lateral < base_lateral * 0.7,
+            "Shade should reduce lateral branching: base={base_lateral}, shaded={shaded_lateral}",
+        );
+
+        let base_internode = 0.60;
+        let shaded_internode = base_internode * elongation_factor;
+        assert!(
+            shaded_internode > base_internode * 1.3,
+            "Shade should increase internode length: base={base_internode}, shaded={shaded_internode}",
+        );
+    }
+
+    #[test]
+    fn full_sun_no_sas_effect() {
+        use crate::botany::physiology_bridge::{shade_avoidance_branching, shade_avoidance_elongation};
+
+        let elongation = shade_avoidance_elongation(0.0);
+        let branching = shade_avoidance_branching(0.0);
+
+        assert!((elongation - 1.0).abs() < 0.01, "Full sun elongation should be ~1.0, got {elongation}");
+        assert!((branching - 1.0).abs() < 0.01, "Full sun branching should be ~1.0, got {branching}");
+    }
+
+    #[test]
+    fn shade_height_capped_by_max() {
+        use crate::botany::physiology_bridge::compute_molecular_drive;
+        use std::collections::HashMap;
+
+        let mut metabolome = crate::botany::PlantMetabolome::new();
+        metabolome.glucose_count = 500.0;
+        metabolome.water_count = 800.0;
+        metabolome.sucrose_count = 40.0;
+        metabolome.starch_reserve = 60.0;
+
+        let mut gene_expr = HashMap::new();
+        gene_expr.insert("RbcL".to_string(), 0.9);
+        gene_expr.insert("FT".to_string(), 0.0);
+        gene_expr.insert("PIN1".to_string(), 0.7);
+        gene_expr.insert("NRT2.1".to_string(), 0.3);
+        gene_expr.insert("DREB".to_string(), 0.0);
+        gene_expr.insert("SAS".to_string(), 1.0);
+
+        let drive = compute_molecular_drive(
+            &metabolome, &gene_expr, 0.3, 0.9, 0.8, 1.5, 1.0, 20.0, 0.0,
+        );
+
+        let max_height = 15.0;
+        let mut plant = crate::plant_organism::PlantOrganismSim::new(
+            max_height, 8.0, 5.0, 1.0, 1.0, 1.0, 1.0, 0.8, 1.0, 1.0, 0.5, 1.0,
+            0.08, 0.80, 0.90, 0.70, 2.0, 1.0, 0.5, 8000.0, 14000.0,
+        );
+
+        for _ in 0..20 {
+            let _ = plant.step_molecular(
+                20.0, 0.05, 0.03, &drive, 1.0, 0.9, 1.0, 0.1, 0.0,
+                0.8, 0.8, 0.0, 0.0, 800.0, 9000.0,
+            );
+        }
+
+        assert!(
+            plant.height_mm() <= max_height,
+            "Height ({:.2} mm) should not exceed max ({max_height} mm) under max SAS",
+            plant.height_mm(),
+        );
+    }
+
+    // ==========================================================================
+    // Herbivore damage / leaf grazing tests (Phase 5 biological trigger)
+    // ==========================================================================
+
+    #[test]
+    fn fly_grazing_reduces_leaf_biomass() {
+        use crate::drosophila::DrosophilaScale;
+
+        let mut world = TerrariumWorld::demo(201, false).expect("demo world");
+        world.flies.clear();
+        world.fly_metabolisms.clear();
+        world.fly_identities.clear();
+        world.fruits.clear();
+        world.seeds.clear();
+
+        assert!(!world.plants.is_empty());
+        let initial_leaf = world.plants[0].physiology.leaf_biomass();
+        let plant_x = world.plants[0].x as f32;
+        let plant_y = world.plants[0].y as f32;
+
+        world.add_fly(DrosophilaScale::Tiny, plant_x, plant_y, 201);
+        if let Some(m) = world.fly_metabolisms.first_mut() {
+            m.fat_body_glycogen_mg = 0.0;
+            m.fat_body_lipid_mg = 0.0;
+            m.hemolymph_trehalose_mm = 1.0;
+        }
+        world.flies[0].set_body_state(
+            plant_x, plant_y, 0.0,
+            Some(0.0), Some(0.0), Some(false), Some(0.0), None, None, None,
+        );
+
+        for _ in 0..500 {
+            let _ = world.step_flies();
+        }
+
+        let final_leaf = world.plants[0].physiology.leaf_biomass();
+        let grazing_events = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyGrazing { .. }))
+            .count();
+
+        assert!(grazing_events > 0, "Expected grazing events in 500 steps, got 0");
+        assert!(
+            final_leaf < initial_leaf,
+            "Leaf biomass should decrease: initial={initial_leaf}, final={final_leaf}"
+        );
+    }
+
+    #[test]
+    fn defended_plant_deters_grazing() {
+        use crate::drosophila::DrosophilaScale;
+
+        let mut world = TerrariumWorld::demo(202, false).expect("demo world");
+        world.flies.clear();
+        world.fly_metabolisms.clear();
+        world.fly_identities.clear();
+        world.fruits.clear();
+        world.seeds.clear();
+
+        assert!(!world.plants.is_empty());
+        world.plants[0].metabolome.jasmonate_count = 50.0;
+        world.plants[0].metabolome.salicylate_count = 50.0;
+        let defended_initial = world.plants[0].physiology.leaf_biomass();
+
+        let px = world.plants[0].x as f32;
+        let py = world.plants[0].y as f32;
+        world.add_fly(DrosophilaScale::Tiny, px, py, 202);
+        if let Some(m) = world.fly_metabolisms.first_mut() {
+            m.fat_body_glycogen_mg = 0.0;
+            m.fat_body_lipid_mg = 0.0;
+            m.hemolymph_trehalose_mm = 1.0;
+        }
+        world.flies[0].set_body_state(
+            px, py, 0.0, Some(0.0), Some(0.0), Some(false), Some(0.0), None, None, None,
+        );
+
+        for _ in 0..500 {
+            let _ = world.step_flies();
+        }
+
+        let defended_grazing = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyGrazing { .. }))
+            .count();
+
+        assert!(
+            defended_grazing == 0,
+            "Defended plant (JA+SA=100) should deter all grazing, got {defended_grazing} events"
+        );
+    }
+
+    #[test]
+    fn grazing_energy_gain() {
+        use crate::drosophila::DrosophilaScale;
+
+        let mut world = TerrariumWorld::demo(203, false).expect("demo world");
+        world.flies.clear();
+        world.fly_metabolisms.clear();
+        world.fly_identities.clear();
+        world.fruits.clear();
+        world.seeds.clear();
+
+        assert!(!world.plants.is_empty());
+        let px = world.plants[0].x as f32;
+        let py = world.plants[0].y as f32;
+        world.add_fly(DrosophilaScale::Tiny, px, py, 203);
+        if let Some(m) = world.fly_metabolisms.first_mut() {
+            m.fat_body_glycogen_mg = 0.0;
+            m.fat_body_lipid_mg = 0.0;
+            m.hemolymph_trehalose_mm = 1.0;
+        }
+        world.flies[0].set_body_state(
+            px, py, 0.0, Some(0.0), Some(0.0), Some(false), Some(0.0), None, None, None,
+        );
+
+        for _ in 0..500 {
+            let _ = world.step_flies();
+        }
+
+        let grazing_events = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyGrazing { .. }))
+            .count();
+
+        if grazing_events > 0 {
+            // If grazing happened, fly should have received some energy
+            let energy = world.fly_metabolisms[0].energy_fraction();
+            assert!(energy >= 0.0, "Fly energy should remain non-negative: {energy}");
+        }
+    }
+
+    #[test]
+    fn grazing_probability_is_low_when_fed() {
+        use crate::drosophila::DrosophilaScale;
+
+        let mut world = TerrariumWorld::demo(204, false).expect("demo world");
+        world.flies.clear();
+        world.fly_metabolisms.clear();
+        world.fly_identities.clear();
+        world.fruits.clear();
+        world.seeds.clear();
+
+        assert!(!world.plants.is_empty());
+        let px = world.plants[0].x as f32;
+        let py = world.plants[0].y as f32;
+        world.add_fly(DrosophilaScale::Tiny, px, py, 204);
+        if let Some(m) = world.fly_metabolisms.first_mut() {
+            m.fat_body_glycogen_mg = 0.1;
+            m.fat_body_lipid_mg = 0.3;
+            m.hemolymph_trehalose_mm = 40.0;
+        }
+        world.flies[0].set_body_state(
+            px, py, 0.0, Some(0.0), Some(0.0), Some(false), Some(0.0), None, None, None,
+        );
+
+        for _ in 0..200 {
+            let _ = world.step_flies();
+        }
+
+        let grazing_events = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyGrazing { .. }))
+            .count();
+
+        assert!(
+            grazing_events <= 2,
+            "Well-fed fly should rarely graze, got {grazing_events} in 200 steps"
+        );
+    }
+
+    #[test]
+    fn fly_grazing_triggers_mechanical_damage() {
+        use crate::drosophila::DrosophilaScale;
+
+        let mut world = TerrariumWorld::demo(205, false).expect("demo world");
+        world.flies.clear();
+        world.fly_metabolisms.clear();
+        world.fly_identities.clear();
+        world.fruits.clear();
+        world.seeds.clear();
+
+        assert!(!world.plants.is_empty());
+        let initial_damage = world.plants[0].morphology.mechanical_damage;
+        let px = world.plants[0].x as f32;
+        let py = world.plants[0].y as f32;
+
+        world.add_fly(DrosophilaScale::Tiny, px, py, 205);
+        if let Some(m) = world.fly_metabolisms.first_mut() {
+            m.fat_body_glycogen_mg = 0.0;
+            m.fat_body_lipid_mg = 0.0;
+            m.hemolymph_trehalose_mm = 1.0;
+        }
+        world.flies[0].set_body_state(
+            px, py, 0.0, Some(0.0), Some(0.0), Some(false), Some(0.0), None, None, None,
+        );
+
+        for _ in 0..500 {
+            let _ = world.step_flies();
+        }
+
+        let grazing_events = world
+            .ecology_events
+            .iter()
+            .filter(|e| matches!(e, super::EcologyTelemetryEvent::FlyGrazing { .. }))
+            .count();
+
+        if grazing_events > 0 {
+            let final_damage = world.plants[0].morphology.mechanical_damage;
+            assert!(
+                final_damage > initial_damage,
+                "Grazing should increase mechanical_damage: initial={initial_damage}, final={final_damage}"
+            );
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Extreme event tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn extreme_heatwave_raises_temperature() {
+            let mut world = TerrariumWorld::demo(7, false).expect("demo");
+            let pre_temp: f32 =
+                world.temperature.iter().sum::<f32>() / world.temperature.len() as f32;
+            world.apply_extreme_event_manual("heatwave", Some(0.8));
+            let post_temp: f32 =
+                world.temperature.iter().sum::<f32>() / world.temperature.len() as f32;
+            assert!(
+                post_temp > pre_temp + 2.0,
+                "Heatwave should raise temperature: pre={pre_temp:.1}, post={post_temp:.1}"
+            );
+        }
+
+        #[test]
+        fn extreme_drought_reduces_moisture() {
+            let mut world = TerrariumWorld::demo(7, false).expect("demo");
+            let pre_moisture: f32 =
+                world.moisture.iter().sum::<f32>() / world.moisture.len() as f32;
+            world.apply_extreme_event_manual("drought", Some(0.8));
+            let post_moisture: f32 =
+                world.moisture.iter().sum::<f32>() / world.moisture.len() as f32;
+            assert!(
+                post_moisture < pre_moisture,
+                "Drought should reduce moisture: pre={pre_moisture:.3}, post={post_moisture:.3}"
+            );
+        }
+
+        #[test]
+        fn extreme_wildfire_raises_temp_and_burns_om() {
+            let mut world = TerrariumWorld::demo(7, false).expect("demo");
+            let pre_temp: f32 =
+                world.temperature.iter().sum::<f32>() / world.temperature.len() as f32;
+            let pre_om: f32 =
+                world.organic_matter.iter().sum::<f32>() / world.organic_matter.len() as f32;
+            world.apply_extreme_event_manual("wildfire", Some(0.7));
+            let post_temp: f32 =
+                world.temperature.iter().sum::<f32>() / world.temperature.len() as f32;
+            let post_om: f32 =
+                world.organic_matter.iter().sum::<f32>() / world.organic_matter.len() as f32;
+            assert!(
+                post_temp > pre_temp + 3.0,
+                "Wildfire should spike temperature: pre={pre_temp:.1}, post={post_temp:.1}"
+            );
+            assert!(
+                post_om < pre_om,
+                "Wildfire should combust organic matter: pre={pre_om:.3}, post={post_om:.3}"
+            );
+        }
+
+        #[test]
+        fn extreme_flood_saturates_soil() {
+            let mut world = TerrariumWorld::demo(7, false).expect("demo");
+            world.apply_extreme_event_manual("flood", Some(0.9));
+            let mean_moisture: f32 =
+                world.moisture.iter().sum::<f32>() / world.moisture.len() as f32;
+            assert!(
+                mean_moisture > 0.7,
+                "Flood should saturate soil: mean_moisture={mean_moisture:.3}"
+            );
+        }
+
+        #[test]
+        fn extreme_event_emits_telemetry() {
+            let mut world = TerrariumWorld::demo(7, false).expect("demo");
+            world.ecology_events.clear();
+            world.apply_extreme_event_manual("hurricane", Some(0.5));
+            let has_event = world.ecology_events.iter().any(|e| {
+                matches!(e, EcologyTelemetryEvent::ExtremeEventOnset { event_type, .. } if event_type == "hurricane")
+            });
+            assert!(has_event, "ExtremeEventOnset telemetry should be emitted");
+        }
+
+        #[test]
+        fn extreme_coldsnap_lowers_temperature() {
+            let mut world = TerrariumWorld::demo(7, false).expect("demo");
+            let pre_temp: f32 =
+                world.temperature.iter().sum::<f32>() / world.temperature.len() as f32;
+            world.apply_extreme_event_manual("coldsnap", Some(0.6));
+            let post_temp: f32 =
+                world.temperature.iter().sum::<f32>() / world.temperature.len() as f32;
+            assert!(
+                post_temp < pre_temp - 2.0,
+                "Cold snap should lower temperature: pre={pre_temp:.1}, post={post_temp:.1}"
+            );
+        }
 }

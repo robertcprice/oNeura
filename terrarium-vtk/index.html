@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>oNeura Terrarium — Scientific Instrument</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code', monospace; }
+    #viewer { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    #status { position: fixed; bottom: 12px; left: 12px; font-size: 11px; color: #888; z-index: 100; pointer-events: none; }
+    #derivation-panel {
+      position: fixed; top: 12px; right: 12px; width: 340px; max-height: 80vh;
+      background: rgba(10,10,10,0.92); border: 1px solid #333; border-radius: 6px;
+      padding: 12px; font-size: 11px; overflow-y: auto; z-index: 100;
+      display: none;
+    }
+    #derivation-panel h3 { color: #7cb7ff; margin-bottom: 8px; font-size: 12px; }
+    #derivation-panel .chain { color: #aaa; line-height: 1.6; }
+    #derivation-panel .citation { color: #6a9; font-style: italic; }
+    #derivation-panel .rate { color: #fa7; }
+    #derivation-panel .close { position: absolute; top: 8px; right: 10px; cursor: pointer; color: #666; }
+    #scale-indicator {
+      position: fixed; top: 12px; left: 12px; font-size: 13px; color: #7cb7ff;
+      z-index: 100; pointer-events: none; text-transform: uppercase; letter-spacing: 2px;
+    }
+    .lil-gui { --background-color: rgba(10,10,10,0.85) !important; --widget-color: #333 !important; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="scale-indicator">ECOSYSTEM</div>
+  <div id="status">connecting...</div>
+  <div id="derivation-panel">
+    <span class="close" onclick="this.parentElement.style.display='none'">&times;</span>
+    <h3 id="derivation-title">Derivation Chain</h3>
+    <div id="derivation-content" class="chain"></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

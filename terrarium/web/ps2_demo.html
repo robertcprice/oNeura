@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PS2 Style Terrarium & Aquarium Demo</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+    color: #0f0;
+    font-family: "Courier New", Courier, monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  
+  #game-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+  
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* Key for PS2 pixelated style scaling */
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    object-fit: cover;
+  }
+
+  #ui-layer {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    pointer-events: none;
+    text-shadow: 2px 2px 0px #000;
+    z-index: 10;
+  }
+
+  h1 { margin: 0; font-size: 24px; color: #ffcc00; }
+  .status { font-size: 16px; margin-top: 10px; color: #fff; }
+  .instruction { font-size: 14px; margin-top: 5px; color: #aaa; }
+  
+  #crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 10;
+  }
+  
+  #crosshair::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+  }
+
+  .scanlines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 4px, 3px 100%;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0.6;
+  }
+</style>
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+</head>
+<body>
+
+<div id="game-container">
+  <canvas id="render-canvas"></canvas>
+  <div class="scanlines"></div>
+  <div id="crosshair"></div>
+  <div id="ui-layer">
+    <h1>oNeura Terrarium</h1>
+    <div class="status" id="zoom-status">Scale: MACRO ECOSYSTEM</div>
+    <div class="status" id="target-status">Target: None</div>
+    <div class="instruction">Scroll/Pinch to zoom in. Zoom close to target to reveal molecular structure map.</div>
+    <div class="instruction" style="margin-top:20px; color:#f55" id="loading-status">Loading systems...</div>
+  </div>
+</div>
+
+<script src="js/ps2_demo.js"></script>
+</body>
+</html>

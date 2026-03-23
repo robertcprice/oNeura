@@ -18,8 +18,7 @@ physics/
 ├── rl_foraging.py          # RL-based foraging
 ├── gpu_batch_physics.py    # GPU-accelerated physics
 │
-├── web/                     # HTML visualizations
-│   ├── terrarium.html       # Neural ecosystem visualization
+├── web/                     # Legacy HTML demos (not authoritative terrarium state)
 │   ├── particle_world.html  # GPU particle simulation
 │   └── ...
 │
@@ -50,7 +49,13 @@ print(f"Population: {stats['adults']} adults, {stats['larvae']} larvae")
 
 ### HTML Visualization
 
-Open `web/terrarium.html` in a browser for a 3D visualization.
+Older browser-only terrarium demo pages under `src/oneuro/physics/web/` were
+removed because they invented biology and chemistry locally in JavaScript and
+were not authoritative entrypoints.
+
+Use the canonical runtime-backed terrarium shell at
+`terrarium/web/terrarium.html` through the Rust terrarium web server or the
+desktop shell.
 
 ## Key Classes
 

@@ -241,7 +241,11 @@ impl AntBody {
 
         let exoskeleton = AntExoskeleton {
             cuticle_thickness_um: 20.0 * scale,
-            sclerotization: if matches!(caste, AntCaste::Soldier) { 0.9 } else { 0.6 },
+            sclerotization: if matches!(caste, AntCaste::Soldier) {
+                0.9
+            } else {
+                0.6
+            },
             gland_capacity: 1.0,
             gland_fill: 1.0,
         };
@@ -296,10 +300,21 @@ pub enum AntCaste {
 }
 
 impl AntCaste {
-    pub fn can_lay_eggs(self) -> bool { matches!(self, Self::Queen) }
-    pub fn can_forage(self) -> bool { matches!(self, Self::WorkerMinor | Self::WorkerMajor) }
-    pub fn can_fly(self) -> bool { matches!(self, Self::Queen | Self::Drone) }
-    pub fn is_adult(self) -> bool { matches!(self, Self::Queen | Self::Drone | Self::WorkerMinor | Self::WorkerMajor | Self::Soldier) }
+    pub fn can_lay_eggs(self) -> bool {
+        matches!(self, Self::Queen)
+    }
+    pub fn can_forage(self) -> bool {
+        matches!(self, Self::WorkerMinor | Self::WorkerMajor)
+    }
+    pub fn can_fly(self) -> bool {
+        matches!(self, Self::Queen | Self::Drone)
+    }
+    pub fn is_adult(self) -> bool {
+        matches!(
+            self,
+            Self::Queen | Self::Drone | Self::WorkerMinor | Self::WorkerMajor | Self::Soldier
+        )
+    }
 
     /// Body size scale relative to minor worker.
     pub fn body_scale(self) -> f32 {
@@ -421,7 +436,15 @@ pub struct PheromoneDeposit {
 impl PheromoneDeposit {
     pub fn new(ptype: PheromoneType, x: f32, y: f32, strength: f32, colony_id: u32) -> Self {
         let chemistry = PheromoneChemistry::for_type(ptype);
-        Self { pheromone_type: ptype, x_mm: x, y_mm: y, strength, age_s: 0.0, colony_id, chemistry }
+        Self {
+            pheromone_type: ptype,
+            x_mm: x,
+            y_mm: y,
+            strength,
+            age_s: 0.0,
+            colony_id,
+            chemistry,
+        }
     }
 
     pub fn half_life(&self) -> f32 {
@@ -438,7 +461,8 @@ impl PheromoneDeposit {
     }
 
     pub fn is_detectable(&self) -> bool {
-        self.age_s < PHEROMONE_MAX_AGE_S && self.effective_strength() > PHEROMONE_DETECTION_THRESHOLD
+        self.age_s < PHEROMONE_MAX_AGE_S
+            && self.effective_strength() > PHEROMONE_DETECTION_THRESHOLD
     }
 }
 
@@ -545,7 +569,12 @@ pub struct OpticalLobe {
 
 impl OpticalLobe {
     pub fn new() -> Self {
-        Self { lamina: 0.0, medulla: 0.0, lobula: 0.0, polarized_light: 0.0 }
+        Self {
+            lamina: 0.0,
+            medulla: 0.0,
+            lobula: 0.0,
+            polarized_light: 0.0,
+        }
     }
 }
 
@@ -562,7 +591,11 @@ pub struct CentralComplex {
 
 impl CentralComplex {
     pub fn new() -> Self {
-        Self { heading_estimate: 0.0, distance_estimate: 0.0, path_memory: Vec::new() }
+        Self {
+            heading_estimate: 0.0,
+            distance_estimate: 0.0,
+            path_memory: Vec::new(),
+        }
     }
 }
 
@@ -611,14 +644,18 @@ impl AntBrain {
 
         // Dopamine release for positive reward
         if quality > 0.5 {
-            *self.neurotransmitters.get_mut(&AntNeurotransmitter::Dopamine).unwrap() =
-                (self.neurotransmitters[&AntNeurotransmitter::Dopamine] + 0.1).min(1.0);
+            *self
+                .neurotransmitters
+                .get_mut(&AntNeurotransmitter::Dopamine)
+                .unwrap() = (self.neurotransmitters[&AntNeurotransmitter::Dopamine] + 0.1).min(1.0);
         }
     }
 }
 
 impl Default for AntBrain {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -671,46 +708,138 @@ impl AntGene {
     pub fn key_genes() -> Vec<Self> {
         vec![
             // Caste determination genes
-            Self { name: "Vg1".into(), chromosome: 1, position_cm: 12.0,
-                function: GeneFunction::Vitellogenin, expression_level: 0.0, essential: true },
-            Self { name: "Vg2".into(), chromosome: 3, position_cm: 8.0,
-                function: GeneFunction::Vitellogenin, expression_level: 0.0, essential: false },
-            Self { name: "JHE".into(), chromosome: 5, position_cm: 15.0,
-                function: GeneFunction::JuvenileHormone, expression_level: 0.5, essential: true },
-            Self { name: "Kr-h1".into(), chromosome: 2, position_cm: 20.0,
-                function: GeneFunction::CasteDetermination, expression_level: 0.3, essential: true },
-
+            Self {
+                name: "Vg1".into(),
+                chromosome: 1,
+                position_cm: 12.0,
+                function: GeneFunction::Vitellogenin,
+                expression_level: 0.0,
+                essential: true,
+            },
+            Self {
+                name: "Vg2".into(),
+                chromosome: 3,
+                position_cm: 8.0,
+                function: GeneFunction::Vitellogenin,
+                expression_level: 0.0,
+                essential: false,
+            },
+            Self {
+                name: "JHE".into(),
+                chromosome: 5,
+                position_cm: 15.0,
+                function: GeneFunction::JuvenileHormone,
+                expression_level: 0.5,
+                essential: true,
+            },
+            Self {
+                name: "Kr-h1".into(),
+                chromosome: 2,
+                position_cm: 20.0,
+                function: GeneFunction::CasteDetermination,
+                expression_level: 0.3,
+                essential: true,
+            },
             // Neural genes
-            Self { name: "for".into(), chromosome: 8, position_cm: 5.0,
-                function: GeneFunction::Foraging, expression_level: 0.5, essential: false },
-            Self { name: "Amfor".into(), chromosome: 8, position_cm: 6.0,
-                function: GeneFunction::Learning, expression_level: 0.4, essential: false },
-            Self { name: "per".into(), chromosome: 4, position_cm: 30.0,
-                function: GeneFunction::CircadianClock, expression_level: 0.5, essential: true },
-            Self { name: "tim".into(), chromosome: 4, position_cm: 32.0,
-                function: GeneFunction::CircadianClock, expression_level: 0.5, essential: true },
-            Self { name: "DAT".into(), chromosome: 6, position_cm: 10.0,
-                function: GeneFunction::NeurotransmitterSynthesis, expression_level: 0.4, essential: true },
-            Self { name: "TH".into(), chromosome: 7, position_cm: 15.0,
-                function: GeneFunction::NeurotransmitterSynthesis, expression_level: 0.3, essential: true },
-
+            Self {
+                name: "for".into(),
+                chromosome: 8,
+                position_cm: 5.0,
+                function: GeneFunction::Foraging,
+                expression_level: 0.5,
+                essential: false,
+            },
+            Self {
+                name: "Amfor".into(),
+                chromosome: 8,
+                position_cm: 6.0,
+                function: GeneFunction::Learning,
+                expression_level: 0.4,
+                essential: false,
+            },
+            Self {
+                name: "per".into(),
+                chromosome: 4,
+                position_cm: 30.0,
+                function: GeneFunction::CircadianClock,
+                expression_level: 0.5,
+                essential: true,
+            },
+            Self {
+                name: "tim".into(),
+                chromosome: 4,
+                position_cm: 32.0,
+                function: GeneFunction::CircadianClock,
+                expression_level: 0.5,
+                essential: true,
+            },
+            Self {
+                name: "DAT".into(),
+                chromosome: 6,
+                position_cm: 10.0,
+                function: GeneFunction::NeurotransmitterSynthesis,
+                expression_level: 0.4,
+                essential: true,
+            },
+            Self {
+                name: "TH".into(),
+                chromosome: 7,
+                position_cm: 15.0,
+                function: GeneFunction::NeurotransmitterSynthesis,
+                expression_level: 0.3,
+                essential: true,
+            },
             // Pheromone genes
-            Self { name: "Orco".into(), chromosome: 10, position_cm: 5.0,
-                function: GeneFunction::PheromoneReceptor, expression_level: 0.8, essential: true },
-            Self { name: "Duf".into(), chromosome: 12, position_cm: 20.0,
-                function: GeneFunction::PheromoneSynthesis, expression_level: 0.6, essential: false },
-
+            Self {
+                name: "Orco".into(),
+                chromosome: 10,
+                position_cm: 5.0,
+                function: GeneFunction::PheromoneReceptor,
+                expression_level: 0.8,
+                essential: true,
+            },
+            Self {
+                name: "Duf".into(),
+                chromosome: 12,
+                position_cm: 20.0,
+                function: GeneFunction::PheromoneSynthesis,
+                expression_level: 0.6,
+                essential: false,
+            },
             // Immunity
-            Self { name: "defensin".into(), chromosome: 15, position_cm: 8.0,
-                function: GeneFunction::AntimicrobialPeptide, expression_level: 0.2, essential: false },
-            Self { name: "abaecin".into(), chromosome: 15, position_cm: 10.0,
-                function: GeneFunction::AntimicrobialPeptide, expression_level: 0.2, essential: false },
-
+            Self {
+                name: "defensin".into(),
+                chromosome: 15,
+                position_cm: 8.0,
+                function: GeneFunction::AntimicrobialPeptide,
+                expression_level: 0.2,
+                essential: false,
+            },
+            Self {
+                name: "abaecin".into(),
+                chromosome: 15,
+                position_cm: 10.0,
+                function: GeneFunction::AntimicrobialPeptide,
+                expression_level: 0.2,
+                essential: false,
+            },
             // Development
-            Self { name: "EcR".into(), chromosome: 18, position_cm: 25.0,
-                function: GeneFunction::Molting, expression_level: 0.4, essential: true },
-            Self { name: "Broad".into(), chromosome: 20, position_cm: 12.0,
-                function: GeneFunction::Metamorphosis, expression_level: 0.3, essential: true },
+            Self {
+                name: "EcR".into(),
+                chromosome: 18,
+                position_cm: 25.0,
+                function: GeneFunction::Molting,
+                expression_level: 0.4,
+                essential: true,
+            },
+            Self {
+                name: "Broad".into(),
+                chromosome: 20,
+                position_cm: 12.0,
+                function: GeneFunction::Metamorphosis,
+                expression_level: 0.3,
+                essential: true,
+            },
         ]
     }
 }
@@ -772,12 +901,9 @@ impl AntPathway {
 
 /// Genome statistics.
 pub mod genome_stats {
-    use super::*;
-
     pub const CHROMOSOME_LENGTHS_MB: [f32; 26] = [
-        12.0, 11.5, 11.0, 10.8, 10.5, 10.2, 9.8, 9.5, 9.2, 9.0,
-        8.8, 8.5, 8.2, 8.0, 7.8, 7.5, 7.2, 7.0, 6.8, 6.5,
-        6.2, 6.0, 5.8, 5.5, 5.2, 5.0,
+        12.0, 11.5, 11.0, 10.8, 10.5, 10.2, 9.8, 9.5, 9.2, 9.0, 8.8, 8.5, 8.2, 8.0, 7.8, 7.5, 7.2,
+        7.0, 6.8, 6.5, 6.2, 6.0, 5.8, 5.5, 5.2, 5.0,
     ];
 
     pub const TOTAL_BP: usize = 280_000_000;
@@ -793,7 +919,15 @@ pub mod genome_stats {
 /// Tasks an ant can perform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AntTask {
-    Idle, Foraging, Returning, Nursing, Construction, Defense, Grooming, Feeding, EggLaying,
+    Idle,
+    Foraging,
+    Returning,
+    Nursing,
+    Construction,
+    Defense,
+    Grooming,
+    Feeding,
+    EggLaying,
 }
 
 /// A single ant agent.
@@ -829,10 +963,15 @@ impl Ant {
         }
 
         Self {
-            id, colony_id, caste,
-            x_mm: x, y_mm: y,
-            heading: 0.0, speed: 0.0,
-            body, brain,
+            id,
+            colony_id,
+            caste,
+            x_mm: x,
+            y_mm: y,
+            heading: 0.0,
+            speed: 0.0,
+            body,
+            brain,
             current_task: AntTask::Idle,
             carrying_food: false,
             food_amount: 0.0,
@@ -844,7 +983,9 @@ impl Ant {
     }
 
     pub fn step(&mut self, dt_s: f32, pheromones: &[PheromoneDeposit]) {
-        if !self.alive { return; }
+        if !self.alive {
+            return;
+        }
 
         self.age_days += dt_s / 86400.0;
         self.energy = (self.energy - 0.0001 * dt_s).max(0.0);
@@ -855,7 +996,10 @@ impl Ant {
         }
 
         // Process pheromones
-        for p in pheromones.iter().filter(|p| p.is_detectable() && p.colony_id == self.colony_id) {
+        for p in pheromones
+            .iter()
+            .filter(|p| p.is_detectable() && p.colony_id == self.colony_id)
+        {
             let dist = ((p.x_mm - self.x_mm).powi(2) + (p.y_mm - self.y_mm).powi(2)).sqrt();
             if dist < 20.0 {
                 let strength = p.effective_strength() / (dist + 1.0);
@@ -877,7 +1021,9 @@ impl Ant {
             AntTask::EggLaying => {
                 self.speed = 0.0;
             }
-            _ => { self.speed = 0.0; }
+            _ => {
+                self.speed = 0.0;
+            }
         }
 
         // Update position
@@ -898,7 +1044,10 @@ impl Ant {
 
 fn rand_random() -> f32 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let ns = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     ((ns % 1000000) as f32) / 1000000.0
 }
 
@@ -931,25 +1080,41 @@ impl AntColony {
             let dist = 5.0 + rand_random() * 10.0;
             let x = nest_x + angle.cos() * dist;
             let y = nest_y + angle.sin() * dist;
-            let caste = if i % 10 == 0 { AntCaste::WorkerMajor } else { AntCaste::WorkerMinor };
-            if i % 20 == 0 { AntCaste::Soldier } else { caste };
+            let caste = if i % 10 == 0 {
+                AntCaste::WorkerMajor
+            } else {
+                AntCaste::WorkerMinor
+            };
+            if i % 20 == 0 {
+                AntCaste::Soldier
+            } else {
+                caste
+            };
             ants.push(Ant::new(i as u32, id, caste, x, y));
         }
 
         Self {
-            id, species: species.to_string(),
-            ants, pheromones: Vec::new(),
-            nest_x_mm: nest_x, nest_y_mm: nest_y,
-            food_storage: 100.0, brood_count: 50,
+            id,
+            species: species.to_string(),
+            ants,
+            pheromones: Vec::new(),
+            nest_x_mm: nest_x,
+            nest_y_mm: nest_y,
+            food_storage: 100.0,
+            brood_count: 50,
             colony_age_days: 0.0,
         }
     }
 
     pub fn step(&mut self, dt_s: f32) {
-        for p in &mut self.pheromones { p.age_s += dt_s; }
+        for p in &mut self.pheromones {
+            p.age_s += dt_s;
+        }
         self.pheromones.retain(|p| p.is_detectable());
 
-        for ant in &mut self.ants { ant.step(dt_s, &self.pheromones); }
+        for ant in &mut self.ants {
+            ant.step(dt_s, &self.pheromones);
+        }
         self.ants.retain(|a| a.alive);
 
         self.colony_age_days += dt_s / 86400.0;
@@ -960,15 +1125,30 @@ impl AntColony {
             colony_id: self.id,
             species: self.species.clone(),
             total_ants: self.ants.len(),
-            queens: self.ants.iter().filter(|a| a.caste == AntCaste::Queen).count(),
+            queens: self
+                .ants
+                .iter()
+                .filter(|a| a.caste == AntCaste::Queen)
+                .count(),
             workers: self.ants.iter().filter(|a| a.caste.can_forage()).count(),
-            soldiers: self.ants.iter().filter(|a| a.caste == AntCaste::Soldier).count(),
-            foragers: self.ants.iter().filter(|a| a.current_task == AntTask::Foraging).count(),
+            soldiers: self
+                .ants
+                .iter()
+                .filter(|a| a.caste == AntCaste::Soldier)
+                .count(),
+            foragers: self
+                .ants
+                .iter()
+                .filter(|a| a.current_task == AntTask::Foraging)
+                .count(),
             food_storage: self.food_storage,
             brood_count: self.brood_count,
             pheromone_trails: self.pheromones.len(),
-            mean_energy: if self.ants.is_empty() { 0.0 }
-                else { self.ants.iter().map(|a| a.energy).sum::<f32>() / self.ants.len() as f32 },
+            mean_energy: if self.ants.is_empty() {
+                0.0
+            } else {
+                self.ants.iter().map(|a| a.energy).sum::<f32>() / self.ants.len() as f32
+            },
             colony_age_days: self.colony_age_days,
         }
     }

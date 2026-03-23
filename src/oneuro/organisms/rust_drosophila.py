@@ -153,19 +153,54 @@ class RustTerrariumDrosophila:
             return bool(active_field.sync_food_to_world(world))
         return False
 
-    def _sample_odorant(self, world) -> float:
+    @staticmethod
+    def _sum_odorants(odorants: Dict[str, float]) -> float:
+        return float(np.clip(sum(float(v) for v in odorants.values()), 0.0, 1.0))
+
+    def _sample_odorant_at(self, world, x: float, y: float, z: float) -> float:
         if world is None:
             return 0.0
+        if hasattr(world, "sample_odorants"):
+            odorants = world.sample_odorants(int(round(x)), int(round(y)), int(round(z)))
+            return self._sum_odorants(odorants)
+        if hasattr(world, "odorants_at"):
+            odorants = world.odorants_at(x, y)
+            return self._sum_odorants(odorants)
+        return 0.0
+
+    def _sample_odorant_triplet(self, world) -> tuple[float, float, float]:
+        if world is None:
+            return 0.0, 0.0, 0.0
+
         ax = self.body.x + math.cos(self.body.heading) * 0.5
         ay = self.body.y + math.sin(self.body.heading) * 0.5
         az = self.body.z + 0.3
-        if hasattr(world, "sample_odorants"):
-            odorants = world.sample_odorants(int(round(ax)), int(round(ay)), int(round(az)))
-            return float(np.clip(sum(float(v) for v in odorants.values()), 0.0, 1.0))
-        if hasattr(world, "odorants_at"):
-            odorants = world.odorants_at(ax, ay)
-            return float(np.clip(sum(float(v) for v in odorants.values()), 0.0, 1.0))
-        return 0.0
+
+        antenna_forward = 0.7 if self.body.is_flying else 0.45
+        antenna_lateral = 0.42
+        sensor_x = self.body.x + math.cos(self.body.heading) * antenna_forward
+        sensor_y = self.body.y + math.sin(self.body.heading) * antenna_forward
+        left_x = sensor_x + math.sin(self.body.heading) * antenna_lateral
+        left_y = sensor_y - math.cos(self.body.heading) * antenna_lateral
+        right_x = sensor_x - math.sin(self.body.heading) * antenna_lateral
+        right_y = sensor_y + math.cos(self.body.heading) * antenna_lateral
+
+        left_odorant = self._sample_odorant_at(world, left_x, left_y, az)
+        right_odorant = self._sample_odorant_at(world, right_x, right_y, az)
+        odorant = float(
+            np.clip(
+                max(
+                    self._sample_odorant_at(world, ax, ay, az),
+                    (left_odorant + right_odorant) * 0.5,
+                ),
+                0.0,
+                1.0,
+            )
+        )
+        return odorant, left_odorant, right_odorant
+
+    def _sample_odorant(self, world) -> float:
+        return self._sample_odorant_triplet(world)[0]
 
     def _sample_light_pair(self, world) -> tuple[float, float]:
         if world is None:
@@ -258,8 +293,11 @@ class RustTerrariumDrosophila:
             )
             self.sensory_backend = "rust"
         else:
+            odorant, left_odorant, right_odorant = self._sample_odorant_triplet(world)
             sensory = {
-                "odorant": self._sample_odorant(world),
+                "odorant": odorant,
+                "left_odorant": left_odorant,
+                "right_odorant": right_odorant,
                 "left_light": self._sample_light_pair(world)[0],
                 "right_light": self._sample_light_pair(world)[1],
                 "temperature": self._sample_temperature(world),
@@ -277,6 +315,8 @@ class RustTerrariumDrosophila:
             float(sensory["left_light"]),
             float(sensory["right_light"]),
             float(sensory["temperature"]),
+            left_odorant=float(sensory.get("left_odorant", sensory["odorant"])),
+            right_odorant=float(sensory.get("right_odorant", sensory["odorant"])),
             sugar_taste=float(sensory["sugar_taste"]),
             bitter_taste=float(sensory["bitter_taste"]),
             amino_taste=float(sensory["amino_taste"]),
