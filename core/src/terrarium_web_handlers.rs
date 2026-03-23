@@ -11,6 +11,7 @@ use crate::terrarium_web_evolution::{start_evolution, stop_evolution};
 use crate::terrarium_web_inspect::{build_scale_inspect_data, InspectQuery};
 use crate::terrarium_web_protocol::{
     parse_view, ClientMsg, FrameData, OrganismLineageData, OrganismRegistryData,
+    PharmaAdmetResultData, PharmaDockingResultData,
     RenameOrganismRequest, RenameOrganismResponse, ServerMsg, SnapshotData,
 };
 use crate::terrarium_web_state::AppState;
@@ -41,6 +42,11 @@ const CUTAWAY_CONTROLLER_JS: &str = include_str!("../../terrarium/web/js/cutaway
 const DENSITY_VOLUME_JS: &str = include_str!("../../terrarium/web/js/density_volume.js");
 const MICROCOSM_HTML: &str = include_str!("../../terrarium/web/microcosm.html");
 const MICROCOSM_JS: &str = include_str!("../../terrarium/web/js/microcosm.js");
+const PHARMA_LAB_JS: &str = include_str!("../../terrarium/web/js/pharma_lab.js");
+const PERIODIC_TABLE_JS: &str = include_str!("../../terrarium/web/js/periodic_table.js");
+const MOLECULE_BUILDER_JS: &str = include_str!("../../terrarium/web/js/molecule_builder.js");
+const REACTION_ANIMATOR_JS: &str = include_str!("../../terrarium/web/js/reaction_animator.js");
+const ADMET_DASHBOARD_JS: &str = include_str!("../../terrarium/web/js/admet_dashboard.js");
 
 /// GET / — serve the embedded HTML page.
 pub async fn index_handler() -> Html<&'static str> {
@@ -169,6 +175,74 @@ pub async fn density_volume_handler() -> impl IntoResponse {
             (header::CACHE_CONTROL, "public, max-age=3600"),
         ],
         DENSITY_VOLUME_JS,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Pharma Lab JS handlers
+// ---------------------------------------------------------------------------
+
+pub async fn pharma_lab_handler() -> impl IntoResponse {
+    ([
+        (header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+        (header::CACHE_CONTROL, "public, max-age=3600"),
+    ], PHARMA_LAB_JS)
+}
+pub async fn periodic_table_handler() -> impl IntoResponse {
+    ([
+        (header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+        (header::CACHE_CONTROL, "public, max-age=3600"),
+    ], PERIODIC_TABLE_JS)
+}
+pub async fn molecule_builder_handler() -> impl IntoResponse {
+    ([
+        (header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+        (header::CACHE_CONTROL, "public, max-age=3600"),
+    ], MOLECULE_BUILDER_JS)
+}
+pub async fn reaction_animator_handler() -> impl IntoResponse {
+    ([
+        (header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+        (header::CACHE_CONTROL, "public, max-age=3600"),
+    ], REACTION_ANIMATOR_JS)
+}
+pub async fn admet_dashboard_handler() -> impl IntoResponse {
+    ([
+        (header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+        (header::CACHE_CONTROL, "public, max-age=3600"),
+    ], ADMET_DASHBOARD_JS)
+}
+
+/// GET /api/pharma/elements — full periodic table as JSON.
+pub async fn pharma_elements_handler() -> impl IntoResponse {
+    use crate::atomistic_chemistry::PeriodicElement;
+    let elements: Vec<serde_json::Value> = PeriodicElement::all().map(|e| {
+        serde_json::json!({
+            "z": e.atomic_number(),
+            "symbol": e.symbol(),
+            "name": e.name(),
+            "mass": e.mass_daltons(),
+            "covalentRadius": e.covalent_radius_angstrom(),
+            "vdwRadius": e.van_der_waals_radius_angstrom(),
+            "cpkColor": e.cpk_color_rgb(),
+            "electronegativity": e.pauling_electronegativity(),
+            "electronConfig": e.electron_configuration_short(),
+        })
+    }).collect();
+    (
+        [(header::CONTENT_TYPE, "application/json; charset=utf-8"),
+         (header::CACHE_CONTROL, "public, max-age=86400, immutable")],
+        serde_json::to_string(&elements).unwrap_or_default(),
+    )
+}
+
+/// GET /api/pharma/library — molecule library list.
+pub async fn pharma_library_handler() -> impl IntoResponse {
+    let entries = crate::pharma_lab::library::all_library_molecules();
+    (
+        [(header::CONTENT_TYPE, "application/json; charset=utf-8"),
+         (header::CACHE_CONTROL, "public, max-age=3600")],
+        serde_json::to_string(entries).unwrap_or_default(),
     )
 }
 
@@ -1245,6 +1319,239 @@ async fn handle_command(cmd: ClientMsg, state: &Arc<AppState>) {
             let mut params = state.params.write().await;
             params.steps_per_frame = clamped.round().max(1.0) as u32;
         }
+        // ---------------------------------------------------------------
+        // Pharma Lab commands
+        // ---------------------------------------------------------------
+        ClientMsg::PharmaEnter => {
+            let mut lab = state.pharma_lab.lock().await;
+            if lab.is_none() {
+                *lab = Some(crate::pharma_lab::PharmaLab::new(
+                    crate::pharma_lab::LabConfig::default(),
+                ));
+            }
+            let snap = lab.as_ref().unwrap().snapshot();
+            let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+        }
+        ClientMsg::PharmaExit => {
+            let mut lab = state.pharma_lab.lock().await;
+            *lab = None;
+        }
+        ClientMsg::PharmaAddAtom { element, position } => {
+            if let Some(elem) = crate::atomistic_chemistry::PeriodicElement::from_symbol_or_name(&element) {
+                let mut lab = state.pharma_lab.lock().await;
+                if let Some(lab) = lab.as_mut() {
+                    lab.add_atom(elem, position);
+                    let snap = lab.snapshot();
+                    let frame = lab.build_frame(&[]);
+                    let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+                    let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+                }
+            } else {
+                let _ = state.tx.send(ServerMsg::PharmaError {
+                    message: format!("unknown element: {}", element),
+                });
+            }
+        }
+        ClientMsg::PharmaAddBond { molecule_id, atom_a, atom_b, order } => {
+            let bond_order = match order.to_lowercase().as_str() {
+                "single" | "s" => crate::atomistic_chemistry::BondOrder::Single,
+                "double" | "d" => crate::atomistic_chemistry::BondOrder::Double,
+                "triple" | "t" => crate::atomistic_chemistry::BondOrder::Triple,
+                "aromatic" | "a" => crate::atomistic_chemistry::BondOrder::Aromatic,
+                _ => crate::atomistic_chemistry::BondOrder::Single,
+            };
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                if let Err(e) = lab.add_bond(molecule_id, atom_a, atom_b, bond_order) {
+                    let _ = state.tx.send(ServerMsg::PharmaError { message: e });
+                } else {
+                    let snap = lab.snapshot();
+                    let frame = lab.build_frame(&[]);
+                    let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+                    let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+                }
+            }
+        }
+        ClientMsg::PharmaRemoveAtom { molecule_id, atom_idx } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                let _ = lab.remove_atom(molecule_id, atom_idx);
+                let snap = lab.snapshot();
+                let frame = lab.build_frame(&[]);
+                let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+                let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+            }
+        }
+        ClientMsg::PharmaRemoveBond { molecule_id, bond_idx } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                let _ = lab.remove_bond(molecule_id, bond_idx);
+                let snap = lab.snapshot();
+                let frame = lab.build_frame(&[]);
+                let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+                let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+            }
+        }
+        ClientMsg::PharmaRemoveMolecule { molecule_id } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                let _ = lab.remove_molecule(molecule_id);
+                let snap = lab.snapshot();
+                let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+            }
+        }
+        ClientMsg::PharmaParseSmiles { smiles } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                match lab.add_molecule_from_smiles(&smiles) {
+                    Ok(_id) => {
+                        let snap = lab.snapshot();
+                        let frame = lab.build_frame(&[]);
+                        let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+                        let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+                    }
+                    Err(e) => {
+                        let _ = state.tx.send(ServerMsg::PharmaError { message: e });
+                    }
+                }
+            }
+        }
+        ClientMsg::PharmaLoadLibrary { name } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                match lab.add_library_molecule(&name) {
+                    Ok(_id) => {
+                        let snap = lab.snapshot();
+                        let frame = lab.build_frame(&[]);
+                        let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+                        let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+                    }
+                    Err(e) => {
+                        let _ = state.tx.send(ServerMsg::PharmaError { message: e });
+                    }
+                }
+            }
+        }
+        ClientMsg::PharmaMergeMolecules { molecule_a, molecule_b } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                let _ = lab.merge_molecules(molecule_a, molecule_b);
+                let snap = lab.snapshot();
+                let frame = lab.build_frame(&[]);
+                let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+                let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+            }
+        }
+        ClientMsg::PharmaMdStart => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                lab.set_md_running(true);
+                let snap = lab.snapshot();
+                let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+            }
+        }
+        ClientMsg::PharmaMdStop => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                lab.set_md_running(false);
+                let snap = lab.snapshot();
+                let _ = state.tx.send(ServerMsg::PharmaLabState(snap));
+            }
+        }
+        ClientMsg::PharmaMdStep { steps } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                for mol in &mut lab.molecules { mol.locked = false; }
+                let _stats = lab.step_md(steps);
+                let reactions = lab.check_proximity_reactions();
+                let frame = lab.build_frame(&reactions);
+                let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+                for event in reactions {
+                    let _ = state.tx.send(ServerMsg::PharmaReactionEvent(event));
+                }
+            }
+        }
+        ClientMsg::PharmaSetTemperature { kelvin } => {
+            let mut lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_mut() {
+                lab.set_temperature(kelvin.clamp(10.0, 5000.0));
+            }
+        }
+        ClientMsg::PharmaDock { ligand_id, target } => {
+            let lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_ref() {
+                match lab.dock_ligand(ligand_id, &target) {
+                    Ok(result) => {
+                        let _ = state.tx.send(ServerMsg::PharmaDockingResult(
+                            PharmaDockingResultData {
+                                ligand_name: result.candidate.name.clone(),
+                                target_name: target,
+                                binding_energy_kcal: result.binding_energy_kcal,
+                                contacts: result.contacts,
+                                pharmacophore_match: result.pharmacophore_match_score,
+                                ligand_efficiency: result.ligand_efficiency,
+                                vdw_energy: result.vdw_energy,
+                                electrostatic_energy: result.electrostatic_energy,
+                                desolvation_penalty: result.desolvation_penalty,
+                                entropy_penalty: result.entropy_penalty,
+                            },
+                        ));
+                    }
+                    Err(e) => {
+                        let _ = state.tx.send(ServerMsg::PharmaError { message: e });
+                    }
+                }
+            }
+        }
+        ClientMsg::PharmaAdmet { molecule_id } => {
+            let lab = state.pharma_lab.lock().await;
+            if let Some(lab) = lab.as_ref() {
+                match lab.compute_admet(molecule_id) {
+                    Ok(profile) => {
+                        let _ = state.tx.send(ServerMsg::PharmaAdmetResult(
+                            PharmaAdmetResultData {
+                                molecule_name: profile.candidate_name.clone(),
+                                absorption: profile.absorption,
+                                distribution_vd: profile.distribution_vd,
+                                metabolic_stability: profile.metabolic_stability,
+                                herg_risk: profile.herg_risk,
+                                drug_likeness: profile.drug_likeness,
+                                lipinski_violations: profile.lipinski_violations,
+                                bbb_permeability: profile.bbb_permeability,
+                                hepatotoxicity_risk: profile.hepatotoxicity_risk,
+                                plasma_protein_binding: profile.plasma_protein_binding,
+                            },
+                        ));
+                    }
+                    Err(e) => {
+                        let _ = state.tx.send(ServerMsg::PharmaError { message: e });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Pharma lab MD frame loop. Runs as a tokio task, sends frames at ~30fps when MD is active.
+pub async fn pharma_frame_loop(state: Arc<AppState>) {
+    loop {
+        let should_step = {
+            let lab = state.pharma_lab.lock().await;
+            lab.as_ref().map_or(false, |l| l.is_md_running())
+        };
+        if should_step {
+            let mut lab_guard = state.pharma_lab.lock().await;
+            if let Some(lab) = lab_guard.as_mut() {
+                let _stats = lab.step_md(10);
+                let reactions = lab.check_proximity_reactions();
+                let frame = lab.build_frame(&reactions);
+                let _ = state.tx.send(ServerMsg::PharmaLabFrame(frame));
+                for event in reactions {
+                    let _ = state.tx.send(ServerMsg::PharmaReactionEvent(event));
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(33)).await;
     }
 }
 
@@ -1308,11 +1615,17 @@ pub async fn frame_loop(state: Arc<AppState>) {
                 soil_structure: world.soil_structure[..plane].to_vec(),
             }));
 
-            // Smart throttling: send snapshots less frequently when many clients connected
-            let snapshot_interval = if state.tx.receiver_count() > 4 { 10 } else { 5 };
-            if frame_num % snapshot_interval == 0 {
+            // Send entities every 2nd frame for smooth sync, snapshots less often
+            let snapshot_interval = if state.tx.receiver_count() > 4 { 6 } else { 3 };
+            // Entities every other frame for smooth visual sync
+            let entity_interval = 2;
+            // Send entities frequently for smooth visual sync
+            if frame_num % entity_interval == 0 {
                 let entities = AppState::extract_entities(&world);
-                let mut snapshot = snapshot;
+                let _ = state.tx.send(ServerMsg::Entities(entities));
+            }
+            // Send full snapshot less frequently (expensive)
+            if frame_num % snapshot_interval == 0 {
                 let _ = state.tx.send(ServerMsg::Snapshot(SnapshotData {
                     snapshot,
                     preset: params.preset.cli_name().to_string(),
@@ -1333,7 +1646,6 @@ pub async fn frame_loop(state: Arc<AppState>) {
                     fps: None,
                 }));
                 let _ = state.tx.send(ServerMsg::SnapshotHistory(snapshot_history));
-                let _ = state.tx.send(ServerMsg::Entities(entities));
             }
         }
 

@@ -405,7 +405,8 @@ impl PlantMorphology {
                         * self.branch_twist_rad
                         * (if c == 'B' { 1.0 } else { 0.35 })
                         * (1.0 + branch_depth as f32 * 0.18);
-                    angle_x -= (phase - 0.5) * self.branch_angle_rad * 0.12 * (1.0 - depth_scale);
+                    // Out-of-plane twist — gives 3D branching, not just left/right
+                    angle_x -= (phase - 0.5) * self.branch_angle_rad * 0.35 * (1.0 - depth_scale * 0.5);
                     dir = self.calculate_direction(angle_x, angle_y);
 
                     let segment_len = match c {
@@ -475,9 +476,12 @@ impl PlantMorphology {
                     stack.push((pos, dir, angle_x, angle_y, branch_depth));
                     branch_depth += 1;
                     let branch_phase = phase_at(segment_index, branch_depth, 1.57) - 0.5;
+                    // Strong 3D twist at each branch point for natural tree shapes
                     angle_y +=
-                        branch_phase * self.branch_twist_rad * (1.1 + branch_depth as f32 * 0.12);
-                    angle_x += branch_phase * self.branch_angle_rad * 0.16;
+                        branch_phase * self.branch_twist_rad * (1.4 + branch_depth as f32 * 0.2);
+                    // Significant out-of-plane rotation — prevents flat left/right-only branching
+                    angle_x += branch_phase * self.branch_angle_rad * 0.45
+                        * (0.8 + (branch_depth as f32 * 0.37).sin() * 0.4);
                     dir = self.calculate_direction(angle_x, angle_y);
                 }
                 ']' => {

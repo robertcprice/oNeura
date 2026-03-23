@@ -1184,7 +1184,7 @@ impl Default for TerrariumWorldConfig {
             world_dt_s: 0.05,
             substrate_dt_ms: 15.0,
             substeps: 2,
-            time_warp: 900.0,
+            time_warp: 120.0, // 2 real minutes = 1 sim hour — visible but not jarring
             max_plants: 28,
             max_fruits: 64,
             max_seeds: 96,
